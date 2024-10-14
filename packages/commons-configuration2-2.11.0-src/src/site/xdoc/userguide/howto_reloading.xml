@@ -1,0 +1,412 @@
+<?xml version="1.0"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+
+<document>
+
+ <properties>
+  <title>Reloading</title>
+ </properties>
+
+<body>
+    <section name="Automatic Reloading of Configuration Sources">
+    <p>
+      If an application has special requirements regarding its availability,
+      it is probably desired that changes on configuration files can be done
+      without the need for a restart. The application should automatically
+      detect such changes an react accordingly. This feature is referred to as
+      automatic reloading.
+    </p>
+    <p>
+      Providing support for automatic reloading is difficult because applications
+      may have very specific needs how and when to perform a reload. Also,
+      reloading should not only be limited to file-based configurations, but
+      work for other configuration sources as well; for instance for
+      configuration settings kept in a database. Therefore, <em>Commons
+      Configuration</em> provides some generic classes and interfaces that deal
+      with reloading. In the following section the basic concepts are discussed.
+      After that some more concrete scenarios are presented.
+    </p>
+
+    <subsection name="Components for Reloading">
+    <p>
+      The reloading mechanism defined by <em>Commons Configuration</em>
+      involves multiple components which all work together to detect changes
+      on a configuration source and trigger the actual reload operation.
+    </p>
+    <p>
+      A basic component is a <em>reloading detector</em>, defined by the
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/ReloadingDetector.html">
+      ReloadingDetector</a></code> interface. This object is responsible for
+      detecting a change on an external configuration source. An example
+      implementation could check whether the last-modified data of a specific
+      file has changed. Note that a reloading detector does not have to monitor
+      a configuration source actively for changes; it only has to be able to
+      detect a change when it is triggered. This is reflected in the methods
+      defined by the <code>ReloadingDetector</code> interface:
+      <ul>
+        <li>The <code>isReloadingRequired()</code> method is called to trigger
+        a check. The detector has to determine whether something has changed on
+        the monitored source and returns a boolean flag as result.</li>
+        <li>The <code>reloadingPerformed()</code> method is called after a
+        reload operation was performed. This method gives the detector the
+        opportunity to reset itself so that new changes on the associated
+        configuration source can be detected.</li>
+      </ul>
+    </p>
+    <p>
+      The next component taking part in reloading is an instance of the
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/ReloadingController.html">
+      ReloadingController</a></code> class. This is a fully functional class
+      implementing a generic protocol for executing a reload check (based on an
+      external trigger) and reacting accordingly. The actual check whether a
+      reload is required is delegated to a <code>ReloadingDetector</code>
+      associated with the controller. When the detector reports a change a
+      corresponding notification is sent out to registered <em>reloading
+      listeners</em>. Like <code>ReloadingDetector</code>, a reloading
+      controller does not actively monitor a certain resource; it has a
+      <code>checkForReloading()</code> method which has to be invoked in order
+      to trigger a reloading check. If this method returns <b>true</b>, the
+      controller changes into the so-called <em>reloading state</em>. This
+      means that the need for a reload was detected and now the reload has
+      actually to happen. Typically, this is done by one of the
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/ReloadingListener.html">
+      ReloadingListener</a></code> objects registered at the controller. As long
+      as the controller is in reloading state, no further changes on the
+      configuration source monitored by the associated <code>ReloadingDetector</code>
+      are detected. A manual invocation of the <code>resetReloadingState()</code>
+      method is necessary to terminate this state and enable the detection of
+      further changes.
+    </p>
+    <p>
+      The components discussed so far only perform reload checks on demand. In
+      order to implement automatic reloading, it has to be ensured that the
+      <code>checkForReloading()</code> method of a <code>ReloadingController</code>
+      is called periodically or at least when something happens which might
+      affect the monitored configuration source. This part of the reloading
+      mechanism is hard to provide in a generic form; in this area requirements
+      and use cases tend to be very specific. Therefore, <em>Commons
+      Configuration</em> just ships with a pretty simple, timer-based
+      solution; this may be sufficient in simple cases, for more complex
+      requirements it may be necessary to create a custom component triggering
+      a reload check.
+    </p>
+    <p>
+      After this theory, let's come to some examples how reloading of
+      configuration sources may be done in practice.
+    </p>
+    </subsection>
+
+    <subsection name="Reloading File-based Configurations">
+    <p>
+      As was already stated, reloading is not limited to file-based
+      configurations. However, configuration files on the user's hard disk
+      which get changed by external sources are a typical use case for an
+      automatic reloading feature. Therefore, <em>Commons Configuration</em>
+      has some special support in this area. This is mainly provided by the
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/ReloadingFileBasedConfigurationBuilder.html">
+      ReloadingFileBasedConfigurationBuilder</a></code> class, an extension of
+      the standard builder for file-based configurations.
+    </p>
+    <p>
+      <code>ReloadingFileBasedConfigurationBuilder</code> already creates a
+      <code>ReloadingController</code> and initializes it with a
+      <code>ReloadingDetector</code> that is associated with the file managed
+      by the builder. (Actually, the situation is a bit more complex: the
+      creation of the reloading detector is delegated to an object implementing
+      the <code><a href="../apidocs/org/apache/commons/configuration2/builder/ReloadingDetectorFactory.html">
+      ReloadingDetectorFactory</a></code> interface. The factory to be used can
+      be configured via the builder's initialization parameters. Per default, a
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/DefaultReloadingDetectorFactory.html">
+      DefaultReloadingDetectorFactory</a></code> object is used which creates
+      an instance of the
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/FileHandlerReloadingDetector.html">
+      FileHandlerReloadingDetector</a></code> class. Such an object can detect
+      changes on a file referenced by a <code>FileHandler</code>.) The builder
+      is already registered as change listener at the reloading controller;
+      when the controller sends a notification that a change was detected the
+      builder resets itself. The next time the managed configuration is queried
+      from the builder, a fresh - updated - instance is returned. So the basic
+      components of a reloading setup are already in place. What is missing is
+      a periodic trigger initiating a reload check.
+    </p>
+    <p>
+      For this example we use the
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/PeriodicReloadingTrigger.html">
+      PeriodicReloadingTrigger</a></code> class which is based on a scheduled
+      executor service. When constructing an instance of this class the
+      <code>ReloadingController</code> and the period in which to trigger a
+      check have to be specified. Optionally, the
+      <code>ScheduledExecutorService</code> can be provided; if this argument
+      is undefined, a default executor is created. It is also possible to pass
+      an arbitrary parameter object which will then be contained in change
+      events generated by the <code>ReloadingController</code>. This is useful
+      if a component monitors multiple configuration sources which may be
+      reloaded. For this simple example this parameter is not used and therefore
+      set to <b>null</b>.
+    </p>
+    <p>
+      Note that the <code>PeriodicReloadingTrigger</code> class - although fully
+      functional - may not be the right choice depending on the environment in
+      which an application is running. For instance, applications running in a
+      JEE container are typically not allowed to create threads; here a
+      different triggering mechanism has to be found.
+    </p>
+    <p>
+      Let's finally get to the code. We slightly adapt the example from the
+      section about <a href="howto_filebased.html#FileBasedConfigurationBuilder">
+      builders for file-based configurations</a>. Goal is to load a properties
+      configuration from a file and enable a periodic reload check which
+      happens every minute:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+// Read data from this file
+File propertiesFile = new File("config.properties");
+
+ReloadingFileBasedConfigurationBuilder<FileBasedConfiguration> builder =
+    new ReloadingFileBasedConfigurationBuilder<FileBasedConfiguration>(PropertiesConfiguration.class)
+    .configure(params.fileBased()
+        .setFile(propertiesFile));
+PeriodicReloadingTrigger trigger = new PeriodicReloadingTrigger(builder.getReloadingController(),
+    null, 1, TimeUnit.MINUTES);
+trigger.start();
+]]></source>
+    <p>
+      In this setup, the scheduler service used by the periodic trigger executes
+      a task every minute which asks the reloading builder's
+      <code>ReloadingController</code> to perform a reload check. If the
+      underlying file has not been changed, this check has no effect. However,
+      if the file has been changed by an external source, an updated
+      last-modified date is detected, and the reloading detector signals a
+      need for a reload. This causes the reloading controller to fire a reloading
+      event to all registered listeners. The builder is itself registered as
+      reloading listener at its controller. In reaction to this event it resets
+      itself, so that the managed configuration becomes invalid. In addition,
+      a builder reset event is generated (see chapter
+      <a href="howto_events.html">Configuration Events</a>) which can notify
+      interested parties that an updated configuration is now available. The
+      next call to the builder's <code>getConfiguration()</code> method causes
+      a new configuration instance to be created and initialized from the
+      content of the modified configuration file. At this time the reload
+      actually happens, and the controller's reloading state is reset.
+    </p>
+    <p>
+      The <code>PeriodicReloadingTrigger</code> class has the methods
+      <code>stop()</code> and <code>start()</code> for pausing or resuming the
+      trigger. This may be useful if an application enters a state in which no
+      reload checks should be done - for instance during an update. When a
+      periodic trigger is no longer needed, its <code>shutdown()</code> method
+      should be called which frees all resources and also terminates the
+      scheduled executor service gracefully.
+    </p>
+    <p>
+      One important point to keep in mind when using this approach to reloading
+      is that reloads are only functional if the builder is used as central
+      component for accessing configuration data. The configuration instance
+      obtained from the builder will not change automagically! So if an
+      application fetches a configuration object from the builder at startup
+      and then uses it throughout its life time, changes on the external
+      configuration file become never visible. The correct approach is to
+      keep a reference to the builder centrally and obtain the configuration
+      from there every time configuration data is needed.
+    </p>
+    <p>
+      Users familiar with older versions of <em>Commons Configuration</em> will
+      notice that this is a fundamental change compared to the old reloading
+      implementation. In the old implementation a reload could happen at any
+      time on a configuration the application was operating on. This had the
+      advantage that it was fully transparent to the application. But on the
+      other hand, the application had no control over the reloading mechanism.
+      With the new approach, an application can obtain a configuration object
+      from a builder and then perform a unit of work with this instance. As long
+      as the builder is not accessed any more during this unit of work, it is
+      guaranteed that the data in the configuration is not changing in an
+      uncontrolled way due to a reload operation. This gives the access to
+      configuration data a kind of &quot;transactional&quot; behavior.
+    </p>
+    </subsection>
+
+    <subsection name="Builder Configuration Related to Reloading">
+    <p>
+      When setting up a configuration builder with reloading support for
+      file-based configurations some settings can be defined that influence
+      reloading operations. These settings are part of the initialization
+      parameters for file-based configurations and defined by the
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/FileBasedBuilderProperties.html">
+      FileBasedBuilderProperties</a></code> interface:
+      <ul>
+        <li>The <code><a href="../apidocs/org/apache/commons/configuration2/builder/ReloadingDetectorFactory.html">
+        ReloadingDetectorFactory</a></code> to be used when the reloading
+        controller is created. An application with special requirements related
+        to the detection of changes can here provide a custom factory. As was
+        mentioned above, the default factory creates a suitable detector for
+        detecting changes on a file.</li>
+        <li>The so-called <em>reloading refresh delay</em>. This is a numeric
+        value in milliseconds limiting the access to the underlying file. The
+        reloading detector will check for updates on the file only if the last
+        check was not within the time span defined by the refresh delay. This
+        value can be used to improve performance if there are many accesses to
+        a configuration builder in short intervals.</li>
+      </ul>
+    </p>
+    </subsection>
+
+    <subsection name="Generic Reloading Support">
+    <p>
+      In fact, <code><a href="../apidocs/org/apache/commons/configuration2/builder/ReloadingFileBasedConfigurationBuilder.html">
+      ReloadingFileBasedConfigurationBuilder</a></code> is a pretty thin
+      implementation around a generic reloading mechanism already supported by
+      the <code><a href="../apidocs/org/apache/commons/configuration2/builder/BasicConfigurationBuilder.html">
+      BasicConfigurationBuilder</a></code> base class. What it does is mainly
+      specific to file-based configurations: It ensures that a suitable
+      <code>ReloadingDetector</code> is used which is connected to the file
+      managed by the builder, and that this detector is used by a
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/ReloadingController.html">
+      ReloadingController</a></code> object also created by the builder.
+    </p>
+    <p>
+      It is pretty easy to make use of the same generic reloading support to
+      enable reloading functionality for other types of configuration builders
+      as well. The key to this lies in the method
+      <code>connectToReloadingController()</code> provided by
+      <code>BasicConfigurationBuilder</code>. This method expects a
+      <code>ReloadingController</code> object as argument. It performs some
+      event listener registrations to ensure that reloading events fired by
+      the controller cause the builder's result object to be invalidated, and
+      that the creation of a new result object causes the controller's
+      reloading state to be reset. In a nutshell, this is a full implementation
+      of the reloading protocol.
+    </p>
+    <p>
+      So the recipe to activate reloading for a builder instance is as follows:
+      <ul>
+      <li>Create and initialize the builder instance as usual.</li>
+      <li>Create a <code>ReloadingDetector</code> which is able to monitor
+      the configuration source in question and to find out whether a reload
+      action has to be performed. For this probably a custom implementation is
+      required (as <em>Commons Configuration</em> currently supports only
+      reloading detector implementations dealing with file handlers).</li>
+      <li>Create a <code>ReloadingController</code> object and initialize it
+      with the <code>ReloadingDetector</code> created in the previous step.</li>
+      <li>Pass this reloading controllers to the builder's
+      <code>connectToReloadingController()</code> method.</li>
+      <li>Now reloading facilities are set up for this builder. In order to
+      actually trigger reload checks ensure that the reloading controller's
+      <code>checkForReloading()</code> method is called at appropriate points
+      of time (e.g. initiate a corresponding trigger as described earlier in
+      this chapter.</li>
+      </ul>
+    </p>
+    </subsection>
+
+    <subsection name="Reloading Checks on Builder Access">
+    <p>
+      For some applications it may not be necessary to react on external
+      changes on their configuration immediately. It just has to be ensured
+      that when an access to configuration data is performed, the most recent
+      settings are read. This is in principle similar to the mechanism
+      implemented in <em>Commons Configuration 1.x</em>; here checks for reloads
+      were triggered by each access to a configuration property - and only by
+      that.
+    </p>
+    <p>
+      It is possible to set up a configuration builder in a way that each time
+      the <code>getConfiguration()</code> method is called a reloading check
+      is performed. If the reloading controller detects that the monitored
+      source has changed, the managed configuration is replaced by an updated
+      one. So the builder returns the fresh configuration instance. If used
+      this way, no special reloading trigger has to be installed; reloading
+      can only happen when the builder is queried for its managed configuration.
+      But then it is guaranteed that an up-to-date configuration instance is
+      returned. Note the main difference to the old model as used in
+      <em>Commons Configuration 1.x</em>: Only invocations of a builder's
+      <code>getConfiguration()</code> method trigger a reloading check, not
+      access to the managed configuration's properties.
+    </p>
+    <p>
+      In order to configure a configuration builder to trigger reloading checks
+      each time its managed configuration is accessed, a special event generated
+      by the builder can be used: the <em>configuration request</em> event.
+      This event is passed to registered event listeners before the managed
+      configuration is accessed. (More information about event listeners can
+      be found in the chapter about <a href="howto_events.html">events</a>.)
+      A listener for this event just has to trigger a reloading controller.
+      This will cause the managed configuration to be invalidated and replaced
+      before it is returned to the caller. The following example shows how this
+      can be achieved. It makes use of a <code>ReloadingFileBasedConfigurationBuilder</code>
+      because this class provides easy access to its associated reloading
+      controller. However, the same principle also works for other builders
+      connected to a reloading controller (as described in the previous section):
+    </p>
+    <source><![CDATA[
+// Create and initialize the builder
+final ReloadingFileBasedConfigurationBuilder<FileBasedConfiguration> builder =
+    new ReloadingFileBasedConfigurationBuilder<FileBasedConfiguration>(PropertiesConfiguration.class)
+    .configure(...);
+
+// Register an event listener for triggering reloading checks
+builder.addEventListener(ConfigurationBuilderEvent.CONFIGURATION_REQUEST,
+    new EventListener()
+    {
+        @Override
+        public void onEvent(Event event)
+        {
+            builder.getReloadingController().checkForReloading(null);
+        }
+    });
+]]></source>
+    </subsection>
+
+    <subsection name="Managed Reloading">
+    <p>
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/ManagedReloadingDetector.html">
+      ManagedReloadingDetector</a></code> is an alternative to automatic
+      reloading. It allows to hot-reload properties on a running application,
+      but only when requested by an administrator. The detector class defines a
+      <code>refresh()</code> method which forces a reload of the configuration
+      source the next time a reloading check on the associated
+      <code>ReloadingController</code> is triggered.
+    </p>
+    <p>
+      A typical use of this feature is to setup <code>ManagedReloadingDetector</code>
+      as a JMX MBean. The following code sample uses Spring framework's
+      <code>MBeanExporter</code> to expose the managed reloading detector to the
+      JMX console:
+<source>
+<![CDATA[
+<!-- The managed reloading detector for the configuration builder -->
+<bean id="reloadingDetector" class="...ManagedReloadingDetector"/>
+
+<!-- The MBeanExporter that exposes reloadingDetector to the JMX console -->
+<bean id="mbeanMetadataExporter" class="org.springframework.jmx.export.MBeanExporter">
+    <property name="server" ref="mbeanServer"/>
+    <property name="beans">
+        <map>
+            <entry key="myApp:bean=configuration" value-ref="reloadingStrategy"/>
+        </map>
+    </property>
+</bean>
+]]>
+</source>
+      With this configuration, the JMX console will expose the
+      "myApp:bean=configuration" MBean and it's refresh operation.
+    </p>
+    </subsection>
+    </section>
+</body>
+</document>

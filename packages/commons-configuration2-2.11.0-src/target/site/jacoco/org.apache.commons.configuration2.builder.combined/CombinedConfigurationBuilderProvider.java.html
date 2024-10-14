@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CombinedConfigurationBuilderProvider.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder.combined</a> &gt; <span class="el_source">CombinedConfigurationBuilderProvider.java</span></div><h1>CombinedConfigurationBuilderProvider.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder.combined;
+
+import java.util.Arrays;
+import java.util.Collection;
+
+import org.apache.commons.configuration2.CombinedConfiguration;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.configuration2.builder.BasicBuilderParameters;
+import org.apache.commons.configuration2.builder.BasicConfigurationBuilder;
+import org.apache.commons.configuration2.builder.BuilderParameters;
+
+/**
+ * &lt;p&gt;
+ * A specialized {@code ConfigurationBuilderProvider} implementation which deals with combined configuration builders.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is used to support {@code &lt;configuration&gt;} elements in configuration definition files. The provider
+ * creates another {@link CombinedConfigurationBuilder} which inherits some of the properties from its parent builder.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class CombinedConfigurationBuilderProvider extends BaseConfigurationBuilderProvider {
+    /** Constant for the name of the supported builder class. */
+    private static final String BUILDER_CLASS = &quot;org.apache.commons.configuration2.builder.combined.CombinedConfigurationBuilder&quot;;
+
+    /** Constant for the name of the supported reloading builder class. */
+    private static final String RELOADING_BUILDER_CLASS = &quot;org.apache.commons.configuration2.builder.combined.ReloadingCombinedConfigurationBuilder&quot;;
+
+    /** Constant for the name of the supported configuration class. */
+    private static final String CONFIGURATION_CLASS = &quot;org.apache.commons.configuration2.CombinedConfiguration&quot;;
+
+    /** Constant for the combined configuration builder parameters class. */
+    private static final String COMBINED_PARAMS = &quot;org.apache.commons.configuration2.builder.combined.CombinedBuilderParametersImpl&quot;;
+
+    /** Constant for the name of the file-based builder parameters class. */
+    private static final String FILE_PARAMS = &quot;org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl&quot;;
+
+    /**
+     * Populates the specified parameters object with properties from the given configuration. This method is used to set
+     * default values for basic properties based on the result configuration of the parent builder.
+     *
+     * @param config the configuration whose properties are to be copied
+     * @param params the target parameters object
+     */
+    private static void setUpBasicParameters(final CombinedConfiguration config, final BasicBuilderParameters params) {
+<span class="fc" id="L63">        params.setListDelimiterHandler(config.getListDelimiterHandler()).setLogger(config.getLogger())</span>
+<span class="fc" id="L64">            .setThrowExceptionOnMissing(config.isThrowExceptionOnMissing()).setConfigurationDecoder(config.getConfigurationDecoder());</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Creates a new instance of {@code CombinedConfigurationBuilderProvider}.
+     */
+    public CombinedConfigurationBuilderProvider() {
+<span class="fc" id="L71">        super(BUILDER_CLASS, RELOADING_BUILDER_CLASS, CONFIGURATION_CLASS, Arrays.asList(COMBINED_PARAMS, FILE_PARAMS));</span>
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation creates the result builder object directly, not using reflection. (The
+     * reflection-based approach of the base class does not work here because a combined configuration builder has
+     * constructors with a different signature.) It also performs some additional initializations.
+     */
+    @Override
+    protected BasicConfigurationBuilder&lt;? extends Configuration&gt; createBuilder(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params)
+        throws Exception {
+        final CombinedConfigurationBuilder builder;
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (decl.isReload()) {</span>
+<span class="fc" id="L84">            builder = new ReloadingCombinedConfigurationBuilder();</span>
+        } else {
+<span class="fc" id="L86">            builder = new CombinedConfigurationBuilder();</span>
+        }
+<span class="fc" id="L88">        decl.getConfigurationBuilder().initChildEventListeners(builder);</span>
+<span class="fc" id="L89">        return builder;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation pre-fills basic parameters from the basic properties of the parent builder's result
+     * configuration.
+     */
+    @Override
+    protected void initializeParameterObjects(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params) throws Exception {
+        // we know that the first object is the combined builder parameters
+        // object
+<span class="fc" id="L100">        final BasicBuilderParameters basicParams = (BasicBuilderParameters) params.iterator().next();</span>
+<span class="fc" id="L101">        setUpBasicParameters(decl.getConfigurationBuilder().getConfigurationUnderConstruction(), basicParams);</span>
+        // now properties set explicitly can be overridden
+<span class="fc" id="L103">        super.initializeParameterObjects(decl, params);</span>
+<span class="fc" id="L104">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

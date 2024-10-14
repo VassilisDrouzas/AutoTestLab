@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MurmurHash2.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.digest</a> &gt; <span class="el_source">MurmurHash2.java</span></div><h1>MurmurHash2.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.digest;
+
+import org.apache.commons.codec.binary.StringUtils;
+
+/**
+ * Implements the MurmurHash2 32-bit and 64-bit hash functions.
+ *
+ * &lt;p&gt;MurmurHash is a non-cryptographic hash function suitable for general
+ * hash-based lookup. The name comes from two basic operations, multiply (MU)
+ * and rotate (R), used in its inner loop. Unlike cryptographic hash functions,
+ * it is not specifically designed to be difficult to reverse by an adversary,
+ * making it unsuitable for cryptographic purposes.&lt;/p&gt;
+ *
+ * &lt;p&gt;This contains a Java port of the 32-bit hash function {@code MurmurHash2}
+ * and the 64-bit hash function {@code MurmurHash64A} from Austin Appleby's
+ * original {@code c++} code in SMHasher.&lt;/p&gt;
+ *
+ * &lt;p&gt;This is a re-implementation of the original C code plus some additional
+ * features.&lt;/p&gt;
+ *
+ * &lt;p&gt;This is public domain code with no copyrights. From home page of
+ * &lt;a href=&quot;https://github.com/aappleby/smhasher&quot;&gt;SMHasher&lt;/a&gt;:&lt;/p&gt;
+ *
+ * &lt;blockquote&gt;
+ * &quot;All MurmurHash versions are public domain software, and the author
+ * disclaims all copyright to their code.&quot;
+ * &lt;/blockquote&gt;
+ *
+ * @see &lt;a href=&quot;https://en.wikipedia.org/wiki/MurmurHash&quot;&gt;MurmurHash&lt;/a&gt;
+ * @see &lt;a href=&quot;https://github.com/aappleby/smhasher/blob/master/src/MurmurHash2.cpp&quot;&gt;
+ *   Original MurmurHash2 c++ code&lt;/a&gt;
+ * @since 1.13
+ */
+public final class MurmurHash2 {
+
+    // Constants for 32-bit variant
+    private static final int M32 = 0x5bd1e995;
+    private static final int R32 = 24;
+
+    // Constants for 64-bit variant
+    private static final long M64 = 0xc6a4a7935bd1e995L;
+    private static final int R64 = 47;
+
+    /**
+     * Gets the little-endian int from 4 bytes starting at the specified index.
+     *
+     * @param data The data
+     * @param index The index
+     * @return The little-endian int
+     */
+    private static int getLittleEndianInt(final byte[] data, final int index) {
+<span class="fc" id="L69">        return data[index    ] &amp; 0xff |</span>
+               (data[index + 1] &amp; 0xff) &lt;&lt;  8 |
+               (data[index + 2] &amp; 0xff) &lt;&lt; 16 |
+               (data[index + 3] &amp; 0xff) &lt;&lt; 24;
+    }
+
+    /**
+     * Gets the little-endian long from 8 bytes starting at the specified index.
+     *
+     * @param data The data
+     * @param index The index
+     * @return The little-endian long
+     */
+    private static long getLittleEndianLong(final byte[] data, final int index) {
+<span class="fc" id="L83">        return (long) data[index    ] &amp; 0xff |</span>
+               ((long) data[index + 1] &amp; 0xff) &lt;&lt;  8 |
+               ((long) data[index + 2] &amp; 0xff) &lt;&lt; 16 |
+               ((long) data[index + 3] &amp; 0xff) &lt;&lt; 24 |
+               ((long) data[index + 4] &amp; 0xff) &lt;&lt; 32 |
+               ((long) data[index + 5] &amp; 0xff) &lt;&lt; 40 |
+               ((long) data[index + 6] &amp; 0xff) &lt;&lt; 48 |
+               ((long) data[index + 7] &amp; 0xff) &lt;&lt; 56;
+    }
+
+    /**
+     * Generates a 32-bit hash from byte array with the given length and a default seed value.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int seed = 0x9747b28c;
+     * int hash = MurmurHash2.hash32(data, length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The input byte array
+     * @param length The length of the array
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int)
+     */
+    public static int hash32(final byte[] data, final int length) {
+<span class="fc" id="L108">        return hash32(data, length, 0x9747b28c);</span>
+    }
+
+    /**
+     * Generates a 32-bit hash from byte array with the given length and seed.
+     *
+     * @param data The input byte array
+     * @param length The length of the array
+     * @param seed The initial seed value
+     * @return The 32-bit hash
+     */
+    public static int hash32(final byte[] data, final int length, final int seed) {
+        // Initialize the hash to a random value
+<span class="fc" id="L121">        int h = seed ^ length;</span>
+
+        // Mix 4 bytes at a time into the hash
+<span class="fc" id="L124">        final int nblocks = length &gt;&gt; 2;</span>
+
+        // body
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L128">            final int index = i &lt;&lt; 2;</span>
+<span class="fc" id="L129">            int k = getLittleEndianInt(data, index);</span>
+<span class="fc" id="L130">            k *= M32;</span>
+<span class="fc" id="L131">            k ^= k &gt;&gt;&gt; R32;</span>
+<span class="fc" id="L132">            k *= M32;</span>
+<span class="fc" id="L133">            h *= M32;</span>
+<span class="fc" id="L134">            h ^= k;</span>
+        }
+
+        // Handle the last few bytes of the input array
+<span class="fc" id="L138">        final int index = nblocks &lt;&lt; 2;</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">        switch (length - index) {</span>
+        case 3:
+<span class="fc" id="L141">            h ^= (data[index + 2] &amp; 0xff) &lt;&lt; 16;</span>
+        case 2:
+<span class="fc" id="L143">            h ^= (data[index + 1] &amp; 0xff) &lt;&lt; 8;</span>
+        case 1:
+<span class="fc" id="L145">            h ^= data[index] &amp; 0xff;</span>
+<span class="fc" id="L146">            h *= M32;</span>
+        }
+
+        // Do a few final mixes of the hash to ensure the last few
+        // bytes are well-incorporated.
+<span class="fc" id="L151">        h ^= h &gt;&gt;&gt; 13;</span>
+<span class="fc" id="L152">        h *= M32;</span>
+<span class="fc" id="L153">        h ^= h &gt;&gt;&gt; 15;</span>
+
+<span class="fc" id="L155">        return h;</span>
+    }
+
+    /**
+     * Generates a 32-bit hash from a string with a default seed.
+     * &lt;p&gt;
+     * Before 1.14 the string was converted using default encoding.
+     * Since 1.14 the string is converted to bytes using UTF-8 encoding.
+     * &lt;/p&gt;
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int seed = 0x9747b28c;
+     * byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+     * int hash = MurmurHash2.hash32(bytes, bytes.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param text The input string
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int)
+     */
+    public static int hash32(final String text) {
+<span class="fc" id="L177">        final byte[] bytes = StringUtils.getBytesUtf8(text);</span>
+<span class="fc" id="L178">        return hash32(bytes, bytes.length);</span>
+    }
+
+    /**
+     * Generates a 32-bit hash from a substring with a default seed value.
+     * The string is converted to bytes using the default encoding.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int seed = 0x9747b28c;
+     * byte[] bytes = text.substring(from, from + length).getBytes(StandardCharsets.UTF_8);
+     * int hash = MurmurHash2.hash32(bytes, bytes.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param text The input string
+     * @param from The starting index
+     * @param length The length of the substring
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int)
+     */
+    public static int hash32(final String text, final int from, final int length) {
+<span class="fc" id="L199">        return hash32(text.substring(from, from + length));</span>
+    }
+
+    /**
+     * Generates a 64-bit hash from byte array with given length and a default seed value.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int seed = 0xe17a1465;
+     * int hash = MurmurHash2.hash64(data, length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The input byte array
+     * @param length The length of the array
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int)
+     */
+    public static long hash64(final byte[] data, final int length) {
+<span class="fc" id="L217">        return hash64(data, length, 0xe17a1465);</span>
+    }
+
+    /**
+     * Generates a 64-bit hash from byte array of the given length and seed.
+     *
+     * @param data The input byte array
+     * @param length The length of the array
+     * @param seed The initial seed value
+     * @return The 64-bit hash of the given array
+     */
+    public static long hash64(final byte[] data, final int length, final int seed) {
+<span class="fc" id="L229">        long h = seed &amp; 0xffffffffL ^ length * M64;</span>
+
+<span class="fc" id="L231">        final int nblocks = length &gt;&gt; 3;</span>
+
+        // body
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L235">            final int index = i &lt;&lt; 3;</span>
+<span class="fc" id="L236">            long k = getLittleEndianLong(data, index);</span>
+
+<span class="fc" id="L238">            k *= M64;</span>
+<span class="fc" id="L239">            k ^= k &gt;&gt;&gt; R64;</span>
+<span class="fc" id="L240">            k *= M64;</span>
+
+<span class="fc" id="L242">            h ^= k;</span>
+<span class="fc" id="L243">            h *= M64;</span>
+        }
+
+<span class="fc" id="L246">        final int index = nblocks &lt;&lt; 3;</span>
+<span class="fc bfc" id="L247" title="All 8 branches covered.">        switch (length - index) {</span>
+        case 7:
+<span class="fc" id="L249">            h ^= ((long) data[index + 6] &amp; 0xff) &lt;&lt; 48;</span>
+        case 6:
+<span class="fc" id="L251">            h ^= ((long) data[index + 5] &amp; 0xff) &lt;&lt; 40;</span>
+        case 5:
+<span class="fc" id="L253">            h ^= ((long) data[index + 4] &amp; 0xff) &lt;&lt; 32;</span>
+        case 4:
+<span class="fc" id="L255">            h ^= ((long) data[index + 3] &amp; 0xff) &lt;&lt; 24;</span>
+        case 3:
+<span class="fc" id="L257">            h ^= ((long) data[index + 2] &amp; 0xff) &lt;&lt; 16;</span>
+        case 2:
+<span class="fc" id="L259">            h ^= ((long) data[index + 1] &amp; 0xff) &lt;&lt; 8;</span>
+        case 1:
+<span class="fc" id="L261">            h ^= (long) data[index] &amp; 0xff;</span>
+<span class="fc" id="L262">            h *= M64;</span>
+        }
+
+<span class="fc" id="L265">        h ^= h &gt;&gt;&gt; R64;</span>
+<span class="fc" id="L266">        h *= M64;</span>
+<span class="fc" id="L267">        h ^= h &gt;&gt;&gt; R64;</span>
+
+<span class="fc" id="L269">        return h;</span>
+    }
+
+    /**
+     * Generates a 64-bit hash from a string with a default seed.
+     * &lt;p&gt;
+     * Before 1.14 the string was converted using default encoding.
+     * Since 1.14 the string is converted to bytes using UTF-8 encoding.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This is a helper method that will produce the same result as:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int seed = 0xe17a1465;
+     * byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+     * int hash = MurmurHash2.hash64(bytes, bytes.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param text The input string
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int)
+     */
+    public static long hash64(final String text) {
+<span class="fc" id="L293">        final byte[] bytes = StringUtils.getBytesUtf8(text);</span>
+<span class="fc" id="L294">        return hash64(bytes, bytes.length);</span>
+    }
+
+    /**
+     * Generates a 64-bit hash from a substring with a default seed value.
+     * The string is converted to bytes using the default encoding.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int seed = 0xe17a1465;
+     * byte[] bytes = text.substring(from, from + length).getBytes(StandardCharsets.UTF_8);
+     * int hash = MurmurHash2.hash64(bytes, bytes.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param text The input string
+     * @param from The starting index
+     * @param length The length of the substring
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int)
+     */
+    public static long hash64(final String text, final int from, final int length) {
+<span class="fc" id="L315">        return hash64(text.substring(from, from + length));</span>
+    }
+
+    /** No instance methods. */
+    private MurmurHash2() {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

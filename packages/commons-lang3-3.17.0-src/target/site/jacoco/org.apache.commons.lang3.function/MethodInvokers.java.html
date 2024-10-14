@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MethodInvokers.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.function</a> &gt; <span class="el_source">MethodInvokers.java</span></div><h1>MethodInvokers.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.function;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandleProxies;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Method;
+import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import org.apache.commons.lang3.exception.UncheckedIllegalAccessException;
+
+/**
+ * Converts {@link Method} objects to lambdas.
+ * &lt;p&gt;
+ * More specifically, produces instances of single-method interfaces which redirect calls to methods; see
+ * {@link #asInterfaceInstance(Class, Method)}.
+ * &lt;/p&gt;
+ * &lt;h2&gt;Calling supplier methods with no arguments&lt;/h2&gt;
+ * &lt;p&gt;
+ * If the interface's single-method defines no arguments, use {@link #asFunction(Method)} and then apply the function
+ * passing in the object to receive the method call.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For example to invoke {@link String#length()}:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * final Method method = String.class.getMethod(&quot;length&quot;);
+ * final Function&lt;String, Integer&gt; function = MethodInvokers.asFunction(method);
+ * assertEquals(3, function.apply(&quot;ABC&quot;));
+ * }&lt;/pre&gt;
+ *
+ * &lt;h2&gt;Calling function methods with one argument&lt;/h2&gt;
+ * &lt;p&gt;
+ * If the interface's single-method defines one argument, use {@link #asBiFunction(Method)} and then apply the function
+ * passing in the object to receive the method call. The second argument to the function is the only argument to the
+ * method.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For example to invoke {@link String#charAt(int)}:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * final Method method = String.class.getMethod(&quot;charAt&quot;, int.class);
+ * final BiFunction&lt;String, Integer, Character&gt; function = MethodInvokers.asBiFunction(method);
+ * assertEquals('C', function.apply(&quot;ABC&quot;, 2));
+ * }&lt;/pre&gt;
+ *
+ * @since 3.13.0
+ */
+public final class MethodInvokers {
+
+    /**
+     * Produces a {@link BiConsumer} for a given &lt;em&gt;consumer&lt;/em&gt; Method. For example, a classic setter method (as opposed
+     * to a fluent setter). You call the BiConsumer with two arguments: (1) the object receiving the method call, and (2)
+     * the method argument.
+     *
+     * @param &lt;T&gt; the type of the first argument to the operation: The type containing the Method.
+     * @param &lt;U&gt; the type of the second argument to the operation: The type of the method argument.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T, U&gt; BiConsumer&lt;T, U&gt; asBiConsumer(final Method method) {
+<span class="fc" id="L85">        return asInterfaceInstance(BiConsumer.class, method);</span>
+    }
+
+    /**
+     * Produces a {@link BiFunction} for a given a &lt;em&gt;function&lt;/em&gt; Method. You call the BiFunction with two arguments: (1)
+     * the object receiving the method call, and (2) the method argument. The BiFunction return type must match the method's
+     * return type.
+     * &lt;p&gt;
+     * For example to invoke {@link String#charAt(int)}:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;{@code
+     * final Method method = String.class.getMethod(&quot;charAt&quot;, int.class);
+     * final BiFunction&lt;String, Integer, Character&gt; function = MethodInvokers.asBiFunction(method);
+     * assertEquals('C', function.apply(&quot;ABC&quot;, 2));
+     * }&lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the type of the first argument to the function: The type containing the method.
+     * @param &lt;U&gt; the type of the second argument to the function: the method argument type.
+     * @param &lt;R&gt; the type of the result of the function: The method return type.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T, U, R&gt; BiFunction&lt;T, U, R&gt; asBiFunction(final Method method) {
+<span class="fc" id="L110">        return asInterfaceInstance(BiFunction.class, method);</span>
+    }
+
+    /**
+     * Produces a {@link FailableBiConsumer} for a given &lt;em&gt;consumer&lt;/em&gt; Method. For example, a classic setter method (as
+     * opposed to a fluent setter). You call the FailableBiConsumer with two arguments: (1) the object receiving the method
+     * call, and (2) the method argument.
+     *
+     * @param &lt;T&gt; the type of the first argument to the operation: The type containing the Method.
+     * @param &lt;U&gt; the type of the second argument to the operation: The type of the method argument.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T, U&gt; FailableBiConsumer&lt;T, U, Throwable&gt; asFailableBiConsumer(final Method method) {
+<span class="fc" id="L125">        return asInterfaceInstance(FailableBiConsumer.class, method);</span>
+    }
+
+    /**
+     * Produces a {@link FailableBiFunction} for a given a &lt;em&gt;function&lt;/em&gt; Method. You call the FailableBiFunction with
+     * two arguments: (1) the object receiving the method call, and (2) the method argument. The BiFunction return type must
+     * match the method's return type.
+     *
+     * @param &lt;T&gt; the type of the first argument to the function: The type containing the method.
+     * @param &lt;U&gt; the type of the second argument to the function: the method argument type.
+     * @param &lt;R&gt; the type of the result of the function: The method return type.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T, U, R&gt; FailableBiFunction&lt;T, U, R, Throwable&gt; asFailableBiFunction(final Method method) {
+<span class="fc" id="L141">        return asInterfaceInstance(FailableBiFunction.class, method);</span>
+    }
+
+    /**
+     * Produces a {@link FailableFunction} for a given a &lt;em&gt;supplier&lt;/em&gt; Method. You call the Function with one argument:
+     * the object receiving the method call. The FailableFunction return type must match the method's return type.
+     *
+     * @param &lt;T&gt; the type of the first argument to the function: The type containing the method.
+     * @param &lt;R&gt; the type of the result of the function: The method return type.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T, R&gt; FailableFunction&lt;T, R, Throwable&gt; asFailableFunction(final Method method) {
+<span class="fc" id="L155">        return asInterfaceInstance(FailableFunction.class, method);</span>
+    }
+
+    /**
+     * Produces a {@link FailableSupplier} for a given a &lt;em&gt;supplier&lt;/em&gt; Method. The FailableSupplier return type must
+     * match the method's return type.
+     * &lt;p&gt;
+     * Only works with static methods.
+     * &lt;/p&gt;
+     *
+     * @param &lt;R&gt; The Method return type.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;R&gt; FailableSupplier&lt;R, Throwable&gt; asFailableSupplier(final Method method) {
+<span class="fc" id="L171">        return asInterfaceInstance(FailableSupplier.class, method);</span>
+    }
+
+    /**
+     * Produces a {@link Function} for a given a &lt;em&gt;supplier&lt;/em&gt; Method. You call the Function with one argument: the
+     * object receiving the method call. The Function return type must match the method's return type.
+     * &lt;p&gt;
+     * For example to invoke {@link String#length()}:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;{@code
+     * final Method method = String.class.getMethod(&quot;length&quot;);
+     * final Function&lt;String, Integer&gt; function = MethodInvokers.asFunction(method);
+     * assertEquals(3, function.apply(&quot;ABC&quot;));
+     * }&lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the type of the first argument to the function: The type containing the method.
+     * @param &lt;R&gt; the type of the result of the function: The method return type.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T, R&gt; Function&lt;T, R&gt; asFunction(final Method method) {
+<span class="fc" id="L194">        return asInterfaceInstance(Function.class, method);</span>
+    }
+
+    /**
+     * Produces an instance of the given single-method interface which redirects its calls to the given method.
+     * &lt;p&gt;
+     * For the definition of &quot;single-method&quot;, see {@link MethodHandleProxies#asInterfaceInstance(Class, MethodHandle)}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;T&gt; The interface type.
+     * @param interfaceClass a class object representing {@code T}.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     * @see MethodHandleProxies#asInterfaceInstance(Class, MethodHandle)
+     */
+    public static &lt;T&gt; T asInterfaceInstance(final Class&lt;T&gt; interfaceClass, final Method method) {
+<span class="fc" id="L210">        return MethodHandleProxies.asInterfaceInstance(Objects.requireNonNull(interfaceClass, &quot;interfaceClass&quot;), unreflectUnchecked(method));</span>
+    }
+
+    /**
+     * Produces a {@link Supplier} for a given a &lt;em&gt;supplier&lt;/em&gt; Method. The Supplier return type must match the method's
+     * return type.
+     * &lt;p&gt;
+     * Only works with static methods.
+     * &lt;/p&gt;
+     *
+     * @param &lt;R&gt; The Method return type.
+     * @param method the method to invoke.
+     * @return a correctly-typed wrapper for the given target.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;R&gt; Supplier&lt;R&gt; asSupplier(final Method method) {
+<span class="fc" id="L226">        return asInterfaceInstance(Supplier.class, method);</span>
+    }
+
+    /**
+     * Throws NullPointerException if {@code method} is {@code null}.
+     *
+     * @param method The method to test.
+     * @return The given method.
+     * @throws NullPointerException if {@code method} is {@code null}.
+     */
+    private static Method requireMethod(final Method method) {
+<span class="fc" id="L237">        return Objects.requireNonNull(method, &quot;method&quot;);</span>
+    }
+
+    private static MethodHandle unreflect(final Method method) throws IllegalAccessException {
+<span class="fc" id="L241">        return MethodHandles.lookup().unreflect(requireMethod(method));</span>
+    }
+
+    private static MethodHandle unreflectUnchecked(final Method method) {
+        try {
+<span class="fc" id="L246">            return unreflect(method);</span>
+<span class="nc" id="L247">        } catch (final IllegalAccessException e) {</span>
+<span class="nc" id="L248">            throw new UncheckedIllegalAccessException(e);</span>
+        }
+    }
+
+    /**
+     * No need to create instances.
+     */
+    private MethodInvokers() {
+        // noop
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArrayCountingBloomFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">ArrayCountingBloomFilter.java</span></div><h1>ArrayCountingBloomFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.function.IntPredicate;
+import java.util.function.LongPredicate;
+import java.util.stream.IntStream;
+
+/**
+ * A counting Bloom filter using an int array to track cells for each enabled bit.
+ *
+ * &lt;p&gt;Any operation that results in negative counts or integer overflow of
+ * counts will mark this filter as invalid. This transition is not reversible.
+ * The operation is completed in full, no exception is raised and the state is
+ * set to invalid. This allows the cells for the filter immediately prior to the
+ * operation that created the invalid state to be recovered. See the documentation
+ * in {@link #isValid()} for details.&lt;/p&gt;
+ *
+ * &lt;p&gt;All the operations in the filter assume the cells are currently valid,
+ * for example {@code cardinality} or {@code contains} operations. Behavior of an invalid
+ * filter is undefined. It will no longer function identically to a standard
+ * Bloom filter that is the merge of all the Bloom filters that have been added
+ * to and not later subtracted from the counting Bloom filter.&lt;/p&gt;
+ *
+ * &lt;p&gt;The maximum supported number of items that can be stored in the filter is
+ * limited by the maximum array size combined with the {@link Shape}. For
+ * example an implementation using a {@link Shape} with a false-positive
+ * probability of 1e-6 and {@link Integer#MAX_VALUE} bits can reversibly store
+ * approximately 75 million items using 20 hash functions per item with a memory
+ * consumption of approximately 8 GB.
+ *
+ * @see Shape
+ * @see CellExtractor
+ * @since 4.5
+ */
+public final class ArrayCountingBloomFilter implements CountingBloomFilter {
+
+    /**
+     * The shape of this Bloom filter.
+     */
+    private final Shape shape;
+
+    /**
+     * The cell for each bit index in the filter.
+     */
+    private final int[] cells;
+
+    /**
+     * The state flag. This is a bitwise {@code OR} of the entire history of all updated
+     * cells. If negative then a negative cell or integer overflow has occurred on
+     * one or more cells in the history of the filter and the state is invalid.
+     *
+     * &lt;p&gt;Maintenance of this state flag is branch-free for improved performance. It
+     * eliminates a conditional check for a negative cell during remove/subtract
+     * operations and a conditional check for integer overflow during merge/add
+     * operations.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: Integer overflow is unlikely in realistic usage scenarios. A cell
+     * that overflows indicates that the number of items in the filter exceeds the
+     * maximum possible size (number of bits) of any Bloom filter constrained by
+     * integer indices. At this point the filter is most likely full (all bits are
+     * non-zero) and thus useless.&lt;/p&gt;
+     *
+     * &lt;p&gt;Negative cells are a concern if the filter is used incorrectly by
+     * removing an item that was never added. It is expected that a user of a
+     * counting Bloom filter will not perform this action as it is a mistake.
+     * Enabling an explicit recovery path for negative or overflow cells is a major
+     * performance burden not deemed necessary for the unlikely scenarios when an
+     * invalid state is created. Maintenance of the state flag is a concession to
+     * flag improper use that should not have a major performance impact.&lt;/p&gt;
+     */
+    private int state;
+
+<span class="fc" id="L90">    private ArrayCountingBloomFilter(final ArrayCountingBloomFilter source) {</span>
+<span class="fc" id="L91">        this.shape = source.shape;</span>
+<span class="fc" id="L92">        this.state = source.state;</span>
+<span class="fc" id="L93">        this.cells = source.cells.clone();</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Constructs an empty counting Bloom filter with the specified shape.
+     *
+     * @param shape the shape of the filter
+     */
+<span class="fc" id="L101">    public ArrayCountingBloomFilter(final Shape shape) {</span>
+<span class="fc" id="L102">        Objects.requireNonNull(shape, &quot;shape&quot;);</span>
+<span class="fc" id="L103">        this.shape = shape;</span>
+<span class="fc" id="L104">        cells = new int[shape.getNumberOfBits()];</span>
+<span class="fc" id="L105">    }</span>
+
+    @Override
+    public boolean add(final CellExtractor other) {
+<span class="fc" id="L109">        Objects.requireNonNull(other, &quot;other&quot;);</span>
+<span class="fc" id="L110">        other.processCells(this::add);</span>
+<span class="fc" id="L111">        return isValid();</span>
+    }
+
+    /**
+     * Add to the cell for the bit index.
+     *
+     * @param idx the index
+     * @param addend the amount to add
+     * @return {@code true} always.
+     */
+    private boolean add(final int idx, final int addend) {
+        try {
+<span class="fc" id="L123">            final int updated = cells[idx] + addend;</span>
+<span class="fc" id="L124">            state |= updated;</span>
+<span class="fc" id="L125">            cells[idx] = updated;</span>
+<span class="fc" id="L126">            return true;</span>
+<span class="fc" id="L127">        } catch (final IndexOutOfBoundsException e) {</span>
+<span class="fc" id="L128">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L129">                    String.format(&quot;Filter only accepts values in the [0,%d) range&quot;, getShape().getNumberOfBits()), e);</span>
+        }
+    }
+
+    @Override
+    public int[] asIndexArray() {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        return IntStream.range(0, cells.length).filter(i -&gt; cells[i] &gt; 0).toArray();</span>
+    }
+
+    @Override
+    public int cardinality() {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        return (int) IntStream.range(0, cells.length).filter(i -&gt; cells[i] &gt; 0).count();</span>
+    }
+
+    @Override
+    public int characteristics() {
+<span class="fc" id="L145">        return SPARSE;</span>
+    }
+
+    @Override
+    public void clear() {
+<span class="fc" id="L150">        Arrays.fill(cells, 0);</span>
+<span class="fc" id="L151">    }</span>
+
+    @Override
+    public boolean contains(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L155">        return contains(IndexExtractor.fromBitMapExtractor(bitMapExtractor));</span>
+    }
+
+    @Override
+    public boolean contains(final IndexExtractor indexExtractor) {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        return indexExtractor.processIndices(idx -&gt; this.cells[idx] != 0);</span>
+    }
+
+    @Override
+    public ArrayCountingBloomFilter copy() {
+<span class="fc" id="L165">        return new ArrayCountingBloomFilter(this);</span>
+    }
+
+    @Override
+    public boolean processBitMaps(final LongPredicate consumer) {
+<span class="fc" id="L170">        Objects.requireNonNull(consumer, &quot;consumer&quot;);</span>
+<span class="fc" id="L171">        final int blocksm1 = BitMaps.numberOfBitMaps(cells.length) - 1;</span>
+<span class="fc" id="L172">        int i = 0;</span>
+        long value;
+        // must break final block separate as the number of bits may not fall on the long boundary
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (int j = 0; j &lt; blocksm1; j++) {</span>
+<span class="fc" id="L176">            value = 0;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            for (int k = 0; k &lt; Long.SIZE; k++) {</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                if (cells[i++] != 0) {</span>
+<span class="fc" id="L179">                    value |= BitMaps.getLongBit(k);</span>
+                }
+            }
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if (!consumer.test(value)) {</span>
+<span class="fc" id="L183">                return false;</span>
+            }
+        }
+        // Final block
+<span class="fc" id="L187">        value = 0;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for (int k = 0; i &lt; cells.length; k++) {</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (cells[i++] != 0) {</span>
+<span class="fc" id="L190">                value |= BitMaps.getLongBit(k);</span>
+            }
+        }
+<span class="fc" id="L193">        return consumer.test(value);</span>
+    }
+
+    @Override
+    public boolean processCells(final CellPredicate consumer) {
+<span class="fc" id="L198">        Objects.requireNonNull(consumer, &quot;consumer&quot;);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (int i = 0; i &lt; cells.length; i++) {</span>
+<span class="fc bfc" id="L200" title="All 4 branches covered.">            if (cells[i] != 0 &amp;&amp; !consumer.test(i, cells[i])) {</span>
+<span class="fc" id="L201">                return false;</span>
+            }
+        }
+<span class="fc" id="L204">        return true;</span>
+    }
+
+    @Override
+    public boolean processIndices(final IntPredicate consumer) {
+<span class="fc" id="L209">        Objects.requireNonNull(consumer, &quot;consumer&quot;);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        for (int i = 0; i &lt; cells.length; i++) {</span>
+<span class="fc bfc" id="L211" title="All 4 branches covered.">            if (cells[i] != 0 &amp;&amp; !consumer.test(i)) {</span>
+<span class="fc" id="L212">                return false;</span>
+            }
+        }
+<span class="fc" id="L215">        return true;</span>
+    }
+
+    @Override
+    public int getMaxCell() {
+<span class="fc" id="L220">        return Integer.MAX_VALUE;</span>
+    }
+
+    @Override
+    public int getMaxInsert(final CellExtractor cellExtractor) {
+<span class="fc" id="L225">        final int[] max = {Integer.MAX_VALUE};</span>
+<span class="fc" id="L226">        cellExtractor.processCells( (x, y) -&gt; {</span>
+<span class="fc" id="L227">            final int count = cells[x] / y;</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">            if (count &lt; max[0]) {</span>
+<span class="fc" id="L229">                max[0] = count;</span>
+            }
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            return max[0] &gt; 0;</span>
+        });
+<span class="fc" id="L233">        return max[0];</span>
+    }
+
+    @Override
+    public Shape getShape() {
+<span class="fc" id="L238">        return shape;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * &lt;p&gt;&lt;em&gt;Implementation note&lt;/em&gt;
+     *
+     * &lt;p&gt;The state transition to invalid is permanent.&lt;/p&gt;
+     *
+     * &lt;p&gt;This implementation does not correct negative cells to zero or integer
+     * overflow cells to {@link Integer#MAX_VALUE}. Thus the operation that
+     * generated invalid cells can be reversed by using the complement of the
+     * original operation with the same Bloom filter. This will restore the cells
+     * to the state prior to the invalid operation. Cells can then be extracted
+     * using {@link #processCells(CellPredicate)}.&lt;/p&gt;
+     */
+    @Override
+    public boolean isValid() {
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        return state &gt;= 0;</span>
+    }
+
+    @Override
+    public boolean subtract(final CellExtractor other) {
+<span class="fc" id="L262">        Objects.requireNonNull(other, &quot;other&quot;);</span>
+<span class="fc" id="L263">        other.processCells(this::subtract);</span>
+<span class="fc" id="L264">        return isValid();</span>
+    }
+
+    /**
+     * Subtract from the cell for the bit index.
+     *
+     * @param idx the index
+     * @param subtrahend the amount to subtract
+     * @return {@code true} always.
+     */
+    private boolean subtract(final int idx, final int subtrahend) {
+        try {
+<span class="fc" id="L276">            final int updated = cells[idx] - subtrahend;</span>
+<span class="fc" id="L277">            state |= updated;</span>
+<span class="fc" id="L278">            cells[idx] = updated;</span>
+<span class="fc" id="L279">            return true;</span>
+<span class="fc" id="L280">        } catch (final IndexOutOfBoundsException e) {</span>
+<span class="fc" id="L281">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L282">                    String.format(&quot;Filter only accepts values in the [0,%d) range&quot;, getShape().getNumberOfBits()), e);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

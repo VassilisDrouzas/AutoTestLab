@@ -1,0 +1,527 @@
+<?xml version="1.0"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+
+<document>
+
+ <properties>
+  <title>Migration Guide: 1.x to 2.0</title>
+ </properties>
+
+<body>
+    <section name="Migration Guide to Version 2.0">
+    <p>
+      This document aims at supporting with the migration from version 1.x of
+      <em>Commons Configuration</em> to version 2.0. Target audience are
+      users of an older version who want to upgrade. The document describes the
+      areas in which major changes have been implemented; here problems are
+      likely to be encountered during migration. It has the following content:
+    </p>
+    <p>
+      <ul>
+        <li><a href="#Introduction">Introduction</a></li>
+        <li><a href="#Structural_Changes">Structural Changes</a></li>
+        <li><a href="#Accessing_Configuration_Properties">Accessing Configuration Properties</a></li>
+        <li><a href="#Creating_Configurations">Creating Configurations</a></li>
+        <li><a href="#Reloading">Reloading</a></li>
+        <li><a href="#Combining_Configuration_Sources">Combining Configuration Sources</a></li>
+        <li><a href="#Concurrency_Issues">Concurrency Issues</a></li>
+        <li><a href="#Events">Events</a></li>
+      </ul>
+    </p>
+
+    <subsection name="Introduction">
+    <p>
+      Version 2.0 of <em>Commons Configuration</em> is the result of a major
+      redesign of this library. While version 1.x has become pretty stable and
+      does what it is expected to do, there are some limitations and design
+      flaws which could not be fixed in a painless and compatible way.
+    </p>
+    <p>
+      In order to overcome these restrictions, version 2.0 has applied significant
+      changes to some of the problematic concepts or even replaced them by
+      alternative approaches. This has lead to an ambivalent situation: On one
+      hand, you will recognize many similarities to the old version - classes
+      with familiar names that continue to do what they have done before. On
+      the other hand, completely new approaches have been introduced; in the
+      affected areas <em>Commons Configuration</em> 2.0 will look like a
+      completely new product rather than a plain upgrade.
+    </p>
+    <p>
+      Because of such major changes, you cannot simply drop the new jar in your
+      classpath and expect that everything continues to work. In the remaining
+      part of this document the most important changes are described. This
+      should give you an impression about the effort required to integrate the
+      new version with your application.
+    </p>
+    <p>
+      Also note that the <a href="user_guide.html">user's guide</a> has been
+      fully reworked to cover all the new features and concepts offered by
+      <em>Commons Configuration</em> 2.0. Because of that, this document will not
+      describe interfaces or classes in detail, but simply refer to the
+      corresponding sections of the user guide.
+    </p>
+    </subsection>
+
+    <subsection name="Structural Changes">
+    <p>
+      The most obvious change you will notice at the very beginning is that
+      the root package was renamed to <code>org.apache.commons.configuration2</code>
+      - the major version is now part of the package name. This certainly makes
+      migration harder, but it is the only possibility to avoid jar hell.
+      Imagine for a moment that we had kept the old package name. This
+      would work well for applications that are the only user of the
+      <em>Commons Configuration</em> library. But as soon as there are 3rd
+      party libraries also using this component, but in version 1.x, then there
+      is real trouble: The class path then contains classes with identical
+      names in different versions - results will be unpredictable! The change
+      of the package name solves this problem because the new version can now
+      coexist with an old version without interfering. The very first step
+      you have to when migrating to version 2.0 is to reorganize your imports
+      to adapt them to the new package name. Modern IDEs will support you with
+      this task.
+    </p>
+    <p>
+      For the same reason the <a href="http://maven.apache.org">Maven</a>
+      coordinates have been changed. Use the following dependency declaration
+      in your pom:
+    </p>
+    <source><![CDATA[
+<dependency>
+  <groupId>org.apache.commons</groupId>
+  <artifactId>commons-configuration2</artifactId>
+  <version>2.7</version>
+</dependency>
+]]></source>
+    <p>
+      So for Maven version 2.0 is a completely different artifact. This
+      allows a peaceful coexistence of <em>Commons Configuration</em> 1.x and
+      2.0 in the dependency set of a project.
+    </p>
+    </subsection>
+
+    <subsection name="Accessing Configuration Properties">
+    <p>
+      The good news is that there are only minor changes in the central
+      <code><a href="../apidocs/org/apache/commons/configuration2/Configuration.html">
+      Configuration</a></code> interface used for reading and writing configuration
+      data. A few methods have been added supporting new features, but the
+      principle patterns for dealing with <code>Configuration</code> objects
+      remain valid. These concepts are described in the user's guide in the
+      sections <a href="overview.html#Using_Configuration">Using Configuration</a>
+      and <a href="howto_basicfeatures.html#Basic_features_and_AbstractConfiguration">Basic
+      features and AbstractConfiguration</a>.
+    </p>
+    <p>
+      What has changed is the default implementation of
+      <a href="howto_basicfeatures.html#List_handling">List handling</a> in
+      <code><a href="../apidocs/org/apache/commons/configuration2/AbstractConfiguration.html">
+      AbstractConfiguration</a></code>. In version 1.x list splitting was
+      enabled per default; string properties containing a &quot;,&quot; character
+      were interpreted as lists with multiple elements. This was a frequent
+      source for confusion and bug reports. In version 2.0 list splitting is now
+      disabled initially. The implementation also has been extended: it is no
+      longer limited to providing a delimiter character, but an implementation
+      of the <code><a href="../apidocs/org/apache/commons/configuration2/convert/ListDelimiterHandler.html">
+      ListDelimiterHandler</a></code> interface can be set which controls all
+      aspects of list handling. In order to enable list handling again, pass a
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/DefaultListDelimiterHandler.html">
+      DefaultListDelimiterHandler</a></code> object to your
+      <code>AbstractConfiguration</code> instance. This class supports splitting
+      string properties at specific delimiter characters. However, its results
+      are not 100% identical to the ones produced by <em>Commons Configuration</em>
+      1.0: this version contained some inconsistencies regarding the escaping of
+      list delimiter characters. If you really need the same behavior in this
+      area, then use the
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/LegacyListDelimiterHandler.html">
+      LegacyListDelimiterHandler</a></code> class.
+    </p>
+    <p>
+      Version 2.0 also has changes related to
+      <a href="howto_hierarchical.html#Hierarchical_Configurations">Hierarchical
+      Configurations</a>.
+      <code><a href="../apidocs/org/apache/commons/configuration2/HierarchicalConfiguration.html">
+      HierarchicalConfiguration</a></code>, formally the base class for all
+      hierarchical configurations, is now an interface. The equivalent to the
+      old base class is now named
+      <code><a href="../apidocs/org/apache/commons/configuration2/BaseHierarchicalConfiguration.html">
+      BaseHierarchicalConfiguration</a></code>. It extends the abstract base class
+      <code><a href="../apidocs/org/apache/commons/configuration2/AbstractHierarchicalConfiguration.html">
+      AbstractHierarchicalConfiguration</a></code>. The difference between these
+      classes is that <code>AbstractHierarchicalConfiguration</code> provides
+      generic algorithms for dealing with an arbitrary hierarchical node
+      structure. <code>BaseHierarchicalConfiguration</code> in contrast defines
+      its own node structure based on objects kept in memory. In future, it
+      should be possible to support other kinds of hierarchical structures
+      directly by creating specialized sub classes from
+      <code>AbstractHierarchicalConfiguration</code>. Refer to section
+      <a href="howto_hierarchical.html#Internal_Representation">Internal Representation</a>
+      for further information. The node objects a hierarchical configuration
+      deals with are now exposed as a generic type parameter; for instance,
+      <code>BaseHierarchicalConfiguration</code> is actually an
+      <code>AbstractHierarchicalConfiguration&lt;ImmutableNode&gt;</code>.
+      For most applications only interested in accessing configuration data via
+      the typical access methods, this parameter is not relevant and can be
+      replaced by a wildcard (&quot;?&quot;) in variable declarations. Extended
+      query facilities on hierarchical configurations work in the same way as
+      in version 1.x; so applications need not be updated in this area.
+    </p>
+    </subsection>
+
+    <subsection name="Creating Configurations">
+    <p>
+      A major difference between <em>Commons Configuration</em> 1.x and 2.0 is
+      the way configuration objects are created, initialized, and managed. In
+      version 1.x configurations are created directly using their constructor.
+      Especially for file-based configuration implementations - like
+      <code><a href="../apidocs/org/apache/commons/configuration2/PropertiesConfiguration.html">
+      PropertiesConfiguration</a></code> or
+      <code><a href="../apidocs/org/apache/commons/configuration2/XMLConfiguration.html">
+      XMLConfiguration</a></code> - there were constructors which immediately
+      populated the newly created instances from a data source. If additional
+      settings were to be applied, this was done after the creation using
+      bean-like set methods. For instance, in order to create an initialized
+      <code>PropertiesConfiguration</code> object, the following code could be
+      used:
+    </p>
+    <source><![CDATA[
+// Version 1.x: Initializing a properties configuration
+PropertiesConfiguration config = new PropertiesConfiguration("myconfig.properties");
+config.setThrowExceptionOnMissing(true);
+config.setIncludesAllowed(false);
+config.setListDelimiter(';');
+]]></source>
+    <p>
+      While this code is easy to write, there are some non-obvious problems:
+      <ul>
+        <li>Some settings influence the loading of the configuration data. In
+        this example, the definition of the list delimiter and the
+        <em>includesAllowed</em> flag fall into this category. However, because
+        the data is directly loaded by the constructor these settings are
+        applied too late and thus ignored by the load operation.</li>
+        <li>The constructor calls a protected method for loading the data. This
+        can lead to subtle bugs because at this time the instance is not yet
+        fully initialized.</li>
+        <li>The various set methods are not thread-safe; if this configuration
+        instance is to be accessed from another thread, there may be problems.</li>
+      </ul>
+    </p>
+    <p>
+      To overcome these problems, <em>Commons Configuration</em> uses a
+      different approach for the creation of configuration objects based on
+      <a href="howto_builders.html">configuration builders</a>. The basic idea
+      is that a configuration builder is created and initialized with all
+      parameters to be applied to the new configuration object. When the
+      configuration instance is queried from its builder it is guaranteed that
+      it has been fully initialized in the correct order. In addition, access
+      to configuration builders is thread-safe. Configuration builders offer a
+      fluent API for setting the initialization parameters for the configuration
+      to be created. The example above would become something like the
+      following in version 2.0:
+    </p>
+        <source><![CDATA[
+FileBasedConfigurationBuilder<PropertiesConfiguration> builder =
+    new FileBasedConfigurationBuilder<PropertiesConfiguration>(PropertiesConfiguration.class)
+    .configure(new Parameters().properties()
+        .setFileName("myconfig.properties")
+        .setThrowExceptionOnMissing(true)
+        .setListDelimiterHandler(new DefaultListDelimiterHandler(';'))
+        .setIncludesAllowed(false));
+PropertiesConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      Builders also offer an increased flexibility regarding the management of
+      configuration objects. While in version 1.x of <em>Commons Configuration</em>
+      typically <code>Configuration</code> objects were kept centrally and
+      accessed throughout an application, the recommended way in version 2.0 is
+      to work with configuration builders. A builder not only creates a new
+      configuration object but also caches a reference to it so that it can be
+      accessed again and again. This makes it possible to add special
+      functionality to the builder. For instance, it may decide to return a
+      different configuration object under certain circumstances - e.g. when a
+      change on an external configuration source is detected and a reload
+      operation is performed. For the application this is fully transparent.
+    </p>
+    <p>
+      Working with builders may seem a bit verbose at first. There are some ways
+      to simplify their usage. Be sure to read the section
+      <a href="howto_filebased.html#Making_it_easier">Making it easier</a>
+      which describes some useful short cuts. It is also possible to define
+      default values for initialization parameters. This allows simplifying of
+      builder configurations and can establish application-global standard
+      settings for configuration objects. This mechanism is described in
+      <a href="howto_builders.html#Default_Initialization_Parameters">Default
+      Initialization Parameters</a>.
+    </p>
+    </subsection>
+
+    <subsection name="Reloading">
+    <p>
+      Support for reloading of externally changed configuration sources was
+      limited in <em>Commons Configuration</em> 1.x. There was a reloading
+      strategy implementation that was triggered on each access to a
+      configuration property and checked whether an underlying file was changed
+      in the meantime. If this was the case, the configuration was automatically
+      reloaded. <a href="https://issues.apache.org/jira/browse/CONFIGURATION-520">
+      CONFIGURATION-520</a> contains a discussion about the problems and
+      limitations of this approach.
+    </p>
+    <p>
+      In version 2.0 reloading functionality has been completely redesigned.
+      The new approaches are described in the chapter
+      <a href="howto_reloading.html">Automatic Reloading of Configuration
+      Sources</a> of the user's guide. In a nutshell,
+      <a href="howto_builders.html">configuration builders</a> play an important
+      role here. There are builder implementations available which can be
+      configured to monitor external configuration sources in a pretty generic
+      way. When a change is detected, the builder resets its managed configuration
+      so that the next time it is accessed a new instance is created. In addition,
+      an event can be generated notifying the application that new configuration
+      information might be available. The whole mechanism can be setup to
+      perform reloading checks periodically and automatically in a background
+      thread.
+    </p>
+    <p>
+      The <code>FileChangedReloadingStrategy</code> class from version 1.0
+      no longer exists. It is replaced by the new, more powerful reloading
+      mechanisms. The mentioned chapter about <a href="howto_reloading.html">reloading</a>
+      describes in detail how a reloading-aware configuration builder can be
+      setup and fine-tuned to an application's needs.
+    </p>
+    </subsection>
+
+    <subsection name="Combining Configuration Sources">
+    <p>
+      In <em>Commons Configuration</em> 1.x, there were two options for
+      creating a
+      <a href="howto_combinedbuilder.html#Combining_Configuration_Sources">combined
+      configuration</a> out of multiple sources:
+      <ul>
+        <li>The already deprecated <code>ConfigurationFactory</code> class</li>
+        <li>The <code>DefaultConfigurationBuilder</code> class</li>
+      </ul>
+    </p>
+    <p>
+      The former has been removed. The functionality provided by
+      <code>DefaultConfigurationBuilder</code> is still available, but the
+      class has been renamed to
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/combined/CombinedConfigurationBuilder.html">
+      CombinedConfigurationBuilder</a></code> (the old name was no longer
+      appropriate as builders are now a common concept in the library) and
+      adapted to other builder implementations.
+    </p>
+    <p>
+      In version 1.x <code>DefaultConfigurationBuilder</code> inherited from
+      <code>XMLConfiguration</code> - it was itself a configuration and could be
+      populated dynamically. <code>CombinedConfigurationBuilder</code> in
+      contrast is a regular builder implementation. In its initialization
+      parameters it can be passed another builder object from which the
+      definition for the combined configuration is obtained. So a dynamic
+      approach is possible here as well. In both cases, the
+      <code>getConfiguration()</code> method is used to obtain the
+      <code><a href="../apidocs/org/apache/commons/configuration2/CombinedConfiguration.html">
+      CombinedConfiguration</a></code> object constructed by the builder. From
+      a usage point of view there is not that much difference between these
+      classes.
+    </p>
+    <p>
+      In both the old and the version, a XML-based definition file is used to
+      declare the different configuration sources that are to be combined plus
+      some additional settings. The principle structure of this file has not
+      changed - the full description of the new format is available at
+      <a href="howto_combinedbuilder.html#Configuration_definition_file_reference">Configuration
+      definition file reference</a>.
+    </p>
+    <p>
+      A problem when migrating from <code>DefaultConfigurationBuilder</code> to
+      <code>CombinedConfigurationBuilder</code> is that those definition files
+      can contain <a href="howto_beans.html">bean definitions</a>, i.e. references
+      to classes which will be automatically instantiated by <em>Commons
+      Configuration</em>. Because of the change of the package name definition files
+      written for version 1.x will not work with the new version if they make
+      use of this feature and reference internal classes shipped with the
+      library. Here the fully-qualified class names in definition files have to
+      be adapted.
+    </p>
+    <p>
+      A prominent example of bean definitions were reloading strategies assigned
+      to specific configuration sources. As the whole reloading mechanism has
+      changed significantly, such declarations are no longer supported. There is
+      a much simpler replacement: just add the <em>config-reload</em> attribute
+      to a configuration source declaration to enable reloading support for this
+      source.
+    </p>
+    <p>
+      Another incompatible change is related to the extensibility of the
+      definition file format. It used to be possible - and still is - to define
+      custom tags for declaring special configuration sources. This is done by
+      registering provider objects at the configuration builder. Because the
+      internal implementation of <code>CombinedConfigurationBuilder</code> is
+      very different from the old one, this also affects the interface used for
+      providers. The main difference is that providers for the old version used
+      to create configuration objects directly, while the new providers create
+      configuration builders. If custom providers have been used in the past,
+      additional migration effort has to be planned in.
+    </p>
+    <p>
+      A complete description of <code>CombinedConfigurationBuilder</code>, its
+      usage and supported extension points can be found in chapter
+      <a href="howto_combinedbuilder.html">Combining Configuration Sources</a>
+      of the user's guide.
+    </p>
+    </subsection>
+
+    <subsection name="Concurrency Issues">
+    <p>
+      An important design goal of <em>Commons Configuration</em> 2.0 was to
+      improve the behavior of configuration objects when accessed by multiple
+      threads. In the 1.x series, support for concurrent access to configuration
+      data has grown historically: The original intent was that a configuration
+      object can be read by multiple threads in a safe way, but as soon as one
+      thread modifies the data, the user has to ensure proper synchronization
+      manually. Later on, also due to the reloading implementation, more and
+      more synchronization was added. This even caused performance bottlenecks,
+      for instance as reported in
+      <a href="https://issues.apache.org/jira/browse/CONFIGURATION-530">CONFIGURATION-530</a>.
+    </p>
+    <p>
+      The changes in version 2.0 related to multi-threading include multiple
+      aspects. The most obvious change is probably that synchronization of
+      configurations is now much more flexible. A configuration instance is
+      assigned a
+      <code><a href="../apidocs/org/apache/commons/configuration2/sync/Synchronizer.html">
+      Synchronizer</a></code> object which controls if and how locks are obtained
+      when executing operations on this configuration. By changing the
+      synchronizer, an application can adapt the locking behavior to its specific
+      needs. For instance, if a configuration is only accessed by a single
+      thread, there is no need for any synchronization. Typical usage modes are
+      reflected by different default implementations of the
+      <code>Synchronizer</code> interface:
+      <ul>
+        <li><code><a href="../apidocs/org/apache/commons/configuration2/sync/NoOpSynchronizer.html">
+        NoOpSynchronizer</a></code> does not use any synchronization at all.
+        This is the option of choice for single-threaded access, but fails in a
+        multi-threaded environment.</li>
+        <li><code><a href="../apidocs/org/apache/commons/configuration2/sync/ReadWriteSynchronizer.html">
+        ReadWriteSynchronizer</a></code> implements synchronization based on a
+        read/write lock.</li>
+      </ul>
+      Note that the default option is <code>NoOpSynchronizer</code>. This means
+      that configuration objects are not thread-safe per default! You have to
+      change the synchronizer in order to make them safe for concurrent access.
+      This can be done for instance by using a builder which is configured
+      accordingly.
+    </p>
+    <p>
+      Talking about builders: This is another concept which supports access to
+      configuration data by multiple threads. Access to a builder is always
+      thread-safe. By shifting the responsibility for reloading operations from
+      the configuration to the builder, the need for intensive locking on each
+      property access could be eliminated.
+    </p>
+    <p>
+      Hierarchical configurations derived from
+      <code><a href="../apidocs/org/apache/commons/configuration2/BaseHierarchicalConfiguration.html">
+      BaseHierarchicalConfiguration</a></code> now use a new implementation
+      which allows for concurrent access without locking. So this group of
+      configurations can be used without having to set a fully-functional
+      synchronizer.
+    </p>
+    <p>
+      There are some other changes on classes with the goal to make them
+      well-behaving citizens in a concurrent environment. This includes:
+      <ul>
+        <li>Some classes have been made immutable, passing all information to the
+        constructor rather than using bean-style properties for their
+        initialization. An example is
+        <code><a href="../apidocs/org/apache/commons/configuration2/tree/DefaultExpressionEngine.html">
+        DefaultExpressionEngine</a></code> whose instances can now be shared between
+        different hierarchical configuration objects.</li>
+        <li>Static utility classes with state have been rewritten so that they
+        can be instantiated. Mutable static fields are in general
+        thread-hostile. Refer to
+        <a href="https://issues.apache.org/jira/browse/CONFIGURATION-486">CONFIGURATION-486</a>
+        for further details.</li>
+      </ul>
+    </p>
+    <p>
+      Please refer to <a href="howto_concurrency.html">Configurations and
+      Concurrent Access</a> for a full description of this complex topic.
+    </p>
+    </subsection>
+
+    <subsection name="Events">
+    <p>
+      Another area in which major changes took place is the support for
+      <a href="howto_events.html">event notifications</a>. <em>Commons
+      Configuration</em> 1.x had two types of event listeners for configuration
+      update events and error events. Version 2.0 adds some more event sources -
+      events generated by configuration builders and reloading events. Despite
+      this increased number of event sources, there is now only a single event
+      listener interface
+      (<code><a href="../apidocs/org/apache/commons/configuration2/event/EventListener.html">
+      EventListener</a></code>), and the mechanisms for adding and removing event
+      listeners are the same everywhere; the basic protocol is defined by the
+      <code><a href="../apidocs/org/apache/commons/configuration2/event/EventSource.html">
+      EventSource</a></code> interface. (Note that <code>EventSource</code> used
+      to be a class in version 1.x; it actually was the base class of
+      <code>AbstractConfiguration</code> and therefore inherited by all concrete
+      configuration implementations. In version 2.0 this role has been taken
+      over by the <code><a href="../apidocs/org/apache/commons/configuration2/event/BaseEventSource.html">
+      BaseEventSource</a></code> class.)
+    </p>
+    <p>
+      While the old version used numeric constants to define specific event types,
+      the new events are classified by instances of the
+      <code><a href="../apidocs/org/apache/commons/configuration2/event/EventType.html">
+      EventType</a></code> class. Event types can be used to determine the
+      semantic meaning of an event, but also for filtering for specific events.
+      They stand in a logic hierarchical relation with each other; an event
+      listener that is registered for a base event type also receives notifications
+      for derived types. This makes a flexible and fine-grained event processing
+      possible. The whole event mechanism is very similar to the one implemented
+      in JavaFX.
+    </p>
+    <p>
+      The most basic use case for event listeners in version 1.x was probably
+      the registration of a change listener at a single configuration instance.
+      To achieve an equivalent effect with the new API, one would implement an
+      event listener and register it for the event type
+      <code><a href="../apidocs/org/apache/commons/configuration2/event/ConfigurationEvent.html#ANY">
+      ConfigurationEvent.ANY</a></code>. This listener will then receive
+      notifications for all kinds of updates performed on the monitored
+      configuration. Structure and content of these events is nearly
+      identical to the counterparts in version 1.x.
+    </p>
+    <p>
+      There is, however, an important difference with the event listener
+      registration: The recommended way is to add the listener to the
+      <a href="#Creating_Configurations">configuration builder</a> which
+      creates the configuration rather than to the configuration itself. This
+      ensures that registration is done at the correct moment in time and also
+      updated when the builder decides to replace its managed configuration
+      instance.
+    </p>
+    <p>
+      All in all the new event mechanism should be much more flexible and
+      powerful than the old one.
+    </p>
+    </subsection>
+  </section>
+</body>
+
+</document>

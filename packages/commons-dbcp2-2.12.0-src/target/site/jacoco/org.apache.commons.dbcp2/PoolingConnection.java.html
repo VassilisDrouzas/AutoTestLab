@@ -1,0 +1,644 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PoolingConnection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">PoolingConnection.java</span></div><h1>PoolingConnection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+import org.apache.commons.pool2.KeyedObjectPool;
+import org.apache.commons.pool2.KeyedPooledObjectFactory;
+import org.apache.commons.pool2.PooledObject;
+import org.apache.commons.pool2.impl.DefaultPooledObject;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+
+/**
+ * A {@link DelegatingConnection} that pools {@link PreparedStatement}s.
+ * &lt;p&gt;
+ * The {@link #prepareStatement} and {@link #prepareCall} methods, rather than creating a new PreparedStatement each
+ * time, may actually pull the statement from a pool of unused statements. The {@link PreparedStatement#close} method of
+ * the returned statement doesn't actually close the statement, but rather returns it to the pool. (See
+ * {@link PoolablePreparedStatement}, {@link PoolableCallableStatement}.)
+ * &lt;/p&gt;
+ *
+ * @see PoolablePreparedStatement
+ * @since 2.0
+ */
+public class PoolingConnection extends DelegatingConnection&lt;Connection&gt;
+        implements KeyedPooledObjectFactory&lt;PStmtKey, DelegatingPreparedStatement&gt; {
+
+    /**
+     * Statement types.
+     *
+     * See subclasses of {@link Statement}.
+     * 
+     * @since 2.0 protected enum.
+     * @since 2.4.0 public enum.
+     * @see Statement
+     * @see CallableStatement
+     * @see PreparedStatement
+     */
+<span class="fc" id="L59">    public enum StatementType {</span>
+
+        /**
+         * Callable statement.
+         *
+         * @see CallableStatement
+         */
+<span class="fc" id="L66">        CALLABLE_STATEMENT,</span>
+
+        /**
+         * Prepared statement.
+         *
+         * @see PreparedStatement
+         */
+<span class="fc" id="L73">        PREPARED_STATEMENT</span>
+    }
+
+    /** Pool of {@link PreparedStatement}s. and {@link CallableStatement}s */
+    private KeyedObjectPool&lt;PStmtKey, DelegatingPreparedStatement&gt; pStmtPool;
+
+    private boolean clearStatementPoolOnReturn;
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param connection
+     *            the underlying {@link Connection}.
+     */
+    public PoolingConnection(final Connection connection) {
+<span class="fc" id="L88">        super(connection);</span>
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * {@link KeyedPooledObjectFactory} method for activating pooled statements.
+     *
+     * @param key
+     *            ignored
+     * @param pooledObject
+     *            wrapped pooled statement to be activated
+     */
+    @Override
+    public void activateObject(final PStmtKey key, final PooledObject&lt;DelegatingPreparedStatement&gt; pooledObject)
+            throws SQLException {
+<span class="fc" id="L102">        pooledObject.getObject().activate();</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Closes and frees all {@link PreparedStatement}s or {@link CallableStatement}s from the pool, and close the
+     * underlying connection.
+     */
+    @Override
+    public synchronized void close() throws SQLException {
+        try {
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (null != pStmtPool) {</span>
+<span class="fc" id="L113">                final KeyedObjectPool&lt;PStmtKey, DelegatingPreparedStatement&gt; oldPool = pStmtPool;</span>
+<span class="fc" id="L114">                pStmtPool = null;</span>
+                try {
+<span class="fc" id="L116">                    oldPool.close();</span>
+<span class="nc" id="L117">                } catch (final RuntimeException e) {</span>
+<span class="nc" id="L118">                    throw e;</span>
+<span class="nc" id="L119">                } catch (final Exception e) {</span>
+<span class="nc" id="L120">                    throw new SQLException(&quot;Cannot close connection&quot;, e);</span>
+<span class="fc" id="L121">                }</span>
+            }
+        } finally {
+            try {
+<span class="fc" id="L125">                getDelegateInternal().close();</span>
+            } finally {
+<span class="fc" id="L127">                setClosedInternal(true);</span>
+            }
+        }
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * Notification from {@link PoolableConnection} that we returned to the pool.
+     *
+     * @throws SQLException when {@code clearStatementPoolOnReturn} is true and the statement pool could not be
+     *                      cleared
+     * @since 2.8.0
+     */
+    public void connectionReturnedToPool() throws SQLException {
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">        if (pStmtPool != null &amp;&amp; clearStatementPoolOnReturn) {</span>
+            try {
+<span class="fc" id="L142">                pStmtPool.clear();</span>
+<span class="nc" id="L143">            } catch (final Exception e) {</span>
+<span class="nc" id="L144">                throw new SQLException(&quot;Error clearing statement pool&quot;, e);</span>
+<span class="fc" id="L145">            }</span>
+        }
+<span class="fc" id="L147">    }</span>
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql) {
+<span class="fc" id="L158">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull());</span>
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param autoGeneratedKeys
+     *            A flag indicating whether auto-generated keys should be returned; one of
+     *            {@code Statement.RETURN_GENERATED_KEYS} or {@code Statement.NO_GENERATED_KEYS}.
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final int autoGeneratedKeys) {
+<span class="fc" id="L173">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), autoGeneratedKeys);</span>
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final int resultSetType, final int resultSetConcurrency) {
+<span class="fc" id="L189">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), resultSetType, resultSetConcurrency);</span>
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @param resultSetHoldability
+     *            result set holdability
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final int resultSetHoldability) {
+<span class="fc" id="L208">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), resultSetType, resultSetConcurrency,</span>
+                resultSetHoldability);
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @param resultSetHoldability
+     *            result set holdability
+     * @param statementType
+     *            statement type
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final int resultSetHoldability, final StatementType statementType) {
+<span class="fc" id="L230">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), resultSetType, resultSetConcurrency,</span>
+                resultSetHoldability, statementType);
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @param statementType
+     *            statement type
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final StatementType statementType) {
+<span class="fc" id="L250">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), resultSetType, resultSetConcurrency, statementType);</span>
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param columnIndexes
+     *            An array of column indexes indicating the columns that should be returned from the inserted row or
+     *            rows.
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final int[] columnIndexes) {
+<span class="fc" id="L265">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), columnIndexes);</span>
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param statementType
+     *            statement type
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final StatementType statementType) {
+<span class="fc" id="L279">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), statementType, null);</span>
+    }
+
+    /**
+     * Creates a PStmtKey for the given arguments.
+     *
+     * @param sql
+     *            the SQL string used to define the statement
+     * @param columnNames
+     *            column names
+     *
+     * @return the PStmtKey created for the given arguments.
+     */
+    protected PStmtKey createKey(final String sql, final String[] columnNames) {
+<span class="fc" id="L293">        return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), columnNames);</span>
+    }
+
+    /**
+     * {@link KeyedPooledObjectFactory} method for destroying PoolablePreparedStatements and PoolableCallableStatements.
+     * Closes the underlying statement.
+     *
+     * @param key
+     *            ignored
+     * @param pooledObject
+     *            the wrapped pooled statement to be destroyed.
+     */
+    @Override
+    public void destroyObject(final PStmtKey key, final PooledObject&lt;DelegatingPreparedStatement&gt; pooledObject) throws SQLException {
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">        if (pooledObject != null) {</span>
+            @SuppressWarnings(&quot;resource&quot;)
+<span class="fc" id="L309">            final DelegatingPreparedStatement object = pooledObject.getObject();</span>
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">            if (object != null) {</span>
+                @SuppressWarnings(&quot;resource&quot;)
+<span class="fc" id="L312">                final Statement innermostDelegate = object.getInnermostDelegate();</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">                if (innermostDelegate != null) {</span>
+<span class="fc" id="L314">                    innermostDelegate.close();</span>
+                }
+            }
+        }
+<span class="fc" id="L318">    }</span>
+
+    private String getCatalogOrNull() {
+        try {
+<span class="fc" id="L322">            return getCatalog();</span>
+<span class="fc" id="L323">        } catch (final SQLException ignored) {</span>
+<span class="fc" id="L324">            return null;</span>
+        }
+    }
+
+    private String getSchemaOrNull() {
+        try {
+<span class="fc" id="L330">            return getSchema();</span>
+<span class="fc" id="L331">        } catch (final SQLException ignored) {</span>
+<span class="fc" id="L332">            return null;</span>
+        }
+    }
+
+    /**
+     * Gets the prepared statement pool.
+     *
+     * @return statement pool
+     * @since 2.8.0
+     */
+    public KeyedObjectPool&lt;PStmtKey, DelegatingPreparedStatement&gt; getStatementPool() {
+<span class="fc" id="L343">        return pStmtPool;</span>
+    }
+
+    /**
+     * {@link KeyedPooledObjectFactory} method for creating {@link PoolablePreparedStatement}s or
+     * {@link PoolableCallableStatement}s. The {@code stmtType} field in the key determines whether a
+     * PoolablePreparedStatement or PoolableCallableStatement is created.
+     *
+     * @param key
+     *            the key for the {@link PreparedStatement} to be created
+     * @see #createKey(String, int, int, StatementType)
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    @Override
+    public PooledObject&lt;DelegatingPreparedStatement&gt; makeObject(final PStmtKey key) throws SQLException {
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        if (null == key) {</span>
+<span class="nc" id="L359">            throw new IllegalArgumentException(&quot;Prepared statement key is null or invalid.&quot;);</span>
+        }
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        if (key.getStmtType() == StatementType.PREPARED_STATEMENT) {</span>
+<span class="fc" id="L362">            final PreparedStatement statement = (PreparedStatement) key.createStatement(getDelegate());</span>
+            @SuppressWarnings({&quot;rawtypes&quot;, &quot;unchecked&quot; }) // Unable to find way to avoid this
+<span class="fc" id="L364">            final PoolablePreparedStatement pps = new PoolablePreparedStatement(statement, key, pStmtPool, this);</span>
+<span class="fc" id="L365">            return new DefaultPooledObject&lt;&gt;(pps);</span>
+        }
+<span class="fc" id="L367">        final CallableStatement statement = (CallableStatement) key.createStatement(getDelegate());</span>
+<span class="fc" id="L368">        final PoolableCallableStatement pcs = new PoolableCallableStatement(statement, key, pStmtPool, this);</span>
+<span class="fc" id="L369">        return new DefaultPooledObject&lt;&gt;(pcs);</span>
+    }
+
+    /**
+     * Normalizes the given SQL statement, producing a canonical form that is semantically equivalent to the original.
+     *
+     * @param sql The statement to be normalized.
+     *
+     * @return The canonical form of the supplied SQL statement.
+     */
+    protected String normalizeSQL(final String sql) {
+<span class="fc" id="L380">        return sql.trim();</span>
+    }
+
+    /**
+     * {@link KeyedPooledObjectFactory} method for passivating {@link PreparedStatement}s or {@link CallableStatement}s.
+     * Invokes {@link PreparedStatement#clearParameters}.
+     *
+     * @param key
+     *            ignored
+     * @param pooledObject
+     *            a wrapped {@link PreparedStatement}
+     */
+    @Override
+    public void passivateObject(final PStmtKey key, final PooledObject&lt;DelegatingPreparedStatement&gt; pooledObject)
+            throws SQLException {
+        @SuppressWarnings(&quot;resource&quot;)
+<span class="fc" id="L396">        final DelegatingPreparedStatement dps = pooledObject.getObject();</span>
+<span class="fc" id="L397">        dps.clearParameters();</span>
+<span class="fc" id="L398">        dps.passivate();</span>
+<span class="fc" id="L399">    }</span>
+
+    /**
+     * Creates or obtains a {@link CallableStatement} from the pool.
+     *
+     * @param key
+     *            a {@link PStmtKey} for the given arguments
+     * @return a {@link PoolableCallableStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    private CallableStatement prepareCall(final PStmtKey key) throws SQLException {
+<span class="fc" id="L411">        return (CallableStatement) prepareStatement(key);</span>
+    }
+
+    /**
+     * Creates or obtains a {@link CallableStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the CallableStatement
+     * @return a {@link PoolableCallableStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public CallableStatement prepareCall(final String sql) throws SQLException {
+<span class="fc" id="L425">        return prepareCall(createKey(sql, StatementType.CALLABLE_STATEMENT));</span>
+    }
+
+    /**
+     * Creates or obtains a {@link CallableStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the CallableStatement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @return a {@link PoolableCallableStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public CallableStatement prepareCall(final String sql, final int resultSetType, final int resultSetConcurrency)
+            throws SQLException {
+<span class="fc" id="L444">        return prepareCall(createKey(sql, resultSetType, resultSetConcurrency, StatementType.CALLABLE_STATEMENT));</span>
+    }
+
+    /**
+     * Creates or obtains a {@link CallableStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the CallableStatement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @param resultSetHoldability
+     *            result set holdability
+     * @return a {@link PoolableCallableStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public CallableStatement prepareCall(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final int resultSetHoldability) throws SQLException {
+<span class="fc" id="L465">        return prepareCall(createKey(sql, resultSetType, resultSetConcurrency,</span>
+                resultSetHoldability, StatementType.CALLABLE_STATEMENT));
+    }
+
+    /**
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param key
+     *            a {@link PStmtKey} for the given arguments
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    private PreparedStatement prepareStatement(final PStmtKey key) throws SQLException {
+<span class="fc bfc" id="L479" title="All 2 branches covered.">        if (null == pStmtPool) {</span>
+<span class="fc" id="L480">            throw new SQLException(&quot;Statement pool is null - closed or invalid PoolingConnection.&quot;);</span>
+        }
+        try {
+<span class="fc" id="L483">            return pStmtPool.borrowObject(key);</span>
+<span class="fc" id="L484">        } catch (final NoSuchElementException e) {</span>
+<span class="fc" id="L485">            throw new SQLException(&quot;MaxOpenPreparedStatements limit reached&quot;, e);</span>
+<span class="nc" id="L486">        } catch (final RuntimeException e) {</span>
+<span class="nc" id="L487">            throw e;</span>
+<span class="nc" id="L488">        } catch (final Exception e) {</span>
+<span class="nc" id="L489">            throw new SQLException(&quot;Borrow prepareStatement from pool failed&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the PreparedStatement
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql) throws SQLException {
+<span class="fc" id="L504">        return prepareStatement(createKey(sql));</span>
+    }
+
+    /*
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the PreparedStatement
+     * @param autoGeneratedKeys
+     *            A flag indicating whether auto-generated keys should be returned; one of
+     *            {@code Statement.RETURN_GENERATED_KEYS} or {@code Statement.NO_GENERATED_KEYS}.
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int autoGeneratedKeys) throws SQLException {
+<span class="fc" id="L521">        return prepareStatement(createKey(sql, autoGeneratedKeys));</span>
+    }
+
+    /**
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the PreparedStatement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int resultSetType, final int resultSetConcurrency)
+            throws SQLException {
+<span class="fc" id="L540">        return prepareStatement(createKey(sql, resultSetType, resultSetConcurrency));</span>
+    }
+
+    /**
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the PreparedStatement
+     * @param resultSetType
+     *            result set type
+     * @param resultSetConcurrency
+     *            result set concurrency
+     * @param resultSetHoldability
+     *            result set holdability
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final int resultSetHoldability) throws SQLException {
+<span class="fc" id="L561">        return prepareStatement(createKey(sql, resultSetType, resultSetConcurrency, resultSetHoldability));</span>
+    }
+
+    /**
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the PreparedStatement
+     * @param columnIndexes
+     *            An array of column indexes indicating the columns that should be returned from the inserted row or
+     *            rows.
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int[] columnIndexes) throws SQLException {
+<span class="fc" id="L578">        return prepareStatement(createKey(sql, columnIndexes));</span>
+    }
+
+    /**
+     * Creates or obtains a {@link PreparedStatement} from the pool.
+     *
+     * @param sql
+     *            the SQL string used to define the PreparedStatement
+     * @param columnNames
+     *            column names
+     * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException
+     *             Wraps an underlying exception.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final String[] columnNames) throws SQLException {
+<span class="fc" id="L594">        return prepareStatement(createKey(sql, columnNames));</span>
+    }
+
+    /**
+     * Sets whether the pool of statements should be cleared when the connection is returned to its pool.
+     * Default is false.
+     *
+     * @param clearStatementPoolOnReturn clear or not
+     * @since 2.8.0
+     */
+    public void setClearStatementPoolOnReturn(final boolean clearStatementPoolOnReturn) {
+<span class="fc" id="L605">        this.clearStatementPoolOnReturn = clearStatementPoolOnReturn;</span>
+<span class="fc" id="L606">    }</span>
+
+    /**
+     * Sets the prepared statement pool.
+     *
+     * @param pool
+     *            the prepared statement pool.
+     */
+    public void setStatementPool(final KeyedObjectPool&lt;PStmtKey, DelegatingPreparedStatement&gt; pool) {
+<span class="fc" id="L615">        pStmtPool = pool;</span>
+<span class="fc" id="L616">    }</span>
+
+    @Override
+    public synchronized String toString() {
+<span class="fc bfc" id="L620" title="All 2 branches covered.">        if (pStmtPool instanceof GenericKeyedObjectPool) {</span>
+            // DBCP-596 PoolingConnection.toString() causes StackOverflowError
+<span class="fc" id="L622">            final GenericKeyedObjectPool&lt;?, ?&gt; gkop = (GenericKeyedObjectPool&lt;?, ?&gt;) pStmtPool;</span>
+<span class="pc bpc" id="L623" title="1 of 2 branches missed.">            if (gkop.getFactory() == this) {</span>
+<span class="fc" id="L624">                return &quot;PoolingConnection: &quot; + pStmtPool.getClass() + &quot;@&quot; + System.identityHashCode(pStmtPool);</span>
+            }
+        }
+<span class="fc" id="L627">        return &quot;PoolingConnection: &quot; + Objects.toString(pStmtPool);</span>
+    }
+
+    /**
+     * {@link KeyedPooledObjectFactory} method for validating pooled statements. Currently, always returns true.
+     *
+     * @param key
+     *            ignored
+     * @param pooledObject
+     *            ignored
+     * @return {@code true}
+     */
+    @Override
+    public boolean validateObject(final PStmtKey key, final PooledObject&lt;DelegatingPreparedStatement&gt; pooledObject) {
+<span class="nc" id="L641">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

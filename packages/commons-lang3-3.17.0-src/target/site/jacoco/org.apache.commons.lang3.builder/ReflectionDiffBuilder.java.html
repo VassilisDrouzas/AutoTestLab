@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReflectionDiffBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.builder</a> &gt; <span class="el_source">ReflectionDiffBuilder.java</span></div><h1>ReflectionDiffBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.builder;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+
+import org.apache.commons.lang3.ArraySorter;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.reflect.FieldUtils;
+
+/**
+ * Assists in implementing {@link Diffable#diff(Object)} methods.
+ *
+ * &lt;p&gt;
+ * All non-static, non-transient fields (including inherited fields) of the objects to diff are discovered using reflection and compared for differences.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * To use this class, write code as follows:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * public class Person implements Diffable&lt;Person&gt; {
+ *   String name;
+ *   int age;
+ *   boolean smoker;
+ *   ...
+ *
+ *   public DiffResult diff(Person obj) {
+ *     // No need for null check, as NullPointerException correct if obj is null
+ *     return new ReflectionDiffBuilder.&lt;Person&gt;builder()
+ *       .setDiffBuilder(DiffBuilder.&lt;Person&gt;builder()
+ *           .setLeft(this)
+ *           .setRight(obj)
+ *           .setStyle(ToStringStyle.SHORT_PREFIX_STYLE)
+ *           .build())
+ *       .setExcludeFieldNames(&quot;userName&quot;, &quot;password&quot;)
+ *       .build();
+ *   }
+ * }
+ * }&lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * The {@link ToStringStyle} passed to the constructor is embedded in the returned {@link DiffResult} and influences the style of the
+ * {@code DiffResult.toString()} method. This style choice can be overridden by calling {@link DiffResult#toString(ToStringStyle)}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * See {@link DiffBuilder} for a non-reflection based version of this class.
+ * &lt;/p&gt;
+ *
+ * @param &lt;T&gt; type of the left and right object to diff.
+ * @see Diffable
+ * @see Diff
+ * @see DiffResult
+ * @see ToStringStyle
+ * @see DiffBuilder
+ * @since 3.6
+ */
+public class ReflectionDiffBuilder&lt;T&gt; implements Builder&lt;DiffResult&lt;T&gt;&gt; {
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param &lt;T&gt; type of the left and right object.
+     * @since 3.15.0
+     */
+    public static final class Builder&lt;T&gt; {
+
+<span class="fc" id="L86">        private String[] excludeFieldNames = ArrayUtils.EMPTY_STRING_ARRAY;</span>
+        private DiffBuilder&lt;T&gt; diffBuilder;
+
+        /**
+         * Constructs a new instance.
+         */
+<span class="fc" id="L92">        public Builder() {</span>
+            // empty
+<span class="fc" id="L94">        }</span>
+
+        /**
+         * Builds a new configured {@link ReflectionDiffBuilder}.
+         *
+         * @return a new configured {@link ReflectionDiffBuilder}.
+         */
+        public ReflectionDiffBuilder&lt;T&gt; build() {
+<span class="fc" id="L102">            return new ReflectionDiffBuilder&lt;&gt;(diffBuilder, excludeFieldNames);</span>
+        }
+
+        /**
+         * Sets the DiffBuilder.
+         *
+         * @param diffBuilder the DiffBuilder.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setDiffBuilder(final DiffBuilder&lt;T&gt; diffBuilder) {
+<span class="fc" id="L112">            this.diffBuilder = diffBuilder;</span>
+<span class="fc" id="L113">            return this;</span>
+        }
+
+        /**
+         * Sets field names to exclude from output. Intended for fields like {@code &quot;password&quot;} or {@code &quot;lastModificationDate&quot;}.
+         *
+         * @param excludeFieldNames field names to exclude.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setExcludeFieldNames(final String... excludeFieldNames) {
+<span class="fc" id="L123">            this.excludeFieldNames = toExcludeFieldNames(excludeFieldNames);</span>
+<span class="fc" id="L124">            return this;</span>
+        }
+
+    }
+
+    /**
+     * Constructs a new {@link Builder}.
+     *
+     * @param &lt;T&gt; type of the left and right object.
+     * @return a new {@link Builder}.
+     * @since 3.15.0
+     */
+    public static &lt;T&gt; Builder&lt;T&gt; builder() {
+<span class="fc" id="L137">        return new Builder&lt;&gt;();</span>
+    }
+
+    private static String[] toExcludeFieldNames(final String[] excludeFieldNames) {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (excludeFieldNames == null) {</span>
+<span class="fc" id="L142">            return ArrayUtils.EMPTY_STRING_ARRAY;</span>
+        }
+        // clone and remove nulls
+<span class="fc" id="L145">        return ArraySorter.sort(ReflectionToStringBuilder.toNoNullStringArray(excludeFieldNames));</span>
+    }
+
+    private final DiffBuilder&lt;T&gt; diffBuilder;
+
+    /**
+     * Field names to exclude from output. Intended for fields like {@code &quot;password&quot;} or {@code &quot;lastModificationDate&quot;}.
+     */
+    private String[] excludeFieldNames;
+
+<span class="fc" id="L155">    private ReflectionDiffBuilder(final DiffBuilder&lt;T&gt; diffBuilder, final String[] excludeFieldNames) {</span>
+<span class="fc" id="L156">        this.diffBuilder = diffBuilder;</span>
+<span class="fc" id="L157">        this.excludeFieldNames = excludeFieldNames;</span>
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Constructs a builder for the specified objects with the specified style.
+     *
+     * &lt;p&gt;
+     * If {@code left == right} or {@code left.equals(right)} then the builder will not evaluate any calls to {@code append(...)} and will return an empty
+     * {@link DiffResult} when {@link #build()} is executed.
+     * &lt;/p&gt;
+     *
+     * @param left  {@code this} object.
+     * @param right the object to diff against.
+     * @param style the style will use when outputting the objects, {@code null} uses the default
+     * @throws IllegalArgumentException if {@code left} or {@code right} is {@code null}.
+     * @deprecated Use {@link Builder}.
+     */
+    @Deprecated
+    public ReflectionDiffBuilder(final T left, final T right, final ToStringStyle style) {
+<span class="fc" id="L176">        this(DiffBuilder.&lt;T&gt;builder().setLeft(left).setRight(right).setStyle(style).build(), null);</span>
+<span class="fc" id="L177">    }</span>
+
+    private boolean accept(final Field field) {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (field.getName().indexOf(ClassUtils.INNER_CLASS_SEPARATOR_CHAR) != -1) {</span>
+<span class="fc" id="L181">            return false;</span>
+        }
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (Modifier.isTransient(field.getModifiers())) {</span>
+<span class="fc" id="L184">            return false;</span>
+        }
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (Modifier.isStatic(field.getModifiers())) {</span>
+<span class="fc" id="L187">            return false;</span>
+        }
+<span class="pc bpc" id="L189" title="1 of 4 branches missed.">        if (this.excludeFieldNames != null &amp;&amp; Arrays.binarySearch(this.excludeFieldNames, field.getName()) &gt;= 0) {</span>
+            // Reject fields from the getExcludeFieldNames list.
+<span class="fc" id="L191">            return false;</span>
+        }
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        return !field.isAnnotationPresent(DiffExclude.class);</span>
+    }
+
+    private void appendFields(final Class&lt;?&gt; clazz) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (final Field field : FieldUtils.getAllFields(clazz)) {</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (accept(field)) {</span>
+                try {
+<span class="fc" id="L200">                    diffBuilder.append(field.getName(), readField(field, getLeft()), readField(field, getRight()));</span>
+<span class="nc" id="L201">                } catch (final IllegalAccessException e) {</span>
+                    // this can't happen. Would get a Security exception instead
+                    // throw a runtime exception in case the impossible happens.
+<span class="nc" id="L204">                    throw new IllegalArgumentException(&quot;Unexpected IllegalAccessException: &quot; + e.getMessage(), e);</span>
+<span class="fc" id="L205">                }</span>
+            }
+        }
+<span class="fc" id="L208">    }</span>
+
+    @Override
+    public DiffResult&lt;T&gt; build() {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (getLeft().equals(getRight())) {</span>
+<span class="fc" id="L213">            return diffBuilder.build();</span>
+        }
+
+<span class="fc" id="L216">        appendFields(getLeft().getClass());</span>
+<span class="fc" id="L217">        return diffBuilder.build();</span>
+    }
+
+    /**
+     * Gets the field names that should be excluded from the diff.
+     *
+     * @return Returns the excludeFieldNames.
+     * @since 3.13.0
+     */
+    public String[] getExcludeFieldNames() {
+<span class="fc" id="L227">        return this.excludeFieldNames.clone();</span>
+    }
+
+    private T getLeft() {
+<span class="fc" id="L231">        return diffBuilder.getLeft();</span>
+    }
+
+    private T getRight() {
+<span class="fc" id="L235">        return diffBuilder.getRight();</span>
+    }
+
+    private Object readField(final Field field, final Object target) throws IllegalAccessException {
+<span class="fc" id="L239">        return FieldUtils.readField(field, target, true);</span>
+    }
+
+    /**
+     * Sets the field names to exclude.
+     *
+     * @param excludeFieldNames The field names to exclude from the diff or {@code null}.
+     * @return {@code this}
+     * @since 3.13.0
+     * @deprecated Use {@link Builder#setExcludeFieldNames(String[])}.
+     */
+    @Deprecated
+    public ReflectionDiffBuilder&lt;T&gt; setExcludeFieldNames(final String... excludeFieldNames) {
+<span class="fc" id="L252">        this.excludeFieldNames = toExcludeFieldNames(excludeFieldNames);</span>
+<span class="fc" id="L253">        return this;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CharRange.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">CharRange.java</span></div><h1>CharRange.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.io.Serializable;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/**
+ * A contiguous range of characters, optionally negated.
+ *
+ * &lt;p&gt;Instances are immutable.&lt;/p&gt;
+ *
+ * &lt;p&gt;#ThreadSafe#&lt;/p&gt;
+ * @since 1.0
+ */
+// TODO: This is no longer public and will be removed later as CharSet is moved
+// to depend on Range.
+final class CharRange implements Iterable&lt;Character&gt;, Serializable {
+
+    /**
+     * Character {@link Iterator}.
+     * &lt;p&gt;#NotThreadSafe#&lt;/p&gt;
+     */
+    private static final class CharacterIterator implements Iterator&lt;Character&gt; {
+        /** The current character */
+        private char current;
+
+        private final CharRange range;
+        private boolean hasNext;
+
+        /**
+         * Constructs a new iterator for the character range.
+         *
+         * @param r The character range
+         */
+<span class="fc" id="L52">        private CharacterIterator(final CharRange r) {</span>
+<span class="fc" id="L53">            range = r;</span>
+<span class="fc" id="L54">            hasNext = true;</span>
+
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (range.negated) {</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                if (range.start == 0) {</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                    if (range.end == Character.MAX_VALUE) {</span>
+                        // This range is an empty set
+<span class="fc" id="L60">                        hasNext = false;</span>
+                    } else {
+<span class="fc" id="L62">                        current = (char) (range.end + 1);</span>
+                    }
+                } else {
+<span class="fc" id="L65">                    current = 0;</span>
+                }
+            } else {
+<span class="fc" id="L68">                current = range.start;</span>
+            }
+<span class="fc" id="L70">        }</span>
+
+        /**
+         * Has the iterator not reached the end character yet?
+         *
+         * @return {@code true} if the iterator has yet to reach the character date
+         */
+        @Override
+        public boolean hasNext() {
+<span class="fc" id="L79">            return hasNext;</span>
+        }
+
+        /**
+         * Returns the next character in the iteration
+         *
+         * @return {@link Character} for the next character
+         */
+        @Override
+        public Character next() {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (!hasNext) {</span>
+<span class="fc" id="L90">                throw new NoSuchElementException();</span>
+            }
+<span class="fc" id="L92">            final char cur = current;</span>
+<span class="fc" id="L93">            prepareNext();</span>
+<span class="fc" id="L94">            return Character.valueOf(cur);</span>
+        }
+
+        /**
+         * Prepares the next character in the range.
+         */
+        private void prepareNext() {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (range.negated) {</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (current == Character.MAX_VALUE) {</span>
+<span class="fc" id="L103">                    hasNext = false;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                } else if (current + 1 == range.start) {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                    if (range.end == Character.MAX_VALUE) {</span>
+<span class="fc" id="L106">                        hasNext = false;</span>
+                    } else {
+<span class="fc" id="L108">                        current = (char) (range.end + 1);</span>
+                    }
+                } else {
+<span class="fc" id="L111">                    current = (char) (current + 1);</span>
+                }
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            } else if (current &lt; range.end) {</span>
+<span class="fc" id="L114">                current = (char) (current + 1);</span>
+            } else {
+<span class="fc" id="L116">                hasNext = false;</span>
+            }
+<span class="fc" id="L118">        }</span>
+
+        /**
+         * Always throws UnsupportedOperationException.
+         *
+         * @throws UnsupportedOperationException Always thrown.
+         * @see java.util.Iterator#remove()
+         */
+        @Override
+        public void remove() {
+<span class="fc" id="L128">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    /**
+     * Required for serialization support. Lang version 2.0.
+     *
+     * @see java.io.Serializable
+     */
+    private static final long serialVersionUID = 8270183163158333422L;
+
+    /** Empty array. */
+<span class="fc" id="L140">    static final CharRange[] EMPTY_ARRAY = {};</span>
+
+    /**
+     * Constructs a {@link CharRange} over a single character.
+     *
+     * @param ch  only character in this range
+     * @return the new CharRange object
+     * @since 2.5
+     */
+    public static CharRange is(final char ch) {
+<span class="fc" id="L150">        return new CharRange(ch, ch, false);</span>
+    }
+
+    /**
+     * Constructs a {@link CharRange} over a set of characters.
+     *
+     * &lt;p&gt;If start and end are in the wrong order, they are reversed.
+     * Thus {@code a-e} is the same as {@code e-a}.&lt;/p&gt;
+     *
+     * @param start  first character, inclusive, in this range
+     * @param end  last character, inclusive, in this range
+     * @return the new CharRange object
+     * @since 2.5
+     */
+    public static CharRange isIn(final char start, final char end) {
+<span class="fc" id="L165">        return new CharRange(start, end, false);</span>
+    }
+
+    /**
+     * Constructs a negated {@link CharRange} over a single character.
+     *
+     * &lt;p&gt;A negated range includes everything except that defined by the
+     * single character.&lt;/p&gt;
+     *
+     * @param ch  only character in this range
+     * @return the new CharRange object
+     * @since 2.5
+     */
+    public static CharRange isNot(final char ch) {
+<span class="fc" id="L179">        return new CharRange(ch, ch, true);</span>
+    }
+
+    /**
+     * Constructs a negated {@link CharRange} over a set of characters.
+     *
+     * &lt;p&gt;A negated range includes everything except that defined by the
+     * start and end characters.&lt;/p&gt;
+     *
+     * &lt;p&gt;If start and end are in the wrong order, they are reversed.
+     * Thus {@code a-e} is the same as {@code e-a}.&lt;/p&gt;
+     *
+     * @param start  first character, inclusive, in this range
+     * @param end  last character, inclusive, in this range
+     * @return the new CharRange object
+     * @since 2.5
+     */
+    public static CharRange isNotIn(final char start, final char end) {
+<span class="fc" id="L197">        return new CharRange(start, end, true);</span>
+    }
+
+    /** The first character, inclusive, in the range. */
+    private final char start;
+
+    /** The last character, inclusive, in the range. */
+    private final char end;
+
+    /** True if the range is everything except the characters specified. */
+    private final boolean negated;
+
+    /** Cached toString. */
+    private transient String iToString;
+
+    /**
+     * Constructs a {@link CharRange} over a set of characters,
+     * optionally negating the range.
+     *
+     * &lt;p&gt;A negated range includes everything except that defined by the
+     * start and end characters.&lt;/p&gt;
+     *
+     * &lt;p&gt;If start and end are in the wrong order, they are reversed.
+     * Thus {@code a-e} is the same as {@code e-a}.&lt;/p&gt;
+     *
+     * @param start  first character, inclusive, in this range
+     * @param end  last character, inclusive, in this range
+     * @param negated  true to express everything except the range
+     */
+<span class="fc" id="L226">    private CharRange(char start, char end, final boolean negated) {</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        if (start &gt; end) {</span>
+<span class="fc" id="L228">            final char temp = start;</span>
+<span class="fc" id="L229">            start = end;</span>
+<span class="fc" id="L230">            end = temp;</span>
+        }
+
+<span class="fc" id="L233">        this.start = start;</span>
+<span class="fc" id="L234">        this.end = end;</span>
+<span class="fc" id="L235">        this.negated = negated;</span>
+<span class="fc" id="L236">    }</span>
+
+    // Contains
+    /**
+     * Is the character specified contained in this range.
+     *
+     * @param ch  the character to check
+     * @return {@code true} if this range contains the input character
+     */
+    public boolean contains(final char ch) {
+<span class="fc bfc" id="L246" title="All 6 branches covered.">        return (ch &gt;= start &amp;&amp; ch &lt;= end) != negated;</span>
+    }
+
+    /**
+     * Are all the characters of the passed in range contained in
+     * this range.
+     *
+     * @param range  the range to check against
+     * @return {@code true} if this range entirely contains the input range
+     * @throws NullPointerException if {@code null} input
+     */
+    public boolean contains(final CharRange range) {
+<span class="fc" id="L258">        Objects.requireNonNull(range, &quot;range&quot;);</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (negated) {</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            if (range.negated) {</span>
+<span class="fc bfc" id="L261" title="All 4 branches covered.">                return start &gt;= range.start &amp;&amp; end &lt;= range.end;</span>
+            }
+<span class="fc bfc" id="L263" title="All 4 branches covered.">            return range.end &lt; start || range.start &gt; end;</span>
+        }
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (range.negated) {</span>
+<span class="pc bpc" id="L266" title="1 of 4 branches missed.">            return start == 0 &amp;&amp; end == Character.MAX_VALUE;</span>
+        }
+<span class="fc bfc" id="L268" title="All 4 branches covered.">        return start &lt;= range.start &amp;&amp; end &gt;= range.end;</span>
+    }
+
+    // Basics
+    /**
+     * Compares two CharRange objects, returning true if they represent
+     * exactly the same range of characters defined in the same way.
+     *
+     * @param obj  the object to compare to
+     * @return true if equal
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L282">            return true;</span>
+        }
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">        if (!(obj instanceof CharRange)) {</span>
+<span class="nc" id="L285">            return false;</span>
+        }
+<span class="fc" id="L287">        final CharRange other = (CharRange) obj;</span>
+<span class="fc bfc" id="L288" title="All 6 branches covered.">        return start == other.start &amp;&amp; end == other.end &amp;&amp; negated == other.negated;</span>
+    }
+
+    /**
+     * Gets the end character for this character range.
+     *
+     * @return the end char (inclusive)
+     */
+    public char getEnd() {
+<span class="fc" id="L297">        return this.end;</span>
+    }
+
+    // Accessors
+    /**
+     * Gets the start character for this character range.
+     *
+     * @return the start char (inclusive)
+     */
+    public char getStart() {
+<span class="fc" id="L307">        return this.start;</span>
+    }
+
+    /**
+     * Gets a hashCode compatible with the equals method.
+     *
+     * @return a suitable hashCode
+     */
+    @Override
+    public int hashCode() {
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        return 83 + start + 7 * end + (negated ? 1 : 0);</span>
+    }
+
+    /**
+     * Is this {@link CharRange} negated.
+     *
+     * &lt;p&gt;A negated range includes everything except that defined by the
+     * start and end characters.&lt;/p&gt;
+     *
+     * @return {@code true} if negated
+     */
+    public boolean isNegated() {
+<span class="fc" id="L329">        return negated;</span>
+    }
+
+    /**
+     * Returns an iterator which can be used to walk through the characters described by this range.
+     *
+     * &lt;p&gt;#NotThreadSafe# the iterator is not thread-safe&lt;/p&gt;
+     * @return an iterator to the chars represented by this range
+     * @since 2.5
+     */
+    @Override
+    public Iterator&lt;Character&gt; iterator() {
+<span class="fc" id="L341">        return new CharacterIterator(this);</span>
+    }
+
+    /**
+     * Gets a string representation of the character range.
+     *
+     * @return string representation of this range
+     */
+    @Override
+    public String toString() {
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (iToString == null) {</span>
+<span class="fc" id="L352">            final StringBuilder buf = new StringBuilder(4);</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">            if (isNegated()) {</span>
+<span class="fc" id="L354">                buf.append('^');</span>
+            }
+<span class="fc" id="L356">            buf.append(start);</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">            if (start != end) {</span>
+<span class="fc" id="L358">                buf.append('-');</span>
+<span class="fc" id="L359">                buf.append(end);</span>
+            }
+<span class="fc" id="L361">            iToString = buf.toString();</span>
+        }
+<span class="fc" id="L363">        return iToString;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

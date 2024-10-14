@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NodeTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">NodeTracker.java</span></div><h1>NodeTracker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+
+/**
+ * &lt;p&gt;
+ * A class which can track specific nodes in an {@link InMemoryNodeModel}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Sometimes it is necessary to keep track on a specific node, for instance when operating on a subtree of a model. For
+ * a model comprised of immutable nodes this is not trivial because each update of the model may cause the node to be
+ * replaced. So holding a direct pointer onto the target node is not an option; this instance may become outdated.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class provides an API for selecting a specific node by using a {@link NodeSelector}. The selector is used to
+ * obtain an initial reference to the target node. It is then applied again after each update of the associated node
+ * model (which is done in the {@code update()} method). At this point of time two things can happen:
+ * &lt;ul&gt;
+ * &lt;li&gt;The {@code NodeSelector} associated with the tracked node still selects a single node. Then this node becomes the
+ * new tracked node. This may be the same instance as before or a new one.&lt;/li&gt;
+ * &lt;li&gt;The selector does no longer find the target node. This can happen for instance if it has been removed by an
+ * operation. In this case, the previous node instance is used. It is now detached from the model, but can still be used
+ * for operations on this subtree. It may even become life again after another update of the model.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: This class is intended to work in a concurrent environment. Instances are immutable. The
+ * represented state can be updated by creating new instances which are then stored by the owning node model.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+final class NodeTracker {
+    /**
+     * A simple data class holding information about a tracked node.
+     */
+    private static final class TrackedNodeData {
+        /** The current instance of the tracked node. */
+        private final ImmutableNode node;
+
+        /** The number of observers of this tracked node. */
+        private final int observerCount;
+
+        /** A node model to be used when the tracked node is detached. */
+        private final InMemoryNodeModel detachedModel;
+
+        /**
+         * Creates a new instance of {@code TrackedNodeData} and initializes it with the current reference to the tracked node.
+         *
+         * @param nd the tracked node
+         */
+        public TrackedNodeData(final ImmutableNode nd) {
+<span class="fc" id="L76">            this(nd, 1, null);</span>
+<span class="fc" id="L77">        }</span>
+
+        /**
+         * Creates a new instance of {@code TrackedNodeData} and initializes its properties.
+         *
+         * @param nd the tracked node
+         * @param obsCount the observer count
+         * @param detachedNodeModel a model to be used in detached mode
+         */
+<span class="fc" id="L86">        private TrackedNodeData(final ImmutableNode nd, final int obsCount, final InMemoryNodeModel detachedNodeModel) {</span>
+<span class="fc" id="L87">            node = nd;</span>
+<span class="fc" id="L88">            observerCount = obsCount;</span>
+<span class="fc" id="L89">            detachedModel = detachedNodeModel;</span>
+<span class="fc" id="L90">        }</span>
+
+        /**
+         * Returns an instance with the detached flag set to true. This method is called if the selector of a tracked node does
+         * not match a single node any more. It is possible to pass in a new node instance which becomes the current tracked
+         * node. If this is &lt;b&gt;null&lt;/b&gt;, the previous node instance is used.
+         *
+         * @param newNode the new tracked node instance (may be &lt;b&gt;null&lt;/b&gt;)
+         * @return the updated instance
+         */
+        public TrackedNodeData detach(final ImmutableNode newNode) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            final ImmutableNode newTrackedNode = newNode != null ? newNode : getNode();</span>
+<span class="fc" id="L102">            return new TrackedNodeData(newTrackedNode, observerCount, new InMemoryNodeModel(newTrackedNode));</span>
+        }
+
+        /**
+         * Gets the node model to be used in detached mode. This is &lt;b&gt;null&lt;/b&gt; if the represented tracked node is not
+         * detached.
+         *
+         * @return the node model in detached mode
+         */
+        public InMemoryNodeModel getDetachedModel() {
+<span class="fc" id="L112">            return detachedModel;</span>
+        }
+
+        /**
+         * Gets the tracked node.
+         *
+         * @return the tracked node
+         */
+        public ImmutableNode getNode() {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            return getDetachedModel() != null ? getDetachedModel().getRootNode() : node;</span>
+        }
+
+        /**
+         * Returns a flag whether the represented tracked node is detached.
+         *
+         * @return the detached flag
+         */
+        public boolean isDetached() {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            return getDetachedModel() != null;</span>
+        }
+
+        /**
+         * Another observer was added for this tracked node. This method returns a new instance with an adjusted observer count.
+         *
+         * @return the updated instance
+         */
+        public TrackedNodeData observerAdded() {
+<span class="fc" id="L139">            return new TrackedNodeData(node, observerCount + 1, getDetachedModel());</span>
+        }
+
+        /**
+         * An observer for this tracked node was removed. This method returns a new instance with an adjusted observer count. If
+         * there are no more observers, result is &lt;b&gt;null&lt;/b&gt;. This means that this node is no longer tracked and can be
+         * released.
+         *
+         * @return the updated instance or &lt;b&gt;null&lt;/b&gt;
+         */
+        public TrackedNodeData observerRemoved() {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            return observerCount &lt;= 1 ? null : new TrackedNodeData(node, observerCount - 1, getDetachedModel());</span>
+        }
+
+        /**
+         * Updates the node reference. This method is called after an update of the underlying node structure if the tracked
+         * node was replaced by another instance.
+         *
+         * @param newNode the new tracked node instance
+         * @return the updated instance
+         */
+        public TrackedNodeData updateNode(final ImmutableNode newNode) {
+<span class="fc" id="L161">            return new TrackedNodeData(newNode, observerCount, getDetachedModel());</span>
+        }
+    }
+
+    /**
+     * Creates an empty node derived from the passed in {@code TrackedNodeData} object. This method is called if a tracked
+     * node got cleared by a transaction.
+     *
+     * @param data the {@code TrackedNodeData}
+     * @return the new node instance for this tracked node
+     */
+    private static ImmutableNode createEmptyTrackedNode(final TrackedNodeData data) {
+<span class="fc" id="L173">        return new ImmutableNode.Builder().name(data.getNode().getNodeName()).create();</span>
+    }
+
+    /**
+     * Creates a new {@code TrackedNodeData} object for a tracked node which becomes detached within the current
+     * transaction. This method checks whether the affected node is the root node of the current transaction. If so, it is
+     * cleared.
+     *
+     * @param txTarget the {@code NodeSelector} referencing the target node of the current transaction (may be &lt;b&gt;null&lt;/b&gt;)
+     * @param e the current selector and {@code TrackedNodeData}
+     * @return the new {@code TrackedNodeData} object to be used for this tracked node
+     */
+    private static TrackedNodeData detachedTrackedNodeData(final NodeSelector txTarget, final Map.Entry&lt;NodeSelector, TrackedNodeData&gt; e) {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        final ImmutableNode newNode = e.getKey().equals(txTarget) ? createEmptyTrackedNode(e.getValue()) : null;</span>
+<span class="fc" id="L187">        return e.getValue().detach(newNode);</span>
+    }
+
+    /**
+     * Returns a {@code TrackedNodeData} object for an update operation. If the tracked node is still life, its selector is
+     * applied to the current root node. It may become detached if there is no match.
+     *
+     * @param root the root node
+     * @param txTarget the {@code NodeSelector} referencing the target node of the current transaction (may be &lt;b&gt;null&lt;/b&gt;)
+     * @param resolver the {@code NodeKeyResolver}
+     * @param handler the {@code NodeHandler}
+     * @param e the current selector and {@code TrackedNodeData}
+     * @return the updated {@code TrackedNodeData}
+     */
+    private static TrackedNodeData determineUpdatedTrackedNodeData(final ImmutableNode root, final NodeSelector txTarget,
+        final NodeKeyResolver&lt;ImmutableNode&gt; resolver, final NodeHandler&lt;ImmutableNode&gt; handler, final Map.Entry&lt;NodeSelector, TrackedNodeData&gt; e) {
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        if (e.getValue().isDetached()) {</span>
+<span class="nc" id="L204">            return e.getValue();</span>
+        }
+
+        ImmutableNode newTarget;
+        try {
+<span class="fc" id="L209">            newTarget = e.getKey().select(root, resolver, handler);</span>
+<span class="fc" id="L210">        } catch (final Exception ex) {</span>
+            /*
+             * Evaluation of the key caused an exception. This can happen for instance if the expression engine was changed. In this
+             * case, the node becomes detached.
+             */
+<span class="fc" id="L215">            newTarget = null;</span>
+<span class="fc" id="L216">        }</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (newTarget == null) {</span>
+<span class="fc" id="L218">            return detachedTrackedNodeData(txTarget, e);</span>
+        }
+<span class="fc" id="L220">        return e.getValue().updateNode(newTarget);</span>
+    }
+
+    /**
+     * Creates a {@code TrackedNodeData} object for a newly added observer for the specified node selector.
+     *
+     * @param root the root node
+     * @param selector the {@code NodeSelector}
+     * @param resolver the {@code NodeKeyResolver}
+     * @param handler the {@code NodeHandler}
+     * @param trackData the current data for this selector
+     * @return the updated {@code TrackedNodeData}
+     * @throws ConfigurationRuntimeException if the selector does not select a single node
+     */
+    private static TrackedNodeData trackDataForAddedObserver(final ImmutableNode root, final NodeSelector selector,
+        final NodeKeyResolver&lt;ImmutableNode&gt; resolver, final NodeHandler&lt;ImmutableNode&gt; handler, final TrackedNodeData trackData) {
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (trackData != null) {</span>
+<span class="fc" id="L237">            return trackData.observerAdded();</span>
+        }
+<span class="fc" id="L239">        final ImmutableNode target = selector.select(root, resolver, handler);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (target == null) {</span>
+<span class="fc" id="L241">            throw new ConfigurationRuntimeException(&quot;Selector does not select unique node: &quot; + selector);</span>
+        }
+<span class="fc" id="L243">        return new TrackedNodeData(target);</span>
+    }
+
+    /** A map with data about tracked nodes. */
+    private final Map&lt;NodeSelector, TrackedNodeData&gt; trackedNodes;
+
+    /**
+     * Creates a new instance of {@code NodeTracker}. This instance does not yet track any nodes.
+     */
+    public NodeTracker() {
+<span class="fc" id="L253">        this(Collections.&lt;NodeSelector, TrackedNodeData&gt;emptyMap());</span>
+<span class="fc" id="L254">    }</span>
+
+    /**
+     * Creates a new instance of {@code NodeTracker} and initializes it with the given map of tracked nodes. This
+     * constructor is used internally when the state of tracked nodes has changed.
+     *
+     * @param map the map with tracked nodes
+     */
+<span class="fc" id="L262">    private NodeTracker(final Map&lt;NodeSelector, TrackedNodeData&gt; map) {</span>
+<span class="fc" id="L263">        trackedNodes = map;</span>
+<span class="fc" id="L264">    }</span>
+
+    /**
+     * Marks all tracked nodes as detached. This method is called if there are some drastic changes on the underlying node
+     * structure, e.g. if the root node was replaced.
+     *
+     * @return the updated instance
+     */
+    public NodeTracker detachAllTrackedNodes() {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (trackedNodes.isEmpty()) {</span>
+            // there is not state to be updated
+<span class="fc" id="L275">            return this;</span>
+        }
+<span class="fc" id="L277">        return new NodeTracker(trackedNodes.entrySet().stream()</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">            .collect(Collectors.toMap(Map.Entry::getKey, e -&gt; e.getValue().isDetached() ? e.getValue() : e.getValue().detach(null))));</span>
+    }
+
+    /**
+     * Gets the detached node model for the specified tracked node. When a node becomes detached, operations on it are
+     * independent from the original model. To implement this, a separate node model is created wrapping this tracked node.
+     * This model can be queried by this method. If the node affected is not detached, result is &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param selector the {@code NodeSelector}
+     * @return the detached node model for this node or &lt;b&gt;null&lt;/b&gt;
+     * @throws ConfigurationRuntimeException if no data for this selector is available
+     */
+    public InMemoryNodeModel getDetachedNodeModel(final NodeSelector selector) {
+<span class="fc" id="L291">        return getTrackedNodeData(selector).getDetachedModel();</span>
+    }
+
+    /**
+     * Gets the current {@code ImmutableNode} instance associated with the given selector.
+     *
+     * @param selector the {@code NodeSelector}
+     * @return the {@code ImmutableNode} selected by this selector
+     * @throws ConfigurationRuntimeException if no data for this selector is available
+     */
+    public ImmutableNode getTrackedNode(final NodeSelector selector) {
+<span class="fc" id="L302">        return getTrackedNodeData(selector).getNode();</span>
+    }
+
+    /**
+     * Obtains the {@code TrackedNodeData} object for the specified selector. If the selector cannot be resolved, an
+     * exception is thrown.
+     *
+     * @param selector the {@code NodeSelector}
+     * @return the {@code TrackedNodeData} object for this selector
+     * @throws ConfigurationRuntimeException if the selector cannot be resolved
+     */
+    private TrackedNodeData getTrackedNodeData(final NodeSelector selector) {
+<span class="fc" id="L314">        final TrackedNodeData trackData = trackedNodes.get(selector);</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        if (trackData == null) {</span>
+<span class="fc" id="L316">            throw new ConfigurationRuntimeException(&quot;No tracked node found: &quot; + selector);</span>
+        }
+<span class="fc" id="L318">        return trackData;</span>
+    }
+
+    /**
+     * Returns a flag whether the specified tracked node is detached.
+     *
+     * @param selector the {@code NodeSelector}
+     * @return a flag whether this node is detached
+     * @throws ConfigurationRuntimeException if no data for this selector is available
+     */
+    public boolean isTrackedNodeDetached(final NodeSelector selector) {
+<span class="fc" id="L329">        return getTrackedNodeData(selector).isDetached();</span>
+    }
+
+    /**
+     * Replaces a tracked node by another one. This operation causes the tracked node to become detached.
+     *
+     * @param selector the {@code NodeSelector}
+     * @param newNode the replacement node
+     * @return the updated instance
+     * @throws ConfigurationRuntimeException if the selector cannot be resolved
+     */
+    public NodeTracker replaceAndDetachTrackedNode(final NodeSelector selector, final ImmutableNode newNode) {
+<span class="fc" id="L341">        final Map&lt;NodeSelector, TrackedNodeData&gt; newState = new HashMap&lt;&gt;(trackedNodes);</span>
+<span class="fc" id="L342">        newState.put(selector, getTrackedNodeData(selector).detach(newNode));</span>
+<span class="fc" id="L343">        return new NodeTracker(newState);</span>
+    }
+
+    /**
+     * Adds a node to be tracked. The passed in selector must select exactly one target node, otherwise an exception is
+     * thrown. A new instance is created with the updated tracking state.
+     *
+     * @param root the root node
+     * @param selector the {@code NodeSelector}
+     * @param resolver the {@code NodeKeyResolver}
+     * @param handler the {@code NodeHandler}
+     * @return the updated instance
+     * @throws ConfigurationRuntimeException if the selector does not select a single node
+     */
+    public NodeTracker trackNode(final ImmutableNode root, final NodeSelector selector, final NodeKeyResolver&lt;ImmutableNode&gt; resolver,
+        final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L359">        final Map&lt;NodeSelector, TrackedNodeData&gt; newState = new HashMap&lt;&gt;(trackedNodes);</span>
+<span class="fc" id="L360">        final TrackedNodeData trackData = newState.get(selector);</span>
+<span class="fc" id="L361">        newState.put(selector, trackDataForAddedObserver(root, selector, resolver, handler, trackData));</span>
+<span class="fc" id="L362">        return new NodeTracker(newState);</span>
+    }
+
+    /**
+     * Adds a number of nodes to be tracked. For each node in the passed in collection, a tracked node entry is created
+     * unless already one exists.
+     *
+     * @param selectors a collection with the {@code NodeSelector} objects
+     * @param nodes a collection with the nodes to be tracked
+     * @return the updated instance
+     */
+    public NodeTracker trackNodes(final Collection&lt;NodeSelector&gt; selectors, final Collection&lt;ImmutableNode&gt; nodes) {
+<span class="fc" id="L374">        final Map&lt;NodeSelector, TrackedNodeData&gt; newState = new HashMap&lt;&gt;(trackedNodes);</span>
+<span class="fc" id="L375">        final Iterator&lt;ImmutableNode&gt; itNodes = nodes.iterator();</span>
+<span class="fc" id="L376">        selectors.forEach(selector -&gt; {</span>
+<span class="fc" id="L377">            final ImmutableNode node = itNodes.next();</span>
+<span class="fc" id="L378">            TrackedNodeData trackData = newState.get(selector);</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">            if (trackData == null) {</span>
+<span class="fc" id="L380">                trackData = new TrackedNodeData(node);</span>
+            } else {
+<span class="fc" id="L382">                trackData = trackData.observerAdded();</span>
+            }
+<span class="fc" id="L384">            newState.put(selector, trackData);</span>
+<span class="fc" id="L385">        });</span>
+
+<span class="fc" id="L387">        return new NodeTracker(newState);</span>
+    }
+
+    /**
+     * Notifies this object that an observer was removed for the specified tracked node. If this was the last observer, the
+     * track data for this selector can be removed.
+     *
+     * @param selector the {@code NodeSelector}
+     * @return the updated instance
+     * @throws ConfigurationRuntimeException if no information about this node is available
+     */
+    public NodeTracker untrackNode(final NodeSelector selector) {
+<span class="fc" id="L399">        final TrackedNodeData trackData = getTrackedNodeData(selector);</span>
+
+<span class="fc" id="L401">        final Map&lt;NodeSelector, TrackedNodeData&gt; newState = new HashMap&lt;&gt;(trackedNodes);</span>
+<span class="fc" id="L402">        final TrackedNodeData newTrackData = trackData.observerRemoved();</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        if (newTrackData == null) {</span>
+<span class="fc" id="L404">            newState.remove(selector);</span>
+        } else {
+<span class="fc" id="L406">            newState.put(selector, newTrackData);</span>
+        }
+<span class="fc" id="L408">        return new NodeTracker(newState);</span>
+    }
+
+    /**
+     * Updates tracking information after the node structure has been changed. This method iterates over all tracked nodes.
+     * The selectors are evaluated again to update the node reference. If this fails for a selector, the previous node is
+     * reused; this tracked node is then detached. The passed in {@code NodeSelector} is the selector of the tracked node
+     * which is the target of the current transaction. (It is &lt;b&gt;null&lt;/b&gt; if the transaction is not executed on a tracked
+     * node.) This is used to handle a special case: if the tracked node becomes detached by an operation targeting itself,
+     * this means that the node has been cleared by this operation. In this case, the previous node instance is not used,
+     * but an empty node is created.
+     *
+     * @param root the root node
+     * @param txTarget the {@code NodeSelector} referencing the target node of the current transaction (may be &lt;b&gt;null&lt;/b&gt;)
+     * @param resolver the {@code NodeKeyResolver}
+     * @param handler the {@code NodeHandler}
+     * @return the updated instance
+     */
+    public NodeTracker update(final ImmutableNode root, final NodeSelector txTarget, final NodeKeyResolver&lt;ImmutableNode&gt; resolver,
+            final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        if (trackedNodes.isEmpty()) {</span>
+            // there is not state to be updated
+<span class="fc" id="L430">            return this;</span>
+        }
+
+<span class="fc" id="L433">        final Map&lt;NodeSelector, TrackedNodeData&gt; newState = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L434">        trackedNodes.entrySet().forEach(e -&gt; newState.put(e.getKey(), determineUpdatedTrackedNodeData(root, txTarget, resolver, handler, e)));</span>
+<span class="fc" id="L435">        return new NodeTracker(newState);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

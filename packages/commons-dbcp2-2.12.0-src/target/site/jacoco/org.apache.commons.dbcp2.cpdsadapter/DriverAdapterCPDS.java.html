@@ -1,0 +1,840 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DriverAdapterCPDS.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.cpdsadapter</a> &gt; <span class="el_source">DriverAdapterCPDS.java</span></div><h1>DriverAdapterCPDS.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.cpdsadapter;
+
+import java.io.PrintWriter;
+import java.io.Serializable;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.time.Duration;
+import java.util.Hashtable;
+import java.util.Properties;
+import java.util.logging.Logger;
+
+import javax.naming.Context;
+import javax.naming.Name;
+import javax.naming.NamingException;
+import javax.naming.RefAddr;
+import javax.naming.Reference;
+import javax.naming.Referenceable;
+import javax.naming.StringRefAddr;
+import javax.naming.spi.ObjectFactory;
+import javax.sql.ConnectionPoolDataSource;
+import javax.sql.PooledConnection;
+
+import org.apache.commons.dbcp2.Constants;
+import org.apache.commons.dbcp2.DelegatingPreparedStatement;
+import org.apache.commons.dbcp2.PStmtKey;
+import org.apache.commons.dbcp2.Utils;
+import org.apache.commons.pool2.KeyedObjectPool;
+import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
+
+/**
+ * &lt;p&gt;
+ * An adapter for JDBC drivers that do not include an implementation of {@link javax.sql.ConnectionPoolDataSource}, but
+ * still include a {@link java.sql.DriverManager} implementation. {@code ConnectionPoolDataSource}s are not used
+ * within general applications. They are used by {@code DataSource} implementations that pool
+ * {@code Connection}s, such as {@link org.apache.commons.dbcp2.datasources.SharedPoolDataSource}. A J2EE container
+ * will normally provide some method of initializing the {@code ConnectionPoolDataSource} whose attributes are
+ * presented as bean getters/setters and then deploying it via JNDI. It is then available as a source of physical
+ * connections to the database, when the pooling {@code DataSource} needs to create a new physical connection.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Although normally used within a JNDI environment, the DriverAdapterCPDS can be instantiated and initialized as any
+ * bean and then attached directly to a pooling {@code DataSource}. {@code Jdbc2PoolDataSource} can use the
+ * {@code ConnectionPoolDataSource} with or without the use of JNDI.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The DriverAdapterCPDS also provides {@code PreparedStatement} pooling which is not generally available in jdbc2
+ * {@code ConnectionPoolDataSource} implementation, but is addressed within the JDBC 3 specification. The
+ * {@code PreparedStatement} pool in DriverAdapterCPDS has been in the DBCP package for some time, but it has not
+ * undergone extensive testing in the configuration used here. It should be considered experimental and can be toggled
+ * with the poolPreparedStatements attribute.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The &lt;a href=&quot;package-summary.html&quot;&gt;package documentation&lt;/a&gt; contains an example using Apache Catalina and JNDI. The
+ * &lt;a href=&quot;../datasources/package-summary.html&quot;&gt;datasources package documentation&lt;/a&gt; shows how to use
+ * {@code DriverAdapterCPDS} as a source for {@code Jdbc2PoolDataSource} without the use of JNDI.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class DriverAdapterCPDS implements ConnectionPoolDataSource, Referenceable, Serializable, ObjectFactory {
+
+    private static final String KEY_MIN_EVICTABLE_IDLE_DURATION = &quot;minEvictableIdleDuration&quot;;
+
+    private static final String KEY_DURATION_BETWEEN_EVICTION_RUNS = &quot;durationBetweenEvictionRuns&quot;;
+
+    private static final String KEY_LOGIN_TIMEOUT = &quot;loginTimeout&quot;;
+
+    private static final String KEY_URL = &quot;url&quot;;
+
+    private static final String KEY_DRIVER = &quot;driver&quot;;
+
+    private static final String KEY_DESCRIPTION = &quot;description&quot;;
+
+    private static final String KEY_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED = &quot;accessToUnderlyingConnectionAllowed&quot;;
+
+    private static final String KEY_MAX_PREPARED_STATEMENTS = &quot;maxPreparedStatements&quot;;
+
+    private static final String KEY_MIN_EVICTABLE_IDLE_TIME_MILLIS = &quot;minEvictableIdleTimeMillis&quot;;
+
+    private static final String KEY_NUM_TESTS_PER_EVICTION_RUN = &quot;numTestsPerEvictionRun&quot;;
+
+    private static final String KEY_TIME_BETWEEN_EVICTION_RUNS_MILLIS = &quot;timeBetweenEvictionRunsMillis&quot;;
+
+    private static final String KEY_MAX_IDLE = &quot;maxIdle&quot;;
+
+    private static final String KEY_POOL_PREPARED_STATEMENTS = &quot;poolPreparedStatements&quot;;
+
+    private static final long serialVersionUID = -4820523787212147844L;
+
+    private static final String GET_CONNECTION_CALLED = &quot;A PooledConnection was already requested from this source, further initialization is not allowed.&quot;;
+
+    static {
+        // Attempt to prevent deadlocks - see DBCP-272
+<span class="fc" id="L113">        DriverManager.getDrivers();</span>
+<span class="fc" id="L114">    }</span>
+
+    /** Description */
+    private String description;
+
+    /** Connection string */
+    private String connectionString;
+
+    /** User name */
+    private String userName;
+
+    /** User password */
+    private char[] userPassword;
+
+    /** Driver class name */
+    private String driver;
+
+    /** Login TimeOut in seconds */
+    private int loginTimeout;
+
+    /** Log stream. NOT USED */
+    private transient PrintWriter logWriter;
+
+    // PreparedStatement pool properties
+    private boolean poolPreparedStatements;
+<span class="fc" id="L139">    private int maxIdle = 10;</span>
+<span class="fc" id="L140">    private Duration durationBetweenEvictionRuns = BaseObjectPoolConfig.DEFAULT_DURATION_BETWEEN_EVICTION_RUNS;</span>
+<span class="fc" id="L141">    private int numTestsPerEvictionRun = -1;</span>
+<span class="fc" id="L142">    private Duration minEvictableIdleDuration = BaseObjectPoolConfig.DEFAULT_MIN_EVICTABLE_IDLE_DURATION;</span>
+
+<span class="fc" id="L144">    private int maxPreparedStatements = -1;</span>
+
+    /** Whether or not getConnection has been called */
+    private volatile boolean getConnectionCalled;
+
+    /** Connection properties passed to JDBC Driver */
+    private Properties connectionProperties;
+
+    /**
+     * Controls access to the underlying connection
+     */
+    private boolean accessToUnderlyingConnectionAllowed;
+
+    /**
+     * Default no-argument constructor for Serialization
+     */
+<span class="fc" id="L160">    public DriverAdapterCPDS() {</span>
+<span class="fc" id="L161">    }</span>
+
+    /**
+     * Throws an IllegalStateException, if a PooledConnection has already been requested.
+     */
+    private void assertInitializationAllowed() throws IllegalStateException {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (getConnectionCalled) {</span>
+<span class="fc" id="L168">            throw new IllegalStateException(GET_CONNECTION_CALLED);</span>
+        }
+<span class="fc" id="L170">    }</span>
+
+    private boolean getBooleanContentString(final RefAddr ra) {
+<span class="fc" id="L173">        return Boolean.parseBoolean(getStringContent(ra));</span>
+    }
+
+    /**
+     * Gets the connection properties passed to the JDBC driver.
+     *
+     * @return the JDBC connection properties used when creating connections.
+     */
+    public Properties getConnectionProperties() {
+<span class="fc" id="L182">        return connectionProperties;</span>
+    }
+
+    /**
+     * Gets the value of description. This property is here for use by the code which will deploy this data source. It
+     * is not used internally.
+     *
+     * @return value of description, may be null.
+     * @see #setDescription(String)
+     */
+    public String getDescription() {
+<span class="fc" id="L193">        return description;</span>
+    }
+
+    /**
+     * Gets the driver class name.
+     *
+     * @return value of driver.
+     */
+    public String getDriver() {
+<span class="fc" id="L202">        return driver;</span>
+    }
+
+    /**
+     * Gets the duration to sleep between runs of the idle object evictor thread. When non-positive, no
+     * idle object evictor thread will be run.
+     *
+     * @return the value of the evictor thread timer
+     * @see #setDurationBetweenEvictionRuns(Duration)
+     * @since 2.9.0
+     */
+    public Duration getDurationBetweenEvictionRuns() {
+<span class="fc" id="L214">        return durationBetweenEvictionRuns;</span>
+    }
+
+    private int getIntegerStringContent(final RefAddr ra) {
+<span class="fc" id="L218">        return Integer.parseInt(getStringContent(ra));</span>
+    }
+
+    /**
+     * Gets the maximum time in seconds that this data source can wait while attempting to connect to a database. NOT
+     * USED.
+     */
+    @Override
+    public int getLoginTimeout() {
+<span class="fc" id="L227">        return loginTimeout;</span>
+    }
+
+    /**
+     * Gets the log writer for this data source. NOT USED.
+     */
+    @Override
+    public PrintWriter getLogWriter() {
+<span class="fc" id="L235">        return logWriter;</span>
+    }
+
+    /**
+     * Gets the maximum number of statements that can remain idle in the pool, without extra ones being released, or
+     * negative for no limit.
+     *
+     * @return the value of maxIdle
+     */
+    public int getMaxIdle() {
+<span class="fc" id="L245">        return maxIdle;</span>
+    }
+
+    /**
+     * Gets the maximum number of prepared statements.
+     *
+     * @return maxPrepartedStatements value
+     */
+    public int getMaxPreparedStatements() {
+<span class="fc" id="L254">        return maxPreparedStatements;</span>
+    }
+
+    /**
+     * Gets the minimum amount of time a statement may sit idle in the pool before it is eligible for eviction by the
+     * idle object evictor (if any).
+     *
+     * @see #setMinEvictableIdleDuration
+     * @see #setDurationBetweenEvictionRuns
+     * @return the minimum amount of time a statement may sit idle in the pool.
+     * @since 2.9.0
+     */
+    public Duration getMinEvictableIdleDuration() {
+<span class="fc" id="L267">        return minEvictableIdleDuration;</span>
+    }
+
+    /**
+     * Gets the minimum amount of time a statement may sit idle in the pool before it is eligible for eviction by the
+     * idle object evictor (if any).
+     *
+     * @see #setMinEvictableIdleTimeMillis
+     * @see #setTimeBetweenEvictionRunsMillis
+     * @return the minimum amount of time a statement may sit idle in the pool.
+     * @deprecated USe {@link #getMinEvictableIdleDuration()}.
+     */
+    @Deprecated
+    public int getMinEvictableIdleTimeMillis() {
+<span class="fc" id="L281">        return (int) minEvictableIdleDuration.toMillis();</span>
+    }
+
+    /**
+     * Gets the number of statements to examine during each run of the idle object evictor thread (if any.)
+     *
+     * @see #setNumTestsPerEvictionRun
+     * @see #setTimeBetweenEvictionRunsMillis
+     * @return the number of statements to examine during each run of the idle object evictor thread (if any.)
+     */
+    public int getNumTestsPerEvictionRun() {
+<span class="fc" id="L292">        return numTestsPerEvictionRun;</span>
+    }
+
+    /**
+     * Implements {@link ObjectFactory} to create an instance of this class
+     */
+    @Override
+    public Object getObjectInstance(final Object refObj, final Name name, final Context context, final Hashtable&lt;?, ?&gt; env) throws ClassNotFoundException {
+        // The spec says to return null if we can't create an instance
+        // of the reference
+<span class="fc" id="L302">        DriverAdapterCPDS cpds = null;</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (refObj instanceof Reference) {</span>
+<span class="fc" id="L304">            final Reference ref = (Reference) refObj;</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">            if (ref.getClassName().equals(getClass().getName())) {</span>
+<span class="fc" id="L306">                RefAddr ra = ref.get(KEY_DESCRIPTION);</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L308">                    setDescription(getStringContent(ra));</span>
+                }
+
+<span class="fc" id="L311">                ra = ref.get(KEY_DRIVER);</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L313">                    setDriver(getStringContent(ra));</span>
+                }
+<span class="fc" id="L315">                ra = ref.get(KEY_URL);</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L317">                    setUrl(getStringContent(ra));</span>
+                }
+<span class="fc" id="L319">                ra = ref.get(Constants.KEY_USER);</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L321">                    setUser(getStringContent(ra));</span>
+                }
+<span class="fc" id="L323">                ra = ref.get(Constants.KEY_PASSWORD);</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L325">                    setPassword(getStringContent(ra));</span>
+                }
+
+<span class="fc" id="L328">                ra = ref.get(KEY_POOL_PREPARED_STATEMENTS);</span>
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L330">                    setPoolPreparedStatements(getBooleanContentString(ra));</span>
+                }
+<span class="fc" id="L332">                ra = ref.get(KEY_MAX_IDLE);</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L334">                    setMaxIdle(getIntegerStringContent(ra));</span>
+                }
+
+<span class="fc" id="L337">                ra = ref.get(KEY_TIME_BETWEEN_EVICTION_RUNS_MILLIS);</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L339">                    setTimeBetweenEvictionRunsMillis(getIntegerStringContent(ra));</span>
+                }
+
+<span class="fc" id="L342">                ra = ref.get(KEY_NUM_TESTS_PER_EVICTION_RUN);</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L344">                    setNumTestsPerEvictionRun(getIntegerStringContent(ra));</span>
+                }
+
+<span class="fc" id="L347">                ra = ref.get(KEY_MIN_EVICTABLE_IDLE_TIME_MILLIS);</span>
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L349">                    setMinEvictableIdleTimeMillis(getIntegerStringContent(ra));</span>
+                }
+
+<span class="fc" id="L352">                ra = ref.get(KEY_MAX_PREPARED_STATEMENTS);</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="fc" id="L354">                    setMaxPreparedStatements(getIntegerStringContent(ra));</span>
+                }
+
+<span class="fc" id="L357">                ra = ref.get(KEY_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED);</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">                if (isNotEmpty(ra)) {</span>
+<span class="nc" id="L359">                    setAccessToUnderlyingConnectionAllowed(getBooleanContentString(ra));</span>
+                }
+
+<span class="fc" id="L362">                cpds = this;</span>
+            }
+        }
+<span class="fc" id="L365">        return cpds;</span>
+    }
+
+    @Override
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+<span class="fc" id="L370">        throw new SQLFeatureNotSupportedException();</span>
+    }
+
+    /**
+     * Gets the value of password for the default user.
+     *
+     * @return value of password.
+     */
+    public String getPassword() {
+<span class="fc" id="L379">        return Utils.toString(userPassword);</span>
+    }
+
+    /**
+     * Gets the value of password for the default user.
+     *
+     * @return value of password.
+     * @since 2.4.0
+     */
+    public char[] getPasswordCharArray() {
+<span class="fc" id="L389">        return Utils.clone(userPassword);</span>
+    }
+
+    /**
+     * Attempts to establish a database connection using the default user and password.
+     */
+    @Override
+    public PooledConnection getPooledConnection() throws SQLException {
+<span class="fc" id="L397">        return getPooledConnection(getUser(), getPassword());</span>
+    }
+
+    /**
+     * Attempts to establish a database connection.
+     *
+     * @param pooledUserName name to be used for the connection
+     * @param pooledUserPassword password to be used fur the connection
+     */
+    @Override
+    public PooledConnection getPooledConnection(final String pooledUserName, final String pooledUserPassword) throws SQLException {
+<span class="fc" id="L408">        getConnectionCalled = true;</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (connectionProperties != null) {</span>
+<span class="fc" id="L410">            update(connectionProperties, Constants.KEY_USER, pooledUserName);</span>
+<span class="fc" id="L411">            update(connectionProperties, Constants.KEY_PASSWORD, pooledUserPassword);</span>
+        }
+        // Workaround for buggy WebLogic 5.1 class loader - ignore ClassCircularityError upon first invocation.
+<span class="fc" id="L414">        PooledConnectionImpl pooledConnection = null;</span>
+        try {
+<span class="fc" id="L416">            pooledConnection = getPooledConnectionImpl(pooledUserName, pooledUserPassword);</span>
+<span class="nc" id="L417">        } catch (final ClassCircularityError e) {</span>
+<span class="nc" id="L418">            pooledConnection = getPooledConnectionImpl(pooledUserName, pooledUserPassword);</span>
+<span class="fc" id="L419">        }</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        if (isPoolPreparedStatements()) {</span>
+<span class="fc" id="L421">            final GenericKeyedObjectPoolConfig&lt;DelegatingPreparedStatement&gt; config = new GenericKeyedObjectPoolConfig&lt;&gt;();</span>
+<span class="fc" id="L422">            config.setMaxTotalPerKey(Integer.MAX_VALUE);</span>
+<span class="fc" id="L423">            config.setBlockWhenExhausted(false);</span>
+<span class="fc" id="L424">            config.setMaxWait(Duration.ZERO);</span>
+<span class="fc" id="L425">            config.setMaxIdlePerKey(getMaxIdle());</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">            if (getMaxPreparedStatements() &lt;= 0) {</span>
+                // Since there is no limit, create a prepared statement pool with an eviction thread;
+                // evictor settings are the same as the connection pool settings.
+<span class="fc" id="L429">                config.setTimeBetweenEvictionRuns(getDurationBetweenEvictionRuns());</span>
+<span class="fc" id="L430">                config.setNumTestsPerEvictionRun(getNumTestsPerEvictionRun());</span>
+<span class="fc" id="L431">                config.setMinEvictableIdleDuration(getMinEvictableIdleDuration());</span>
+            } else {
+                // Since there is a limit, create a prepared statement pool without an eviction thread;
+                // pool has LRU functionality so when the limit is reached, 15% of the pool is cleared.
+                // see org.apache.commons.pool2.impl.GenericKeyedObjectPool.clearOldest method
+<span class="fc" id="L436">                config.setMaxTotal(getMaxPreparedStatements());</span>
+<span class="fc" id="L437">                config.setTimeBetweenEvictionRuns(Duration.ofMillis(-1));</span>
+<span class="fc" id="L438">                config.setNumTestsPerEvictionRun(0);</span>
+<span class="fc" id="L439">                config.setMinEvictableIdleDuration(Duration.ZERO);</span>
+            }
+            @SuppressWarnings(&quot;resource&quot;) // PooledConnectionImpl closes
+<span class="fc" id="L442">            final KeyedObjectPool&lt;PStmtKey, DelegatingPreparedStatement&gt; stmtPool = new GenericKeyedObjectPool&lt;&gt;(pooledConnection, config);</span>
+<span class="fc" id="L443">            pooledConnection.setStatementPool(stmtPool);</span>
+        }
+<span class="fc" id="L445">        return pooledConnection;</span>
+    }
+
+    @SuppressWarnings(&quot;resource&quot;) // Caller closes
+    private PooledConnectionImpl getPooledConnectionImpl(final String pooledUserName, final String pooledUserPassword) throws SQLException {
+        PooledConnectionImpl pooledConnection;
+<span class="fc bfc" id="L451" title="All 2 branches covered.">        if (connectionProperties != null) {</span>
+<span class="fc" id="L452">            pooledConnection = new PooledConnectionImpl(DriverManager.getConnection(getUrl(), connectionProperties));</span>
+        } else {
+<span class="fc" id="L454">            pooledConnection = new PooledConnectionImpl(DriverManager.getConnection(getUrl(), pooledUserName, pooledUserPassword));</span>
+        }
+<span class="fc" id="L456">        pooledConnection.setAccessToUnderlyingConnectionAllowed(isAccessToUnderlyingConnectionAllowed());</span>
+<span class="fc" id="L457">        return pooledConnection;</span>
+    }
+
+    /**
+     * Implements {@link Referenceable}.
+     */
+    @Override
+    public Reference getReference() throws NamingException {
+        // this class implements its own factory
+<span class="fc" id="L466">        final String factory = getClass().getName();</span>
+
+<span class="fc" id="L468">        final Reference ref = new Reference(getClass().getName(), factory, null);</span>
+
+<span class="fc" id="L470">        ref.add(new StringRefAddr(KEY_DESCRIPTION, getDescription()));</span>
+<span class="fc" id="L471">        ref.add(new StringRefAddr(KEY_DRIVER, getDriver()));</span>
+<span class="fc" id="L472">        ref.add(new StringRefAddr(KEY_LOGIN_TIMEOUT, String.valueOf(getLoginTimeout())));</span>
+<span class="fc" id="L473">        ref.add(new StringRefAddr(Constants.KEY_PASSWORD, getPassword()));</span>
+<span class="fc" id="L474">        ref.add(new StringRefAddr(Constants.KEY_USER, getUser()));</span>
+<span class="fc" id="L475">        ref.add(new StringRefAddr(KEY_URL, getUrl()));</span>
+
+<span class="fc" id="L477">        ref.add(new StringRefAddr(KEY_POOL_PREPARED_STATEMENTS, String.valueOf(isPoolPreparedStatements())));</span>
+<span class="fc" id="L478">        ref.add(new StringRefAddr(KEY_MAX_IDLE, String.valueOf(getMaxIdle())));</span>
+<span class="fc" id="L479">        ref.add(new StringRefAddr(KEY_NUM_TESTS_PER_EVICTION_RUN, String.valueOf(getNumTestsPerEvictionRun())));</span>
+<span class="fc" id="L480">        ref.add(new StringRefAddr(KEY_MAX_PREPARED_STATEMENTS, String.valueOf(getMaxPreparedStatements())));</span>
+        //
+        // Pair of current and deprecated.
+<span class="fc" id="L483">        ref.add(new StringRefAddr(KEY_DURATION_BETWEEN_EVICTION_RUNS, String.valueOf(getDurationBetweenEvictionRuns())));</span>
+<span class="fc" id="L484">        ref.add(new StringRefAddr(KEY_TIME_BETWEEN_EVICTION_RUNS_MILLIS, String.valueOf(getTimeBetweenEvictionRunsMillis())));</span>
+        //
+        // Pair of current and deprecated.
+<span class="fc" id="L487">        ref.add(new StringRefAddr(KEY_MIN_EVICTABLE_IDLE_DURATION, String.valueOf(getMinEvictableIdleDuration())));</span>
+<span class="fc" id="L488">        ref.add(new StringRefAddr(KEY_MIN_EVICTABLE_IDLE_TIME_MILLIS, String.valueOf(getMinEvictableIdleTimeMillis())));</span>
+
+<span class="fc" id="L490">        return ref;</span>
+    }
+
+    private String getStringContent(final RefAddr ra) {
+<span class="fc" id="L494">        return ra.getContent().toString();</span>
+    }
+
+    /**
+     * Gets the number of milliseconds to sleep between runs of the idle object evictor thread. When non-positive, no
+     * idle object evictor thread will be run.
+     *
+     * @return the value of the evictor thread timer
+     * @see #setDurationBetweenEvictionRuns(Duration)
+     * @deprecated Use {@link #getDurationBetweenEvictionRuns()}.
+     */
+    @Deprecated
+    public long getTimeBetweenEvictionRunsMillis() {
+<span class="fc" id="L507">        return durationBetweenEvictionRuns.toMillis();</span>
+    }
+
+    /**
+     * Gets the value of connection string used to locate the database for this data source.
+     *
+     * @return value of connection string.
+     */
+    public String getUrl() {
+<span class="fc" id="L516">        return connectionString;</span>
+    }
+
+    /**
+     * Gets the value of default user (login or user name).
+     *
+     * @return value of user.
+     */
+    public String getUser() {
+<span class="fc" id="L525">        return userName;</span>
+    }
+
+    /**
+     * Returns the value of the accessToUnderlyingConnectionAllowed property.
+     *
+     * @return true if access to the underlying is allowed, false otherwise.
+     */
+    public synchronized boolean isAccessToUnderlyingConnectionAllowed() {
+<span class="fc" id="L534">        return this.accessToUnderlyingConnectionAllowed;</span>
+    }
+
+    private boolean isNotEmpty(final RefAddr ra) {
+<span class="fc bfc" id="L538" title="All 4 branches covered.">        return ra != null &amp;&amp; ra.getContent() != null;</span>
+    }
+
+    /**
+     * Whether to toggle the pooling of {@code PreparedStatement}s
+     *
+     * @return value of poolPreparedStatements.
+     */
+    public boolean isPoolPreparedStatements() {
+<span class="fc" id="L547">        return poolPreparedStatements;</span>
+    }
+
+    /**
+     * Sets the value of the accessToUnderlyingConnectionAllowed property. It controls if the PoolGuard allows access to
+     * the underlying connection. (Default: false)
+     *
+     * @param allow Access to the underlying connection is granted when true.
+     */
+    public synchronized void setAccessToUnderlyingConnectionAllowed(final boolean allow) {
+<span class="fc" id="L557">        this.accessToUnderlyingConnectionAllowed = allow;</span>
+<span class="fc" id="L558">    }</span>
+
+    /**
+     * Sets the connection properties passed to the JDBC driver.
+     * &lt;p&gt;
+     * If {@code props} contains &quot;user&quot; and/or &quot;password&quot; properties, the corresponding instance properties are
+     * set. If these properties are not present, they are filled in using {@link #getUser()}, {@link #getPassword()}
+     * when {@link #getPooledConnection()} is called, or using the actual parameters to the method call when
+     * {@link #getPooledConnection(String, String)} is called. Calls to {@link #setUser(String)} or
+     * {@link #setPassword(String)} overwrite the values of these properties if {@code connectionProperties} is not
+     * null.
+     * &lt;/p&gt;
+     *
+     * @param props Connection properties to use when creating new connections.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setConnectionProperties(final Properties props) {
+<span class="fc" id="L575">        assertInitializationAllowed();</span>
+<span class="fc" id="L576">        connectionProperties = props;</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">        if (connectionProperties != null) {</span>
+<span class="fc" id="L578">            final String user = connectionProperties.getProperty(Constants.KEY_USER);</span>
+<span class="fc bfc" id="L579" title="All 2 branches covered.">            if (user != null) {</span>
+<span class="fc" id="L580">                setUser(user);</span>
+            }
+<span class="fc" id="L582">            final String password = connectionProperties.getProperty(Constants.KEY_PASSWORD);</span>
+<span class="fc bfc" id="L583" title="All 2 branches covered.">            if (password != null) {</span>
+<span class="fc" id="L584">                setPassword(password);</span>
+            }
+        }
+<span class="fc" id="L587">    }</span>
+
+    /**
+     * Sets the value of description. This property is here for use by the code which will deploy this datasource. It is
+     * not used internally.
+     *
+     * @param description Value to assign to description.
+     */
+    public void setDescription(final String description) {
+<span class="fc" id="L596">        this.description = description;</span>
+<span class="fc" id="L597">    }</span>
+
+    /**
+     * Sets the driver class name. Setting the driver class name cause the driver to be registered with the
+     * DriverManager.
+     *
+     * @param driver Value to assign to driver.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     * @throws ClassNotFoundException if the class cannot be located
+     */
+    public void setDriver(final String driver) throws ClassNotFoundException {
+<span class="fc" id="L608">        assertInitializationAllowed();</span>
+<span class="fc" id="L609">        this.driver = driver;</span>
+        // make sure driver is registered
+<span class="fc" id="L611">        Class.forName(driver);</span>
+<span class="fc" id="L612">    }</span>
+
+    /**
+     * Sets the duration to sleep between runs of the idle object evictor thread. When non-positive, no
+     * idle object evictor thread will be run.
+     *
+     * @param durationBetweenEvictionRuns The duration to sleep between runs of the idle object evictor
+     *        thread. When non-positive, no idle object evictor thread will be run.
+     * @see #getDurationBetweenEvictionRuns()
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     * @since 2.9.0
+     */
+    public void setDurationBetweenEvictionRuns(final Duration durationBetweenEvictionRuns) {
+<span class="fc" id="L625">        assertInitializationAllowed();</span>
+<span class="fc" id="L626">        this.durationBetweenEvictionRuns = durationBetweenEvictionRuns;</span>
+<span class="fc" id="L627">    }</span>
+
+    /**
+     * Sets the maximum time in seconds that this data source will wait while attempting to connect to a database. NOT
+     * USED.
+     */
+    @Override
+    public void setLoginTimeout(final int seconds) {
+<span class="fc" id="L635">        this.loginTimeout = seconds;</span>
+<span class="fc" id="L636">    }</span>
+
+    /**
+     * Sets the log writer for this data source. NOT USED.
+     */
+    @Override
+    public void setLogWriter(final PrintWriter logWriter) {
+<span class="fc" id="L643">        this.logWriter = logWriter;</span>
+<span class="fc" id="L644">    }</span>
+
+    /**
+     * Gets the maximum number of statements that can remain idle in the pool, without extra ones being released, or
+     * negative for no limit.
+     *
+     * @param maxIdle The maximum number of statements that can remain idle
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setMaxIdle(final int maxIdle) {
+<span class="fc" id="L654">        assertInitializationAllowed();</span>
+<span class="fc" id="L655">        this.maxIdle = maxIdle;</span>
+<span class="fc" id="L656">    }</span>
+
+    /**
+     * Sets the maximum number of prepared statements.
+     *
+     * @param maxPreparedStatements the new maximum number of prepared statements
+     */
+    public void setMaxPreparedStatements(final int maxPreparedStatements) {
+<span class="fc" id="L664">        this.maxPreparedStatements = maxPreparedStatements;</span>
+<span class="fc" id="L665">    }</span>
+
+    /**
+     * Sets the minimum amount of time a statement may sit idle in the pool before it is eligible for eviction by the
+     * idle object evictor (if any). When non-positive, no objects will be evicted from the pool due to idle time alone.
+     *
+     * @param minEvictableIdleDuration minimum time to set in milliseconds.
+     * @see #getMinEvictableIdleDuration()
+     * @see #setDurationBetweenEvictionRuns(Duration)
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called.
+     * @since 2.9.0
+     */
+    public void setMinEvictableIdleDuration(final Duration minEvictableIdleDuration) {
+<span class="fc" id="L678">        assertInitializationAllowed();</span>
+<span class="fc" id="L679">        this.minEvictableIdleDuration = minEvictableIdleDuration;</span>
+<span class="fc" id="L680">    }</span>
+
+    /**
+     * Sets the minimum amount of time a statement may sit idle in the pool before it is eligible for eviction by the
+     * idle object evictor (if any). When non-positive, no objects will be evicted from the pool due to idle time alone.
+     *
+     * @param minEvictableIdleTimeMillis minimum time to set in milliseconds.
+     * @see #getMinEvictableIdleDuration()
+     * @see #setDurationBetweenEvictionRuns(Duration)
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     * @deprecated Use {@link #setMinEvictableIdleDuration(Duration)}.
+     */
+    @Deprecated
+    public void setMinEvictableIdleTimeMillis(final int minEvictableIdleTimeMillis) {
+<span class="fc" id="L694">        assertInitializationAllowed();</span>
+<span class="fc" id="L695">        this.minEvictableIdleDuration = Duration.ofMillis(minEvictableIdleTimeMillis);</span>
+<span class="fc" id="L696">    }</span>
+
+    /**
+     * Sets the number of statements to examine during each run of the idle object evictor thread (if any).
+     * &lt;p&gt;
+     * When a negative value is supplied,
+     * {@code ceil({@link BasicDataSource#getNumIdle})/abs({@link #getNumTestsPerEvictionRun})} tests will be run.
+     * I.e., when the value is &lt;i&gt;-n&lt;/i&gt;, roughly one &lt;i&gt;n&lt;/i&gt;th of the idle objects will be tested per run.
+     * &lt;/p&gt;
+     *
+     * @param numTestsPerEvictionRun number of statements to examine per run
+     * @see #getNumTestsPerEvictionRun()
+     * @see #setDurationBetweenEvictionRuns(Duration)
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setNumTestsPerEvictionRun(final int numTestsPerEvictionRun) {
+<span class="fc" id="L712">        assertInitializationAllowed();</span>
+<span class="fc" id="L713">        this.numTestsPerEvictionRun = numTestsPerEvictionRun;</span>
+<span class="fc" id="L714">    }</span>
+
+    /**
+     * Sets the value of password for the default user.
+     *
+     * @param userPassword Value to assign to password.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setPassword(final char[] userPassword) {
+<span class="fc" id="L723">        assertInitializationAllowed();</span>
+<span class="fc" id="L724">        this.userPassword = Utils.clone(userPassword);</span>
+<span class="fc" id="L725">        update(connectionProperties, Constants.KEY_PASSWORD, Utils.toString(this.userPassword));</span>
+<span class="fc" id="L726">    }</span>
+
+    /**
+     * Sets the value of password for the default user.
+     *
+     * @param userPassword Value to assign to password.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setPassword(final String userPassword) {
+<span class="fc" id="L735">        assertInitializationAllowed();</span>
+<span class="fc" id="L736">        this.userPassword = Utils.toCharArray(userPassword);</span>
+<span class="fc" id="L737">        update(connectionProperties, Constants.KEY_PASSWORD, userPassword);</span>
+<span class="fc" id="L738">    }</span>
+
+    /**
+     * Whether to toggle the pooling of {@code PreparedStatement}s
+     *
+     * @param poolPreparedStatements true to pool statements.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setPoolPreparedStatements(final boolean poolPreparedStatements) {
+<span class="fc" id="L747">        assertInitializationAllowed();</span>
+<span class="fc" id="L748">        this.poolPreparedStatements = poolPreparedStatements;</span>
+<span class="fc" id="L749">    }</span>
+
+    /**
+     * Sets the number of milliseconds to sleep between runs of the idle object evictor thread. When non-positive, no
+     * idle object evictor thread will be run.
+     *
+     * @param timeBetweenEvictionRunsMillis The number of milliseconds to sleep between runs of the idle object evictor
+     *        thread. When non-positive, no idle object evictor thread will be run.
+     * @see #getDurationBetweenEvictionRuns()
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     * @deprecated Use {@link #setDurationBetweenEvictionRuns(Duration)}.
+     */
+    @Deprecated
+    public void setTimeBetweenEvictionRunsMillis(final long timeBetweenEvictionRunsMillis) {
+<span class="fc" id="L763">        assertInitializationAllowed();</span>
+<span class="fc" id="L764">        this.durationBetweenEvictionRuns = Duration.ofMillis(timeBetweenEvictionRunsMillis);</span>
+<span class="fc" id="L765">    }</span>
+
+    /**
+     * Sets the value of URL string used to locate the database for this data source.
+     *
+     * @param connectionString Value to assign to connection string.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setUrl(final String connectionString) {
+<span class="fc" id="L774">        assertInitializationAllowed();</span>
+<span class="fc" id="L775">        this.connectionString = connectionString;</span>
+<span class="fc" id="L776">    }</span>
+
+    /**
+     * Sets the value of default user (login or user name).
+     *
+     * @param userName Value to assign to user.
+     * @throws IllegalStateException if {@link #getPooledConnection()} has been called
+     */
+    public void setUser(final String userName) {
+<span class="fc" id="L785">        assertInitializationAllowed();</span>
+<span class="fc" id="L786">        this.userName = userName;</span>
+<span class="fc" id="L787">        update(connectionProperties, Constants.KEY_USER, userName);</span>
+<span class="fc" id="L788">    }</span>
+
+    /**
+     * Does not print the userName and userPassword field nor the 'user' or 'password' in the connectionProperties.
+     *
+     * @since 2.6.0
+     */
+    @Override
+    public synchronized String toString() {
+<span class="fc" id="L797">        final StringBuilder builder = new StringBuilder(super.toString());</span>
+<span class="fc" id="L798">        builder.append(&quot;[description=&quot;);</span>
+<span class="fc" id="L799">        builder.append(description);</span>
+<span class="fc" id="L800">        builder.append(&quot;, connectionString=&quot;);</span>
+        // TODO What if the connection string contains a 'user' or 'password' query parameter but that connection string
+        // is not in a legal URL format?
+<span class="fc" id="L803">        builder.append(connectionString);</span>
+<span class="fc" id="L804">        builder.append(&quot;, driver=&quot;);</span>
+<span class="fc" id="L805">        builder.append(driver);</span>
+<span class="fc" id="L806">        builder.append(&quot;, loginTimeout=&quot;);</span>
+<span class="fc" id="L807">        builder.append(loginTimeout);</span>
+<span class="fc" id="L808">        builder.append(&quot;, poolPreparedStatements=&quot;);</span>
+<span class="fc" id="L809">        builder.append(poolPreparedStatements);</span>
+<span class="fc" id="L810">        builder.append(&quot;, maxIdle=&quot;);</span>
+<span class="fc" id="L811">        builder.append(maxIdle);</span>
+<span class="fc" id="L812">        builder.append(&quot;, timeBetweenEvictionRunsMillis=&quot;);</span>
+<span class="fc" id="L813">        builder.append(durationBetweenEvictionRuns);</span>
+<span class="fc" id="L814">        builder.append(&quot;, numTestsPerEvictionRun=&quot;);</span>
+<span class="fc" id="L815">        builder.append(numTestsPerEvictionRun);</span>
+<span class="fc" id="L816">        builder.append(&quot;, minEvictableIdleTimeMillis=&quot;);</span>
+<span class="fc" id="L817">        builder.append(minEvictableIdleDuration);</span>
+<span class="fc" id="L818">        builder.append(&quot;, maxPreparedStatements=&quot;);</span>
+<span class="fc" id="L819">        builder.append(maxPreparedStatements);</span>
+<span class="fc" id="L820">        builder.append(&quot;, getConnectionCalled=&quot;);</span>
+<span class="fc" id="L821">        builder.append(getConnectionCalled);</span>
+<span class="fc" id="L822">        builder.append(&quot;, connectionProperties=&quot;);</span>
+<span class="fc" id="L823">        builder.append(Utils.cloneWithoutCredentials(connectionProperties));</span>
+<span class="fc" id="L824">        builder.append(&quot;, accessToUnderlyingConnectionAllowed=&quot;);</span>
+<span class="fc" id="L825">        builder.append(accessToUnderlyingConnectionAllowed);</span>
+<span class="fc" id="L826">        builder.append(&quot;]&quot;);</span>
+<span class="fc" id="L827">        return builder.toString();</span>
+    }
+
+    private void update(final Properties properties, final String key, final String value) {
+<span class="pc bpc" id="L831" title="1 of 4 branches missed.">        if (properties != null &amp;&amp; key != null) {</span>
+<span class="fc bfc" id="L832" title="All 2 branches covered.">            if (value == null) {</span>
+<span class="fc" id="L833">                properties.remove(key);</span>
+            } else {
+<span class="fc" id="L835">                properties.setProperty(key, value);</span>
+            }
+        }
+<span class="fc" id="L838">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

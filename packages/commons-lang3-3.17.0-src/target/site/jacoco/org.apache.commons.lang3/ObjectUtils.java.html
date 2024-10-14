@@ -1,0 +1,1403 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObjectUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">ObjectUtils.java</span></div><h1>ObjectUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.lang.reflect.Array;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.TreeSet;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
+import org.apache.commons.lang3.exception.CloneFailedException;
+import org.apache.commons.lang3.function.Suppliers;
+import org.apache.commons.lang3.mutable.MutableInt;
+import org.apache.commons.lang3.stream.Streams;
+import org.apache.commons.lang3.text.StrBuilder;
+import org.apache.commons.lang3.time.DurationUtils;
+
+/**
+ * Operations on {@link Object}.
+ *
+ * &lt;p&gt;This class tries to handle {@code null} input gracefully.
+ * An exception will generally not be thrown for a {@code null} input.
+ * Each method documents its behavior in more detail.&lt;/p&gt;
+ *
+ * &lt;p&gt;#ThreadSafe#&lt;/p&gt;
+ * @since 1.0
+ */
+//@Immutable
+@SuppressWarnings(&quot;deprecation&quot;) // deprecated class StrBuilder is imported
+// because it is part of the signature of deprecated methods
+public class ObjectUtils {
+
+    /**
+     * Class used as a null placeholder where {@code null}
+     * has another meaning.
+     *
+     * &lt;p&gt;For example, in a {@link HashMap} the
+     * {@link java.util.HashMap#get(Object)} method returns
+     * {@code null} if the {@link Map} contains {@code null} or if there is
+     * no matching key. The {@code null} placeholder can be used to distinguish
+     * between these two cases.&lt;/p&gt;
+     *
+     * &lt;p&gt;Another example is {@link Hashtable}, where {@code null}
+     * cannot be stored.&lt;/p&gt;
+     */
+    public static class Null implements Serializable {
+        /**
+         * Required for serialization support. Declare serialization compatibility with Commons Lang 1.0
+         *
+         * @see java.io.Serializable
+         */
+        private static final long serialVersionUID = 7092611880189329093L;
+
+        /**
+         * Restricted constructor - singleton.
+         */
+<span class="fc" id="L82">        Null() {</span>
+<span class="fc" id="L83">        }</span>
+
+        /**
+         * Ensure Singleton after serialization.
+         *
+         * @return the singleton value
+         */
+        private Object readResolve() {
+<span class="fc" id="L91">            return NULL;</span>
+        }
+    }
+
+    private static final char AT_SIGN = '@';
+
+    /**
+     * Singleton used as a {@code null} placeholder where
+     * {@code null} has another meaning.
+     *
+     * &lt;p&gt;For example, in a {@link HashMap} the
+     * {@link java.util.HashMap#get(Object)} method returns
+     * {@code null} if the {@link Map} contains {@code null} or if there
+     * is no matching key. The {@code null} placeholder can be used to
+     * distinguish between these two cases.&lt;/p&gt;
+     *
+     * &lt;p&gt;Another example is {@link Hashtable}, where {@code null}
+     * cannot be stored.&lt;/p&gt;
+     *
+     * &lt;p&gt;This instance is Serializable.&lt;/p&gt;
+     */
+<span class="fc" id="L112">    public static final Null NULL = new Null();</span>
+
+    /**
+     * Tests if all values in the array are not {@code nulls}.
+     *
+     * &lt;p&gt;
+     * If any value is {@code null} or the array is {@code null} then
+     * {@code false} is returned. If all elements in array are not
+     * {@code null} or the array is empty (contains no elements) {@code true}
+     * is returned.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.allNotNull(*)             = true
+     * ObjectUtils.allNotNull(*, *)          = true
+     * ObjectUtils.allNotNull(null)          = false
+     * ObjectUtils.allNotNull(null, null)    = false
+     * ObjectUtils.allNotNull(null, *)       = false
+     * ObjectUtils.allNotNull(*, null)       = false
+     * ObjectUtils.allNotNull(*, *, null, *) = false
+     * &lt;/pre&gt;
+     *
+     * @param values  the values to test, may be {@code null} or empty
+     * @return {@code false} if there is at least one {@code null} value in the array or the array is {@code null},
+     * {@code true} if all values in the array are not {@code null}s or array contains no elements.
+     * @since 3.5
+     */
+    public static boolean allNotNull(final Object... values) {
+<span class="fc bfc" id="L140" title="All 4 branches covered.">        return values != null &amp;&amp; Stream.of(values).noneMatch(Objects::isNull);</span>
+    }
+
+    /**
+     * Tests if all values in the given array are {@code null}.
+     *
+     * &lt;p&gt;
+     * If all the values are {@code null} or the array is {@code null}
+     * or empty, then {@code true} is returned, otherwise {@code false} is returned.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.allNull(*)                = false
+     * ObjectUtils.allNull(*, null)          = false
+     * ObjectUtils.allNull(null, *)          = false
+     * ObjectUtils.allNull(null, null, *, *) = false
+     * ObjectUtils.allNull(null)             = true
+     * ObjectUtils.allNull(null, null)       = true
+     * &lt;/pre&gt;
+     *
+     * @param values  the values to test, may be {@code null} or empty
+     * @return {@code true} if all values in the array are {@code null}s,
+     * {@code false} if there is at least one non-null value in the array.
+     * @since 3.11
+     */
+    public static boolean allNull(final Object... values) {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        return !anyNotNull(values);</span>
+    }
+
+    /**
+     * Tests if any value in the given array is not {@code null}.
+     *
+     * &lt;p&gt;
+     * If all the values are {@code null} or the array is {@code null}
+     * or empty then {@code false} is returned. Otherwise {@code true} is returned.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.anyNotNull(*)                = true
+     * ObjectUtils.anyNotNull(*, null)          = true
+     * ObjectUtils.anyNotNull(null, *)          = true
+     * ObjectUtils.anyNotNull(null, null, *, *) = true
+     * ObjectUtils.anyNotNull(null)             = false
+     * ObjectUtils.anyNotNull(null, null)       = false
+     * &lt;/pre&gt;
+     *
+     * @param values  the values to test, may be {@code null} or empty
+     * @return {@code true} if there is at least one non-null value in the array,
+     * {@code false} if all values in the array are {@code null}s.
+     * If the array is {@code null} or empty {@code false} is also returned.
+     * @since 3.5
+     */
+    public static boolean anyNotNull(final Object... values) {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        return firstNonNull(values) != null;</span>
+    }
+
+    /**
+     * Tests if any value in the given array is {@code null}.
+     *
+     * &lt;p&gt;
+     * If any of the values are {@code null} or the array is {@code null},
+     * then {@code true} is returned, otherwise {@code false} is returned.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.anyNull(*)             = false
+     * ObjectUtils.anyNull(*, *)          = false
+     * ObjectUtils.anyNull(null)          = true
+     * ObjectUtils.anyNull(null, null)    = true
+     * ObjectUtils.anyNull(null, *)       = true
+     * ObjectUtils.anyNull(*, null)       = true
+     * ObjectUtils.anyNull(*, *, null, *) = true
+     * &lt;/pre&gt;
+     *
+     * @param values  the values to test, may be {@code null} or empty
+     * @return {@code true} if there is at least one {@code null} value in the array,
+     * {@code false} if all the values are non-null.
+     * If the array is {@code null} or empty, {@code true} is also returned.
+     * @since 3.11
+     */
+    public static boolean anyNull(final Object... values) {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        return !allNotNull(values);</span>
+    }
+
+    /**
+     * Clones an object.
+     *
+     * @param &lt;T&gt; the type of the object
+     * @param obj  the object to clone, null returns null
+     * @return the clone if the object implements {@link Cloneable} otherwise {@code null}
+     * @throws CloneFailedException if the object is cloneable and the clone operation fails
+     * @since 3.0
+     */
+    public static &lt;T&gt; T clone(final T obj) {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (obj instanceof Cloneable) {</span>
+            final Object result;
+<span class="fc" id="L236">            final Class&lt;? extends Object&gt; objClass = obj.getClass();</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">            if (isArray(obj)) {</span>
+<span class="fc" id="L238">                final Class&lt;?&gt; componentType = objClass.getComponentType();</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                if (componentType.isPrimitive()) {</span>
+<span class="fc" id="L240">                    int length = Array.getLength(obj);</span>
+<span class="fc" id="L241">                    result = Array.newInstance(componentType, length);</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                    while (length-- &gt; 0) {</span>
+<span class="fc" id="L243">                        Array.set(result, length, Array.get(obj, length));</span>
+                    }
+<span class="fc" id="L245">                } else {</span>
+<span class="fc" id="L246">                    result = ((Object[]) obj).clone();</span>
+                }
+<span class="fc" id="L248">            } else {</span>
+                try {
+<span class="fc" id="L250">                    result = objClass.getMethod(&quot;clone&quot;).invoke(obj);</span>
+<span class="fc" id="L251">                } catch (final ReflectiveOperationException e) {</span>
+<span class="fc" id="L252">                    throw new CloneFailedException(&quot;Exception cloning Cloneable type &quot; + objClass.getName(), e);</span>
+<span class="fc" id="L253">                }</span>
+            }
+<span class="fc" id="L255">            return (T) result;</span>
+        }
+
+<span class="fc" id="L258">        return null;</span>
+    }
+
+    /**
+     * Clones an object if possible.
+     *
+     * &lt;p&gt;This method is similar to {@link #clone(Object)}, but will return the provided
+     * instance as the return value instead of {@code null} if the instance
+     * is not cloneable. This is more convenient if the caller uses different
+     * implementations (e.g. of a service) and some of the implementations do not allow concurrent
+     * processing or have state. In such cases the implementation can simply provide a proper
+     * clone implementation and the caller's code does not have to change.&lt;/p&gt;
+     *
+     * @param &lt;T&gt; the type of the object
+     * @param obj  the object to clone, null returns null
+     * @return the clone if the object implements {@link Cloneable} otherwise the object itself
+     * @throws CloneFailedException if the object is cloneable and the clone operation fails
+     * @since 3.0
+     */
+    public static &lt;T&gt; T cloneIfPossible(final T obj) {
+<span class="fc" id="L278">        final T clone = clone(obj);</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        return clone == null ? obj : clone;</span>
+    }
+
+    /**
+     * Null safe comparison of Comparables.
+     * {@code null} is assumed to be less than a non-{@code null} value.
+     * &lt;p&gt;TODO Move to ComparableUtils.&lt;/p&gt;
+     *
+     * @param &lt;T&gt; type of the values processed by this method
+     * @param c1  the first comparable, may be null
+     * @param c2  the second comparable, may be null
+     * @return a negative value if c1 &amp;lt; c2, zero if c1 = c2
+     *  and a positive value if c1 &amp;gt; c2
+     */
+    public static &lt;T extends Comparable&lt;? super T&gt;&gt; int compare(final T c1, final T c2) {
+<span class="fc" id="L294">        return compare(c1, c2, false);</span>
+    }
+
+    /**
+     * Null safe comparison of Comparables.
+     * &lt;p&gt;TODO Move to ComparableUtils.&lt;/p&gt;
+     *
+     * @param &lt;T&gt; type of the values processed by this method
+     * @param c1  the first comparable, may be null
+     * @param c2  the second comparable, may be null
+     * @param nullGreater if true {@code null} is considered greater
+     *  than a non-{@code null} value or if false {@code null} is
+     *  considered less than a Non-{@code null} value
+     * @return a negative value if c1 &amp;lt; c2, zero if c1 = c2
+     *  and a positive value if c1 &amp;gt; c2
+     * @see java.util.Comparator#compare(Object, Object)
+     */
+    public static &lt;T extends Comparable&lt;? super T&gt;&gt; int compare(final T c1, final T c2, final boolean nullGreater) {
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (c1 == c2) {</span>
+<span class="fc" id="L313">            return 0;</span>
+        }
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        if (c1 == null) {</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">            return nullGreater ? 1 : -1;</span>
+        }
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        if (c2 == null) {</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">            return nullGreater ? -1 : 1;</span>
+        }
+<span class="fc" id="L321">        return c1.compareTo(c2);</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static boolean MAGIC_FLAG = ObjectUtils.CONST(true);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the boolean value to return
+     * @return the boolean v, unchanged
+     * @since 3.2
+     */
+    public static boolean CONST(final boolean v) {
+<span class="fc" id="L342">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static byte MAGIC_BYTE = ObjectUtils.CONST((byte) 127);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the byte value to return
+     * @return the byte v, unchanged
+     * @since 3.2
+     */
+    public static byte CONST(final byte v) {
+<span class="fc" id="L363">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static char MAGIC_CHAR = ObjectUtils.CONST('a');
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the char value to return
+     * @return the char v, unchanged
+     * @since 3.2
+     */
+    public static char CONST(final char v) {
+<span class="fc" id="L384">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static double MAGIC_DOUBLE = ObjectUtils.CONST(1.0);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the double value to return
+     * @return the double v, unchanged
+     * @since 3.2
+     */
+    public static double CONST(final double v) {
+<span class="fc" id="L405">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static float MAGIC_FLOAT = ObjectUtils.CONST(1.0f);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the float value to return
+     * @return the float v, unchanged
+     * @since 3.2
+     */
+    public static float CONST(final float v) {
+<span class="fc" id="L426">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static int MAGIC_INT = ObjectUtils.CONST(123);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the int value to return
+     * @return the int v, unchanged
+     * @since 3.2
+     */
+    public static int CONST(final int v) {
+<span class="fc" id="L447">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static long MAGIC_LONG = ObjectUtils.CONST(123L);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the long value to return
+     * @return the long v, unchanged
+     * @since 3.2
+     */
+    public static long CONST(final long v) {
+<span class="fc" id="L468">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static short MAGIC_SHORT = ObjectUtils.CONST((short) 123);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the short value to return
+     * @return the short v, unchanged
+     * @since 3.2
+     */
+    public static short CONST(final short v) {
+<span class="fc" id="L489">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static String MAGIC_STRING = ObjectUtils.CONST(&quot;abc&quot;);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param &lt;T&gt; the Object type
+     * @param v the genericized Object value to return (typically a String).
+     * @return the genericized Object v, unchanged (typically a String).
+     * @since 3.2
+     */
+    public static &lt;T&gt; T CONST(final T v) {
+<span class="fc" id="L511">        return v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static byte MAGIC_BYTE = ObjectUtils.CONST_BYTE(127);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the byte literal (as an int) value to return
+     * @throws IllegalArgumentException if the value passed to v
+     *         is larger than a byte, that is, smaller than -128 or
+     *         larger than 127.
+     * @return the byte v, unchanged
+     * @since 3.2
+     */
+    public static byte CONST_BYTE(final int v) {
+<span class="fc bfc" id="L535" title="All 4 branches covered.">        if (v &lt; Byte.MIN_VALUE || v &gt; Byte.MAX_VALUE) {</span>
+<span class="fc" id="L536">            throw new IllegalArgumentException(&quot;Supplied value must be a valid byte literal between -128 and 127: [&quot; + v + &quot;]&quot;);</span>
+        }
+<span class="fc" id="L538">        return (byte) v;</span>
+    }
+
+    /**
+     * Returns the provided value unchanged.
+     * This can prevent javac from inlining a constant
+     * field, e.g.,
+     *
+     * &lt;pre&gt;
+     *     public final static short MAGIC_SHORT = ObjectUtils.CONST_SHORT(127);
+     * &lt;/pre&gt;
+     *
+     * This way any jars that refer to this field do not
+     * have to recompile themselves if the field's value
+     * changes at some future date.
+     *
+     * @param v the short literal (as an int) value to return
+     * @throws IllegalArgumentException if the value passed to v
+     *         is larger than a short, that is, smaller than -32768 or
+     *         larger than 32767.
+     * @return the byte v, unchanged
+     * @since 3.2
+     */
+    public static short CONST_SHORT(final int v) {
+<span class="pc bpc" id="L562" title="1 of 4 branches missed.">        if (v &lt; Short.MIN_VALUE || v &gt; Short.MAX_VALUE) {</span>
+<span class="fc" id="L563">            throw new IllegalArgumentException(&quot;Supplied value must be a valid byte literal between -32768 and 32767: [&quot; + v + &quot;]&quot;);</span>
+        }
+<span class="fc" id="L565">        return (short) v;</span>
+    }
+
+    /**
+     * Returns a default value if the object passed is {@code null}.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.defaultIfNull(null, null)      = null
+     * ObjectUtils.defaultIfNull(null, &quot;&quot;)        = &quot;&quot;
+     * ObjectUtils.defaultIfNull(null, &quot;zz&quot;)      = &quot;zz&quot;
+     * ObjectUtils.defaultIfNull(&quot;abc&quot;, *)        = &quot;abc&quot;
+     * ObjectUtils.defaultIfNull(Boolean.TRUE, *) = Boolean.TRUE
+     * &lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the type of the object
+     * @param object  the {@link Object} to test, may be {@code null}
+     * @param defaultValue  the default value to return, may be {@code null}
+     * @return {@code object} if it is not {@code null}, defaultValue otherwise
+     * TODO Rename to getIfNull in 4.0
+     */
+    public static &lt;T&gt; T defaultIfNull(final T object, final T defaultValue) {
+<span class="fc bfc" id="L586" title="All 2 branches covered.">        return object != null ? object : defaultValue;</span>
+    }
+
+    // Null-safe equals/hashCode
+    /**
+     * Compares two objects for equality, where either one or both
+     * objects may be {@code null}.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.equals(null, null)                  = true
+     * ObjectUtils.equals(null, &quot;&quot;)                    = false
+     * ObjectUtils.equals(&quot;&quot;, null)                    = false
+     * ObjectUtils.equals(&quot;&quot;, &quot;&quot;)                      = true
+     * ObjectUtils.equals(Boolean.TRUE, null)          = false
+     * ObjectUtils.equals(Boolean.TRUE, &quot;true&quot;)        = false
+     * ObjectUtils.equals(Boolean.TRUE, Boolean.TRUE)  = true
+     * ObjectUtils.equals(Boolean.TRUE, Boolean.FALSE) = false
+     * &lt;/pre&gt;
+     *
+     * @param object1  the first object, may be {@code null}
+     * @param object2  the second object, may be {@code null}
+     * @return {@code true} if the values of both objects are the same
+     * @deprecated this method has been replaced by {@code java.util.Objects.equals(Object, Object)} in Java 7 and will
+     * be removed from future releases.
+     */
+    @Deprecated
+    public static boolean equals(final Object object1, final Object object2) {
+<span class="fc" id="L613">        return Objects.equals(object1, object2);</span>
+    }
+
+    /**
+     * Returns the first value in the array which is not {@code null}.
+     * If all the values are {@code null} or the array is {@code null}
+     * or empty then {@code null} is returned.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.firstNonNull(null, null)      = null
+     * ObjectUtils.firstNonNull(null, &quot;&quot;)        = &quot;&quot;
+     * ObjectUtils.firstNonNull(null, null, &quot;&quot;)  = &quot;&quot;
+     * ObjectUtils.firstNonNull(null, &quot;zz&quot;)      = &quot;zz&quot;
+     * ObjectUtils.firstNonNull(&quot;abc&quot;, *)        = &quot;abc&quot;
+     * ObjectUtils.firstNonNull(null, &quot;xyz&quot;, *)  = &quot;xyz&quot;
+     * ObjectUtils.firstNonNull(Boolean.TRUE, *) = Boolean.TRUE
+     * ObjectUtils.firstNonNull()                = null
+     * &lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the component type of the array
+     * @param values  the values to test, may be {@code null} or empty
+     * @return the first value from {@code values} which is not {@code null},
+     *  or {@code null} if there are no non-null values
+     * @since 3.0
+     */
+    @SafeVarargs
+    public static &lt;T&gt; T firstNonNull(final T... values) {
+<span class="fc" id="L640">        return Streams.of(values).filter(Objects::nonNull).findFirst().orElse(null);</span>
+    }
+
+    /**
+     * Delegates to {@link Object#getClass()} using generics.
+     *
+     * @param &lt;T&gt; The argument type or null.
+     * @param object The argument.
+     * @return The argument's Class or null.
+     * @since 3.13.0
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; Class&lt;T&gt; getClass(final T object) {
+<span class="fc bfc" id="L653" title="All 2 branches covered.">        return object == null ? null : (Class&lt;T&gt;) object.getClass();</span>
+    }
+
+    /**
+     * Executes the given suppliers in order and returns the first return
+     * value where a value other than {@code null} is returned.
+     * Once a non-{@code null} value is obtained, all following suppliers are
+     * not executed anymore.
+     * If all the return values are {@code null} or no suppliers are provided
+     * then {@code null} is returned.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.firstNonNullLazy(null, () -&amp;gt; null) = null
+     * ObjectUtils.firstNonNullLazy(() -&amp;gt; null, () -&amp;gt; &quot;&quot;) = &quot;&quot;
+     * ObjectUtils.firstNonNullLazy(() -&amp;gt; &quot;&quot;, () -&amp;gt; throw new IllegalStateException()) = &quot;&quot;
+     * ObjectUtils.firstNonNullLazy(() -&amp;gt; null, () -&amp;gt; &quot;zz) = &quot;zz&quot;
+     * ObjectUtils.firstNonNullLazy() = null
+     * &lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the type of the return values
+     * @param suppliers  the suppliers returning the values to test.
+     *                   {@code null} values are ignored.
+     *                   Suppliers may return {@code null} or a value of type {@code T}
+     * @return the first return value from {@code suppliers} which is not {@code null},
+     *  or {@code null} if there are no non-null values
+     * @since 3.10
+     */
+    @SafeVarargs
+    public static &lt;T&gt; T getFirstNonNull(final Supplier&lt;T&gt;... suppliers) {
+<span class="fc" id="L682">        return Streams.of(suppliers).filter(Objects::nonNull).map(Supplier::get).filter(Objects::nonNull).findFirst().orElse(null);</span>
+    }
+
+    /**
+     * Returns the given {@code object} is it is non-null, otherwise returns the Supplier's {@link Supplier#get()}
+     * value.
+     *
+     * &lt;p&gt;
+     * The caller responsible for thread-safety and exception handling of default value supplier.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.getIfNull(null, () -&amp;gt; null)     = null
+     * ObjectUtils.getIfNull(null, null)              = null
+     * ObjectUtils.getIfNull(null, () -&amp;gt; &quot;&quot;)       = &quot;&quot;
+     * ObjectUtils.getIfNull(null, () -&amp;gt; &quot;zz&quot;)     = &quot;zz&quot;
+     * ObjectUtils.getIfNull(&quot;abc&quot;, *)                = &quot;abc&quot;
+     * ObjectUtils.getIfNull(Boolean.TRUE, *)         = Boolean.TRUE
+     * &lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the type of the object
+     * @param object the {@link Object} to test, may be {@code null}
+     * @param defaultSupplier the default value to return, may be {@code null}
+     * @return {@code object} if it is not {@code null}, {@code defaultValueSupplier.get()} otherwise
+     * @since 3.10
+     */
+    public static &lt;T&gt; T getIfNull(final T object, final Supplier&lt;T&gt; defaultSupplier) {
+<span class="fc bfc" id="L709" title="All 2 branches covered.">        return object != null ? object : Suppliers.get(defaultSupplier);</span>
+    }
+
+    /**
+     * Gets the hash code of an object returning zero when the
+     * object is {@code null}.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.hashCode(null)   = 0
+     * ObjectUtils.hashCode(obj)    = obj.hashCode()
+     * &lt;/pre&gt;
+     *
+     * @param obj  the object to obtain the hash code of, may be {@code null}
+     * @return the hash code of the object, or zero if null
+     * @since 2.1
+     * @deprecated this method has been replaced by {@code java.util.Objects.hashCode(Object)} in Java 7 and will be
+     * removed in future releases
+     */
+    @Deprecated
+    public static int hashCode(final Object obj) {
+        // hashCode(Object) for performance vs. hashCodeMulti(Object[]), as hash code is often critical
+<span class="fc" id="L730">        return Objects.hashCode(obj);</span>
+    }
+
+    /**
+     * Returns the hexadecimal hash code for the given object per {@link Objects#hashCode(Object)}.
+     * &lt;p&gt;
+     * Short hand for {@code Integer.toHexString(Objects.hashCode(object))}.
+     * &lt;/p&gt;
+     *
+     * @param object object for which the hashCode is to be calculated
+     * @return Hash code in hexadecimal format.
+     * @since 3.13.0
+     */
+    public static String hashCodeHex(final Object object) {
+<span class="fc" id="L744">        return Integer.toHexString(Objects.hashCode(object));</span>
+    }
+
+    /**
+     * Gets the hash code for multiple objects.
+     *
+     * &lt;p&gt;This allows a hash code to be rapidly calculated for a number of objects.
+     * The hash code for a single object is the &lt;em&gt;not&lt;/em&gt; same as {@link #hashCode(Object)}.
+     * The hash code for multiple objects is the same as that calculated by an
+     * {@link ArrayList} containing the specified objects.&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.hashCodeMulti()                 = 1
+     * ObjectUtils.hashCodeMulti((Object[]) null)  = 1
+     * ObjectUtils.hashCodeMulti(a)                = 31 + a.hashCode()
+     * ObjectUtils.hashCodeMulti(a,b)              = (31 + a.hashCode()) * 31 + b.hashCode()
+     * ObjectUtils.hashCodeMulti(a,b,c)            = ((31 + a.hashCode()) * 31 + b.hashCode()) * 31 + c.hashCode()
+     * &lt;/pre&gt;
+     *
+     * @param objects  the objects to obtain the hash code of, may be {@code null}
+     * @return the hash code of the objects, or zero if null
+     * @since 3.0
+     * @deprecated this method has been replaced by {@code java.util.Objects.hash(Object...)} in Java 7 and will be
+     * removed in future releases.
+     */
+    @Deprecated
+    public static int hashCodeMulti(final Object... objects) {
+<span class="fc" id="L771">        int hash = 1;</span>
+<span class="fc bfc" id="L772" title="All 2 branches covered.">        if (objects != null) {</span>
+<span class="fc bfc" id="L773" title="All 2 branches covered.">            for (final Object object : objects) {</span>
+<span class="fc" id="L774">                final int tmpHash = Objects.hashCode(object);</span>
+<span class="fc" id="L775">                hash = hash * 31 + tmpHash;</span>
+            }
+        }
+<span class="fc" id="L778">        return hash;</span>
+    }
+
+    /**
+     * Returns the hexadecimal hash code for the given object per {@link System#identityHashCode(Object)}.
+     * &lt;p&gt;
+     * Short hand for {@code Integer.toHexString(System.identityHashCode(object))}.
+     * &lt;/p&gt;
+     *
+     * @param object object for which the hashCode is to be calculated
+     * @return Hash code in hexadecimal format.
+     * @since 3.13.0
+     */
+    public static String identityHashCodeHex(final Object object) {
+<span class="fc" id="L792">        return Integer.toHexString(System.identityHashCode(object));</span>
+    }
+
+    /**
+     * Appends the toString that would be produced by {@link Object}
+     * if a class did not override toString itself. {@code null}
+     * will throw a NullPointerException for either of the two parameters.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.identityToString(appendable, &quot;&quot;)            = appendable.append(&quot;java.lang.String@1e23&quot;)
+     * ObjectUtils.identityToString(appendable, Boolean.TRUE)  = appendable.append(&quot;java.lang.Boolean@7fa&quot;)
+     * ObjectUtils.identityToString(appendable, Boolean.TRUE)  = appendable.append(&quot;java.lang.Boolean@7fa&quot;)
+     * &lt;/pre&gt;
+     *
+     * @param appendable  the appendable to append to
+     * @param object  the object to create a toString for
+     * @throws IOException if an I/O error occurs.
+     * @since 3.2
+     */
+    public static void identityToString(final Appendable appendable, final Object object) throws IOException {
+<span class="fc" id="L812">        Objects.requireNonNull(object, &quot;object&quot;);</span>
+<span class="fc" id="L813">        appendable.append(object.getClass().getName())</span>
+<span class="fc" id="L814">              .append(AT_SIGN)</span>
+<span class="fc" id="L815">              .append(identityHashCodeHex(object));</span>
+<span class="fc" id="L816">    }</span>
+
+    /**
+     * Gets the toString that would be produced by {@link Object}
+     * if a class did not override toString itself. {@code null}
+     * will return {@code null}.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.identityToString(null)         = null
+     * ObjectUtils.identityToString(&quot;&quot;)           = &quot;java.lang.String@1e23&quot;
+     * ObjectUtils.identityToString(Boolean.TRUE) = &quot;java.lang.Boolean@7fa&quot;
+     * &lt;/pre&gt;
+     *
+     * @param object  the object to create a toString for, may be
+     *  {@code null}
+     * @return the default toString text, or {@code null} if
+     *  {@code null} passed in
+     */
+    public static String identityToString(final Object object) {
+<span class="fc bfc" id="L835" title="All 2 branches covered.">        if (object == null) {</span>
+<span class="fc" id="L836">            return null;</span>
+        }
+<span class="fc" id="L838">        final String name = object.getClass().getName();</span>
+<span class="fc" id="L839">        final String hexString = identityHashCodeHex(object);</span>
+<span class="fc" id="L840">        final StringBuilder builder = new StringBuilder(name.length() + 1 + hexString.length());</span>
+        // @formatter:off
+<span class="fc" id="L842">        builder.append(name)</span>
+<span class="fc" id="L843">              .append(AT_SIGN)</span>
+<span class="fc" id="L844">              .append(hexString);</span>
+        // @formatter:on
+<span class="fc" id="L846">        return builder.toString();</span>
+    }
+
+    /**
+     * Appends the toString that would be produced by {@link Object}
+     * if a class did not override toString itself. {@code null}
+     * will throw a NullPointerException for either of the two parameters.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.identityToString(builder, &quot;&quot;)            = builder.append(&quot;java.lang.String@1e23&quot;)
+     * ObjectUtils.identityToString(builder, Boolean.TRUE)  = builder.append(&quot;java.lang.Boolean@7fa&quot;)
+     * ObjectUtils.identityToString(builder, Boolean.TRUE)  = builder.append(&quot;java.lang.Boolean@7fa&quot;)
+     * &lt;/pre&gt;
+     *
+     * @param builder  the builder to append to
+     * @param object  the object to create a toString for
+     * @since 3.2
+     * @deprecated as of 3.6, because StrBuilder was moved to commons-text,
+     *  use one of the other {@code identityToString} methods instead
+     */
+    @Deprecated
+    public static void identityToString(final StrBuilder builder, final Object object) {
+<span class="fc" id="L868">        Objects.requireNonNull(object, &quot;object&quot;);</span>
+<span class="fc" id="L869">        final String name = object.getClass().getName();</span>
+<span class="fc" id="L870">        final String hexString = identityHashCodeHex(object);</span>
+<span class="fc" id="L871">        builder.ensureCapacity(builder.length() +  name.length() + 1 + hexString.length());</span>
+<span class="fc" id="L872">        builder.append(name)</span>
+<span class="fc" id="L873">              .append(AT_SIGN)</span>
+<span class="fc" id="L874">              .append(hexString);</span>
+<span class="fc" id="L875">    }</span>
+
+    /**
+     * Appends the toString that would be produced by {@link Object}
+     * if a class did not override toString itself. {@code null}
+     * will throw a NullPointerException for either of the two parameters.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.identityToString(buf, &quot;&quot;)            = buf.append(&quot;java.lang.String@1e23&quot;)
+     * ObjectUtils.identityToString(buf, Boolean.TRUE)  = buf.append(&quot;java.lang.Boolean@7fa&quot;)
+     * ObjectUtils.identityToString(buf, Boolean.TRUE)  = buf.append(&quot;java.lang.Boolean@7fa&quot;)
+     * &lt;/pre&gt;
+     *
+     * @param buffer  the buffer to append to
+     * @param object  the object to create a toString for
+     * @since 2.4
+     */
+    public static void identityToString(final StringBuffer buffer, final Object object) {
+<span class="fc" id="L893">        Objects.requireNonNull(object, &quot;object&quot;);</span>
+<span class="fc" id="L894">        final String name = object.getClass().getName();</span>
+<span class="fc" id="L895">        final String hexString = identityHashCodeHex(object);</span>
+<span class="fc" id="L896">        buffer.ensureCapacity(buffer.length() + name.length() + 1 + hexString.length());</span>
+<span class="fc" id="L897">        buffer.append(name)</span>
+<span class="fc" id="L898">              .append(AT_SIGN)</span>
+<span class="fc" id="L899">              .append(hexString);</span>
+<span class="fc" id="L900">    }</span>
+
+    /**
+     * Appends the toString that would be produced by {@link Object}
+     * if a class did not override toString itself. {@code null}
+     * will throw a NullPointerException for either of the two parameters.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.identityToString(builder, &quot;&quot;)            = builder.append(&quot;java.lang.String@1e23&quot;)
+     * ObjectUtils.identityToString(builder, Boolean.TRUE)  = builder.append(&quot;java.lang.Boolean@7fa&quot;)
+     * ObjectUtils.identityToString(builder, Boolean.TRUE)  = builder.append(&quot;java.lang.Boolean@7fa&quot;)
+     * &lt;/pre&gt;
+     *
+     * @param builder  the builder to append to
+     * @param object  the object to create a toString for
+     * @since 3.2
+     */
+    public static void identityToString(final StringBuilder builder, final Object object) {
+<span class="fc" id="L918">        Objects.requireNonNull(object, &quot;object&quot;);</span>
+<span class="fc" id="L919">        final String name = object.getClass().getName();</span>
+<span class="fc" id="L920">        final String hexString = identityHashCodeHex(object);</span>
+<span class="fc" id="L921">        builder.ensureCapacity(builder.length() +  name.length() + 1 + hexString.length());</span>
+<span class="fc" id="L922">        builder.append(name)</span>
+<span class="fc" id="L923">              .append(AT_SIGN)</span>
+<span class="fc" id="L924">              .append(hexString);</span>
+<span class="fc" id="L925">    }</span>
+
+    // Constants (LANG-816):
+    /*
+        These methods ensure constants are not inlined by javac.
+        For example, typically a developer might declare a constant like so:
+
+            public final static int MAGIC_NUMBER = 5;
+
+        Should a different jar file refer to this, and the MAGIC_NUMBER
+        is changed a later date (e.g., MAGIC_NUMBER = 6), the different jar
+        file will need to recompile itself.  This is because javac
+        typically inlines the primitive or String constant directly into
+        the bytecode, and removes the reference to the MAGIC_NUMBER field.
+
+        To help the other jar (so that it does not need to recompile
+        when constants are changed) the original developer can declare
+        their constant using one of the CONST() utility methods, instead:
+
+            public final static int MAGIC_NUMBER = CONST(5);
+     */
+
+    /**
+     * Tests whether the given object is an Object array or a primitive array in a null-safe manner.
+     *
+     * &lt;p&gt;
+     * A {@code null} {@code object} Object will return {@code false}.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.isArray(null)             = false
+     * ObjectUtils.isArray(&quot;&quot;)               = false
+     * ObjectUtils.isArray(&quot;ab&quot;)             = false
+     * ObjectUtils.isArray(new int[]{})      = true
+     * ObjectUtils.isArray(new int[]{1,2,3}) = true
+     * ObjectUtils.isArray(1234)             = false
+     * &lt;/pre&gt;
+     *
+     * @param object the object to check, may be {@code null}
+     * @return {@code true} if the object is an {@code array}, {@code false} otherwise
+     * @since 3.13.0
+     */
+    public static boolean isArray(final Object object) {
+<span class="fc bfc" id="L968" title="All 4 branches covered.">        return object != null &amp;&amp; object.getClass().isArray();</span>
+    }
+
+    /**
+     * Tests if an Object is empty or null.
+     *
+     * The following types are supported:
+     * &lt;ul&gt;
+     * &lt;li&gt;{@link CharSequence}: Considered empty if its length is zero.&lt;/li&gt;
+     * &lt;li&gt;{@link Array}: Considered empty if its length is zero.&lt;/li&gt;
+     * &lt;li&gt;{@link Collection}: Considered empty if it has zero elements.&lt;/li&gt;
+     * &lt;li&gt;{@link Map}: Considered empty if it has zero key-value mappings.&lt;/li&gt;
+     * &lt;li&gt;{@link Optional}: Considered empty if {@link Optional#isPresent} returns false, regardless of the &quot;emptiness&quot; of the contents.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.isEmpty(null)             = true
+     * ObjectUtils.isEmpty(&quot;&quot;)               = true
+     * ObjectUtils.isEmpty(&quot;ab&quot;)             = false
+     * ObjectUtils.isEmpty(new int[]{})      = true
+     * ObjectUtils.isEmpty(new int[]{1,2,3}) = false
+     * ObjectUtils.isEmpty(1234)             = false
+     * ObjectUtils.isEmpty(1234)             = false
+     * ObjectUtils.isEmpty(Optional.of(&quot;&quot;))  = false
+     * ObjectUtils.isEmpty(Optional.empty()) = true
+     * &lt;/pre&gt;
+     *
+     * @param object  the {@link Object} to test, may be {@code null}
+     * @return {@code true} if the object has a supported type and is empty or null,
+     * {@code false} otherwise
+     * @since 3.9
+     */
+    public static boolean isEmpty(final Object object) {
+<span class="fc bfc" id="L1001" title="All 2 branches covered.">        if (object == null) {</span>
+<span class="fc" id="L1002">            return true;</span>
+        }
+<span class="fc bfc" id="L1004" title="All 2 branches covered.">        if (object instanceof CharSequence) {</span>
+<span class="fc bfc" id="L1005" title="All 2 branches covered.">            return ((CharSequence) object).length() == 0;</span>
+        }
+<span class="fc bfc" id="L1007" title="All 2 branches covered.">        if (isArray(object)) {</span>
+<span class="fc bfc" id="L1008" title="All 2 branches covered.">            return Array.getLength(object) == 0;</span>
+        }
+<span class="fc bfc" id="L1010" title="All 2 branches covered.">        if (object instanceof Collection&lt;?&gt;) {</span>
+<span class="fc" id="L1011">            return ((Collection&lt;?&gt;) object).isEmpty();</span>
+        }
+<span class="fc bfc" id="L1013" title="All 2 branches covered.">        if (object instanceof Map&lt;?, ?&gt;) {</span>
+<span class="fc" id="L1014">            return ((Map&lt;?, ?&gt;) object).isEmpty();</span>
+        }
+<span class="pc bpc" id="L1016" title="1 of 2 branches missed.">        if (object instanceof Optional&lt;?&gt;) {</span>
+            // TODO Java 11 Use Optional#isEmpty()
+<span class="fc bfc" id="L1018" title="All 2 branches covered.">            return !((Optional&lt;?&gt;) object).isPresent();</span>
+        }
+<span class="nc" id="L1020">        return false;</span>
+    }
+
+    /**
+     * Tests if an Object is not empty and not null.
+     *
+     * The following types are supported:
+     * &lt;ul&gt;
+     * &lt;li&gt;{@link CharSequence}: Considered empty if its length is zero.&lt;/li&gt;
+     * &lt;li&gt;{@link Array}: Considered empty if its length is zero.&lt;/li&gt;
+     * &lt;li&gt;{@link Collection}: Considered empty if it has zero elements.&lt;/li&gt;
+     * &lt;li&gt;{@link Map}: Considered empty if it has zero key-value mappings.&lt;/li&gt;
+     * &lt;li&gt;{@link Optional}: Considered empty if {@link Optional#isPresent} returns false, regardless of the &quot;emptiness&quot; of the contents.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.isNotEmpty(null)             = false
+     * ObjectUtils.isNotEmpty(&quot;&quot;)               = false
+     * ObjectUtils.isNotEmpty(&quot;ab&quot;)             = true
+     * ObjectUtils.isNotEmpty(new int[]{})      = false
+     * ObjectUtils.isNotEmpty(new int[]{1,2,3}) = true
+     * ObjectUtils.isNotEmpty(1234)             = true
+     * ObjectUtils.isNotEmpty(Optional.of(&quot;&quot;))  = true
+     * ObjectUtils.isNotEmpty(Optional.empty()) = false
+     * &lt;/pre&gt;
+     *
+     * @param object  the {@link Object} to test, may be {@code null}
+     * @return {@code true} if the object has an unsupported type or is not empty
+     * and not null, {@code false} otherwise
+     * @since 3.9
+     */
+    public static boolean isNotEmpty(final Object object) {
+<span class="fc bfc" id="L1052" title="All 2 branches covered.">        return !isEmpty(object);</span>
+    }
+
+    /**
+     * Null safe comparison of Comparables.
+     * &lt;p&gt;TODO Move to ComparableUtils.&lt;/p&gt;
+     *
+     * @param &lt;T&gt; type of the values processed by this method
+     * @param values the set of comparable values, may be null
+     * @return
+     *  &lt;ul&gt;
+     *   &lt;li&gt;If any objects are non-null and unequal, the greater object.
+     *   &lt;li&gt;If all objects are non-null and equal, the first.
+     *   &lt;li&gt;If any of the comparables are null, the greater of the non-null objects.
+     *   &lt;li&gt;If all the comparables are null, null is returned.
+     *  &lt;/ul&gt;
+     */
+    @SafeVarargs
+    public static &lt;T extends Comparable&lt;? super T&gt;&gt; T max(final T... values) {
+<span class="fc" id="L1071">        T result = null;</span>
+<span class="fc bfc" id="L1072" title="All 2 branches covered.">        if (values != null) {</span>
+<span class="fc bfc" id="L1073" title="All 2 branches covered.">            for (final T value : values) {</span>
+<span class="fc bfc" id="L1074" title="All 2 branches covered.">                if (compare(value, result, false) &gt; 0) {</span>
+<span class="fc" id="L1075">                    result = value;</span>
+                }
+            }
+        }
+<span class="fc" id="L1079">        return result;</span>
+    }
+
+    /**
+     * Find the &quot;best guess&quot; middle value among comparables. If there is an even
+     * number of total values, the lower of the two middle values will be returned.
+     * @param &lt;T&gt; type of values processed by this method
+     * @param comparator to use for comparisons
+     * @param items to compare
+     * @return T at middle position
+     * @throws NullPointerException if items or comparator is {@code null}
+     * @throws IllegalArgumentException if items is empty or contains {@code null} values
+     * @since 3.0.1
+     */
+    @SafeVarargs
+    public static &lt;T&gt; T median(final Comparator&lt;T&gt; comparator, final T... items) {
+<span class="fc" id="L1095">        Validate.notEmpty(items, &quot;null/empty items&quot;);</span>
+<span class="fc" id="L1096">        Validate.noNullElements(items);</span>
+<span class="fc" id="L1097">        Objects.requireNonNull(comparator, &quot;comparator&quot;);</span>
+<span class="fc" id="L1098">        final TreeSet&lt;T&gt; treeSet = new TreeSet&lt;&gt;(comparator);</span>
+<span class="fc" id="L1099">        Collections.addAll(treeSet, items);</span>
+<span class="fc" id="L1100">        return (T) treeSet.toArray()[(treeSet.size() - 1) / 2];</span>
+    }
+
+    /**
+     * Find the &quot;best guess&quot; middle value among comparables. If there is an even
+     * number of total values, the lower of the two middle values will be returned.
+     * @param &lt;T&gt; type of values processed by this method
+     * @param items to compare
+     * @return T at middle position
+     * @throws NullPointerException if items is {@code null}
+     * @throws IllegalArgumentException if items is empty or contains {@code null} values
+     * @since 3.0.1
+     */
+    @SafeVarargs
+    public static &lt;T extends Comparable&lt;? super T&gt;&gt; T median(final T... items) {
+<span class="fc" id="L1115">        Validate.notEmpty(items);</span>
+<span class="fc" id="L1116">        Validate.noNullElements(items);</span>
+<span class="fc" id="L1117">        final TreeSet&lt;T&gt; sort = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L1118">        Collections.addAll(sort, items);</span>
+<span class="fc" id="L1119">        return (T) sort.toArray()[(sort.size() - 1) / 2];</span>
+    }
+
+    /**
+     * Null safe comparison of Comparables.
+     * &lt;p&gt;TODO Move to ComparableUtils.&lt;/p&gt;
+     *
+     * @param &lt;T&gt; type of the values processed by this method
+     * @param values the set of comparable values, may be null
+     * @return
+     *  &lt;ul&gt;
+     *   &lt;li&gt;If any objects are non-null and unequal, the lesser object.
+     *   &lt;li&gt;If all objects are non-null and equal, the first.
+     *   &lt;li&gt;If any of the comparables are null, the lesser of the non-null objects.
+     *   &lt;li&gt;If all the comparables are null, null is returned.
+     *  &lt;/ul&gt;
+     */
+    @SafeVarargs
+    public static &lt;T extends Comparable&lt;? super T&gt;&gt; T min(final T... values) {
+<span class="fc" id="L1138">        T result = null;</span>
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">        if (values != null) {</span>
+<span class="fc bfc" id="L1140" title="All 2 branches covered.">            for (final T value : values) {</span>
+<span class="fc bfc" id="L1141" title="All 2 branches covered.">                if (compare(value, result, true) &lt; 0) {</span>
+<span class="fc" id="L1142">                    result = value;</span>
+                }
+            }
+        }
+<span class="fc" id="L1146">        return result;</span>
+    }
+
+    /**
+     * Find the most frequently occurring item.
+     *
+     * @param &lt;T&gt; type of values processed by this method
+     * @param items to check
+     * @return most populous T, {@code null} if non-unique or no items supplied
+     * @since 3.0.1
+     */
+    @SafeVarargs
+    public static &lt;T&gt; T mode(final T... items) {
+<span class="fc bfc" id="L1159" title="All 2 branches covered.">        if (ArrayUtils.isNotEmpty(items)) {</span>
+<span class="fc" id="L1160">            final HashMap&lt;T, MutableInt&gt; occurrences = new HashMap&lt;&gt;(items.length);</span>
+<span class="fc bfc" id="L1161" title="All 2 branches covered.">            for (final T t : items) {</span>
+<span class="fc" id="L1162">                final MutableInt count = occurrences.get(t);</span>
+<span class="fc bfc" id="L1163" title="All 2 branches covered.">                if (count == null) {</span>
+<span class="fc" id="L1164">                    occurrences.put(t, new MutableInt(1));</span>
+                } else {
+<span class="fc" id="L1166">                    count.increment();</span>
+                }
+            }
+<span class="fc" id="L1169">            T result = null;</span>
+<span class="fc" id="L1170">            int max = 0;</span>
+<span class="fc bfc" id="L1171" title="All 2 branches covered.">            for (final Map.Entry&lt;T, MutableInt&gt; e : occurrences.entrySet()) {</span>
+<span class="fc" id="L1172">                final int cmp = e.getValue().intValue();</span>
+<span class="fc bfc" id="L1173" title="All 2 branches covered.">                if (cmp == max) {</span>
+<span class="fc" id="L1174">                    result = null;</span>
+<span class="fc bfc" id="L1175" title="All 2 branches covered.">                } else if (cmp &gt; max) {</span>
+<span class="fc" id="L1176">                    max = cmp;</span>
+<span class="fc" id="L1177">                    result = e.getKey();</span>
+                }
+<span class="fc" id="L1179">            }</span>
+<span class="fc" id="L1180">            return result;</span>
+        }
+<span class="fc" id="L1182">        return null;</span>
+    }
+
+    /**
+     * Compares two objects for inequality, where either one or both
+     * objects may be {@code null}.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.notEqual(null, null)                  = false
+     * ObjectUtils.notEqual(null, &quot;&quot;)                    = true
+     * ObjectUtils.notEqual(&quot;&quot;, null)                    = true
+     * ObjectUtils.notEqual(&quot;&quot;, &quot;&quot;)                      = false
+     * ObjectUtils.notEqual(Boolean.TRUE, null)          = true
+     * ObjectUtils.notEqual(Boolean.TRUE, &quot;true&quot;)        = true
+     * ObjectUtils.notEqual(Boolean.TRUE, Boolean.TRUE)  = false
+     * ObjectUtils.notEqual(Boolean.TRUE, Boolean.FALSE) = true
+     * &lt;/pre&gt;
+     *
+     * @param object1  the first object, may be {@code null}
+     * @param object2  the second object, may be {@code null}
+     * @return {@code false} if the values of both objects are the same
+     */
+    public static boolean notEqual(final Object object1, final Object object2) {
+<span class="fc bfc" id="L1205" title="All 2 branches covered.">        return !Objects.equals(object1, object2);</span>
+    }
+
+    /**
+     * Checks that the specified object reference is not {@code null} or empty per {@link #isEmpty(Object)}. Use this
+     * method for validation, for example:
+     *
+     * &lt;blockquote&gt;
+     *
+     * &lt;pre&gt;
+     * public Foo(Bar bar) {
+     *     this.bar = Objects.requireNonEmpty(bar);
+     * }
+     * &lt;/pre&gt;
+     *
+     * &lt;/blockquote&gt;
+     *
+     * @param &lt;T&gt; the type of the reference.
+     * @param obj the object reference to check for nullity.
+     * @return {@code obj} if not {@code null}.
+     * @throws NullPointerException     if {@code obj} is {@code null}.
+     * @throws IllegalArgumentException if {@code obj} is empty per {@link #isEmpty(Object)}.
+     * @see #isEmpty(Object)
+     * @since 3.12.0
+     */
+    public static &lt;T&gt; T  requireNonEmpty(final T obj) {
+<span class="fc" id="L1231">        return requireNonEmpty(obj, &quot;object&quot;);</span>
+    }
+
+    /**
+     * Checks that the specified object reference is not {@code null} or empty per {@link #isEmpty(Object)}. Use this
+     * method for validation, for example:
+     *
+     * &lt;blockquote&gt;
+     *
+     * &lt;pre&gt;
+     * public Foo(Bar bar) {
+     *     this.bar = Objects.requireNonEmpty(bar, &quot;bar&quot;);
+     * }
+     * &lt;/pre&gt;
+     *
+     * &lt;/blockquote&gt;
+     *
+     * @param &lt;T&gt; the type of the reference.
+     * @param obj the object reference to check for nullity.
+     * @param message the exception message.
+     * @return {@code obj} if not {@code null}.
+     * @throws NullPointerException     if {@code obj} is {@code null}.
+     * @throws IllegalArgumentException if {@code obj} is empty per {@link #isEmpty(Object)}.
+     * @see #isEmpty(Object)
+     * @since 3.12.0
+     */
+    public static &lt;T&gt; T requireNonEmpty(final T obj, final String message) {
+        // check for null first to give the most precise exception.
+<span class="fc" id="L1259">        Objects.requireNonNull(obj, message);</span>
+<span class="fc bfc" id="L1260" title="All 2 branches covered.">        if (isEmpty(obj)) {</span>
+<span class="fc" id="L1261">            throw new IllegalArgumentException(message);</span>
+        }
+<span class="fc" id="L1263">        return obj;</span>
+    }
+
+    /**
+     * Gets the {@code toString} of an {@link Object} returning
+     * an empty string (&quot;&quot;) if {@code null} input.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.toString(null)         = &quot;&quot;
+     * ObjectUtils.toString(&quot;&quot;)           = &quot;&quot;
+     * ObjectUtils.toString(&quot;bat&quot;)        = &quot;bat&quot;
+     * ObjectUtils.toString(Boolean.TRUE) = &quot;true&quot;
+     * &lt;/pre&gt;
+     *
+     * @see Objects#toString(Object)
+     * @see Objects#toString(Object, String)
+     * @see StringUtils#defaultString(String)
+     * @see String#valueOf(Object)
+     * @param obj  the Object to {@code toString}, may be null
+     * @return the passed in Object's toString, or {@code &quot;&quot;} if {@code null} input
+     * @since 2.0
+     * @deprecated this method has been replaced by {@code java.util.Objects.toString(Object)} in Java 7 and will be
+     * removed in future releases. Note however that said method will return &quot;null&quot; for null references, while this
+     * method returns an empty String. To preserve behavior use {@code java.util.Objects.toString(myObject, &quot;&quot;)}
+     */
+    @Deprecated
+    public static String toString(final Object obj) {
+<span class="fc" id="L1290">        return Objects.toString(obj, StringUtils.EMPTY);</span>
+    }
+
+    /**
+     * Gets the {@code toString} of an {@link Object} returning
+     * a specified text if {@code null} input.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.toString(null, null)           = null
+     * ObjectUtils.toString(null, &quot;null&quot;)         = &quot;null&quot;
+     * ObjectUtils.toString(&quot;&quot;, &quot;null&quot;)           = &quot;&quot;
+     * ObjectUtils.toString(&quot;bat&quot;, &quot;null&quot;)        = &quot;bat&quot;
+     * ObjectUtils.toString(Boolean.TRUE, &quot;null&quot;) = &quot;true&quot;
+     * &lt;/pre&gt;
+     *
+     * @see Objects#toString(Object)
+     * @see Objects#toString(Object, String)
+     * @see StringUtils#defaultString(String,String)
+     * @see String#valueOf(Object)
+     * @param obj  the Object to {@code toString}, may be null
+     * @param nullStr  the String to return if {@code null} input, may be null
+     * @return the passed in Object's toString, or {@code nullStr} if {@code null} input
+     * @since 2.0
+     * @deprecated this method has been replaced by {@code java.util.Objects.toString(Object, String)} in Java 7 and
+     * will be removed in future releases.
+     */
+    @Deprecated
+    public static String toString(final Object obj, final String nullStr) {
+<span class="fc" id="L1318">        return Objects.toString(obj, nullStr);</span>
+    }
+
+    /**
+     * Gets the {@code toString} of an {@link Supplier}'s {@link Supplier#get()} returning
+     * a specified text if {@code null} input.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.toString(() -&amp;gt; obj, () -&amp;gt; expensive())
+     * &lt;/pre&gt;
+     * &lt;pre&gt;
+     * ObjectUtils.toString(() -&amp;gt; null, () -&amp;gt; expensive())         = result of expensive()
+     * ObjectUtils.toString(() -&amp;gt; null, () -&amp;gt; expensive())         = result of expensive()
+     * ObjectUtils.toString(() -&amp;gt; &quot;&quot;, () -&amp;gt; expensive())           = &quot;&quot;
+     * ObjectUtils.toString(() -&amp;gt; &quot;bat&quot;, () -&amp;gt; expensive())        = &quot;bat&quot;
+     * ObjectUtils.toString(() -&amp;gt; Boolean.TRUE, () -&amp;gt; expensive()) = &quot;true&quot;
+     * &lt;/pre&gt;
+     *
+     * @param obj  the Object to {@code toString}, may be null
+     * @param supplier  the Supplier of String used on {@code null} input, may be null
+     * @return the passed in Object's toString, or {@code nullStr} if {@code null} input
+     * @since 3.14.0
+     */
+    public static String toString(final Supplier&lt;Object&gt; obj, final Supplier&lt;String&gt; supplier) {
+<span class="fc bfc" id="L1342" title="All 2 branches covered.">        return obj == null ? Suppliers.get(supplier) : toString(obj.get(), supplier);</span>
+    }
+
+    /**
+     * Gets the {@code toString} of an {@link Object} returning
+     * a specified text if {@code null} input.
+     *
+     * &lt;pre&gt;
+     * ObjectUtils.toString(obj, () -&amp;gt; expensive())
+     * &lt;/pre&gt;
+     * &lt;pre&gt;
+     * ObjectUtils.toString(null, () -&amp;gt; expensive())         = result of expensive()
+     * ObjectUtils.toString(null, () -&amp;gt; expensive())         = result of expensive()
+     * ObjectUtils.toString(&quot;&quot;, () -&amp;gt; expensive())           = &quot;&quot;
+     * ObjectUtils.toString(&quot;bat&quot;, () -&amp;gt; expensive())        = &quot;bat&quot;
+     * ObjectUtils.toString(Boolean.TRUE, () -&amp;gt; expensive()) = &quot;true&quot;
+     * &lt;/pre&gt;
+     *
+     * @param &lt;T&gt; the obj type (used to provide better source compatibility in 3.14.0).
+     * @param obj  the Object to {@code toString}, may be null
+     * @param supplier  the Supplier of String used on {@code null} input, may be null
+     * @return the passed in Object's toString, or {@code nullStr} if {@code null} input
+     * @since 3.11
+     */
+    public static &lt;T&gt; String toString(final T obj, final Supplier&lt;String&gt; supplier) {
+<span class="fc bfc" id="L1367" title="All 2 branches covered.">        return obj == null ? Suppliers.get(supplier) : obj.toString();</span>
+    }
+
+    /**
+     * Calls {@link Object#wait(long, int)} for the given Duration.
+     *
+     * @param obj The receiver of the wait call.
+     * @param duration How long to wait.
+     * @throws IllegalArgumentException if the timeout duration is negative.
+     * @throws IllegalMonitorStateException if the current thread is not the owner of the {@code obj}'s monitor.
+     * @throws InterruptedException if any thread interrupted the current thread before or while the current thread was
+     *         waiting for a notification. The &lt;em&gt;interrupted status&lt;/em&gt; of the current thread is cleared when this
+     *         exception is thrown.
+     * @see Object#wait(long, int)
+     * @since 3.12.0
+     */
+    public static void wait(final Object obj, final Duration duration) throws InterruptedException {
+<span class="nc" id="L1384">        DurationUtils.accept(obj::wait, DurationUtils.zeroIfNull(duration));</span>
+<span class="nc" id="L1385">    }</span>
+
+    /**
+     * {@link ObjectUtils} instances should NOT be constructed in
+     * standard programming. Instead, the static methods on the class should
+     * be used, such as {@code ObjectUtils.defaultIfNull(&quot;a&quot;,&quot;b&quot;);}.
+     *
+     * &lt;p&gt;This constructor is public to permit tools that require a JavaBean
+     * instance to operate.&lt;/p&gt;
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="fc" id="L1398">    public ObjectUtils() {</span>
+        // empty
+<span class="fc" id="L1400">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitMaps.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">BitMaps.java</span></div><h1>BitMaps.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+/**
+ * Contains functions to convert {@code int} indices into Bloom filter bit positions and visa versa.
+ *
+ * &lt;p&gt;The functions view an array of longs as a collection of bit maps each containing 64 bits. The bits are arranged
+ * in memory as a little-endian long value. This matches the requirements of the BitMapExtractor interface.&lt;/p&gt;
+ *
+ * @since 4.5
+ */
+public class BitMaps {
+    /** A bit shift to apply to an integer to divided by 64 (2^6). */
+    private static final int DIVIDE_BY_64 = 6;
+
+    /**
+     * Checks if the specified index bit is enabled in the array of bit maps.
+     *
+     * If the bit specified by bitIndex is not in the bit map false is returned.
+     *
+     * @param bitMaps  The array of bit maps.
+     * @param bitIndex the index of the bit to locate.
+     * @return {@code true} if the bit is enabled, {@code false} otherwise.
+     * @throws IndexOutOfBoundsException if bitIndex specifies a bit not in the range being tracked.
+     */
+    public static boolean contains(final long[] bitMaps, final int bitIndex) {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        return (bitMaps[getLongIndex(bitIndex)] &amp; getLongBit(bitIndex)) != 0;</span>
+    }
+
+    /**
+     * Gets the filter bit mask for the specified bit index assuming the filter is using 64-bit
+     * longs to store bits starting at index 0. The returned value is a {@code long} with only
+     * 1 bit set.
+     *
+     * &lt;p&gt;The index is assumed to be positive. For a positive index the result will match
+     * {@code 1L &lt;&lt; (bitIndex % 64)}.&lt;/p&gt;
+     *
+     * &lt;p&gt;&lt;em&gt;If the input is negative the behavior is not defined.&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param bitIndex the bit index (assumed to be positive)
+     * @return the filter bit
+     */
+    public static long getLongBit(final int bitIndex) {
+        // Bit shifts only use the first 6 bits. Thus it is not necessary to mask this
+        // using 0x3f (63) or compute bitIndex % 64.
+        // Note: If the index is negative the shift will be (64 - (bitIndex &amp; 0x3f)) and
+        // this will identify an incorrect bit.
+<span class="fc" id="L63">        return 1L &lt;&lt; bitIndex;</span>
+    }
+
+    /**
+     * Gets the filter index for the specified bit index assuming the filter is using 64-bit longs
+     * to store bits starting at index 0.
+     *
+     * &lt;p&gt;The index is assumed to be positive. For a positive index the result will match
+     * {@code bitIndex / 64}.&lt;/p&gt;
+     *
+     * &lt;p&gt;&lt;em&gt;The divide is performed using bit shifts. If the input is negative the behavior
+     * is not defined.&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param bitIndex the bit index (assumed to be positive)
+     * @return the index of the bit map in an array of bit maps.
+     */
+    public static int getLongIndex(final int bitIndex) {
+        // An integer divide by 64 is equivalent to a shift of 6 bits if the integer is
+        // positive.
+        // We do not explicitly check for a negative here. Instead we use a
+        // signed shift. Any negative index will produce a negative value
+        // by sign-extension and if used as an index into an array it will throw an
+        // exception.
+<span class="fc" id="L86">        return bitIndex &gt;&gt; DIVIDE_BY_64;</span>
+    }
+
+    /**
+     * Performs a modulus calculation on an unsigned long and a positive integer divisor.
+     *
+     * &lt;p&gt;This method computes the same result as {@link Long#remainderUnsigned(long, long)}
+     * but assumes that the divisor is an integer in the range 1 to 2&lt;sup&gt;31&lt;/sup&gt; - 1 inclusive,
+     * that is a strictly positive integer size.
+     *
+     * &lt;p&gt;&lt;em&gt;If the divisor is negative the behavior is not defined.&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param dividend an unsigned long value to calculate the modulus of.
+     * @param divisor the divisor for the modulus calculation, must be strictly positive.
+     * @return the remainder or modulus value.
+     * @throws ArithmeticException if the divisor is zero
+     * @see Long#remainderUnsigned(long, long)
+     */
+    public static int mod(final long dividend, final int divisor) {
+        // See Hacker's Delight (2nd ed), section 9.3.
+        // Assume divisor is positive.
+        // Divide half the unsigned number and then double the quotient result.
+<span class="fc" id="L108">        final long quotient = (dividend &gt;&gt;&gt; 1) / divisor &lt;&lt; 1;</span>
+<span class="fc" id="L109">        final long remainder = dividend - quotient * divisor;</span>
+        // remainder in [0, 2 * divisor)
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        return (int) (remainder &gt;= divisor ? remainder - divisor : remainder);</span>
+    }
+
+    /**
+     * Calculates the number of bit maps (longs) required for the numberOfBits parameter.
+     *
+     * &lt;p&gt;&lt;em&gt;If the input is negative the behavior is not defined.&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param numberOfBits the number of bits to store in the array of bit maps.
+     * @return the number of bit maps necessary.
+     */
+    public static int numberOfBitMaps(final int numberOfBits) {
+<span class="fc" id="L123">        return (numberOfBits - 1 &gt;&gt; DIVIDE_BY_64) + 1;</span>
+    }
+
+    /**
+     * Sets the bit in the bit maps.
+     * &lt;p&gt;&lt;em&gt;Does not perform range checking&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param bitMaps  The array of bit maps.
+     * @param bitIndex the index of the bit to set.
+     * @throws IndexOutOfBoundsException if bitIndex specifies a bit not in the range being tracked.
+     */
+    public static void set(final long[] bitMaps, final int bitIndex) {
+<span class="fc" id="L135">        bitMaps[getLongIndex(bitIndex)] |= getLongBit(bitIndex);</span>
+<span class="fc" id="L136">    }</span>
+
+    /** Do not instantiate. */
+    private BitMaps() {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

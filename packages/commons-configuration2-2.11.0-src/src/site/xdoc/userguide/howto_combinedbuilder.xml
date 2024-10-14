@@ -1,0 +1,1417 @@
+<?xml version="1.0"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+
+<document>
+
+ <properties>
+  <title>Combining Configuration Sources</title>
+ </properties>
+
+<body>
+    <section name="Combining Configuration Sources">
+    <p>
+      While simple applications often store their configuration data in a
+      single configuration file, there may be advanced requirements for more
+      complex systems. From a certain size of configuration data it surely
+      makes sense to divide the settings available on a set of configuration
+      files each of which is related to a specific sub-domain. This makes it
+      easier for users or administrators to adapt specific configuration
+      settings. However, rather than reading multiple files and dealing with
+      multiple <code>Configuration</code> objects, an application probably
+      prefers a combined view on its configuration data. <em>Commons
+      Configuration</em> supports this use case with a special configuration
+      builder implementation:
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/combined/CombinedConfigurationBuilder.html">
+      CombinedConfigurationBuilder</a></code>.
+    </p>
+    <p>
+      <code>CombinedConfigurationBuilder</code> is the option of choice for
+      applications that have to deal with multiple configuration sources. It
+      provides the following features:
+      <ul>
+        <li>Various configuration sources can be combined to a single
+        <a href="howto_combinedconfiguration.html">
+        CombinedConfiguration</a> object. This is a truly hierarchical
+        configuration supporting enhanced query facilities.</li>
+        <li>As configuration sources the most relevant <code>Configuration</code>
+        implementations provided by this library are supported. Sources are
+        defined as <a href="howto_beans.html">bean
+        declarations</a>, so complex initializations are possible.</li>
+        <li>Meta data can be provided to fine-tune the constructed
+        configuration.</li>
+        <li><code>CombinedConfigurationBuilder</code> is extensible. Custom
+        configuration sources can be added.</li>
+      </ul>
+    </p>
+    <p>
+      This document starts with some explanations of
+      <code>CombinedConfigurationBuilder</code> basics. Then the <em>configuration
+      definition files</em> processed by <code>CombinedConfigurationBuilder</code>
+      are discussed in detail. Finally an advanced example is presented.
+    </p>
+
+    <subsection name="The configuration definition file">
+    <p>
+      In previous chapters we have already seen how specific configuration
+      classes like <code>PropertiesConfiguration</code> or
+      <code>XMLConfiguration</code> can be used to load configuration data from
+      a single source. <code>CombinedConfigurationBuilder</code> now allows
+      combining multiple configuration sources to a single
+      <code><a href="../apidocs/org/apache/commons/configuration2/CombinedConfiguration.html">
+      CombinedConfiguration</a></code> object. The sources to be loaded have to
+      be defined in an XML document with a specific structure, a so-called
+      <em>configuration definition file</em>. The following listing shows a
+      simple example of such a definition file:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<configuration>
+  <properties fileName="usergui.properties"/>
+</configuration>
+]]></source>
+    <p>
+      A configuration definition file can contain an arbitrary number of
+      elements declaring the configuration sources to load. The
+      <code>&lt;properties&gt;</code> element is one of these; it is used to
+      include properties files. For this example we store the definition file
+      in the same directory as the properties file and call it
+      <code>config.xml</code>. The properties file used in this example is the
+      same as in the section about <a href="howto_properties.html">properties
+      files</a>.
+    </p>
+    </subsection>
+
+    <subsection name="Setting up a CombinedConfigurationBuilder">
+    <p>
+      Now we have to create a <code>CombinedConfigurationBuilder</code> object
+      and let it read this definition file. This works in a similar way as
+      the construction of other typical <a href="howto_builders.html">
+      configuration builders</a>: A new instance is created, and the
+      <code>configure()</code> method is called with initialization parameters
+      (<code>CombinedConfigurationBuilder</code> is derived from
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/BasicConfigurationBuilder.html">
+      BasicConfigurationBuilder</a></code>; so all features common to
+      configuration builders are available here as well). The combined configuration collecting
+      all sources defined in the configuration definition file can then be
+      obtained by calling the builder's <code>getConfiguration()</code> method.
+    </p>
+    <p>
+      The easiest way to define the configuration definition file is to pass an
+      initialized parameters object for file-based configurations to the
+      builder. In this case, no other specific settings are set for the builder,
+      and the file is read as an XML document:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder()
+    .configure(params.fileBased().setFile(new File("config.xml")));
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      Now the <em>config</em> object can be accessed in the usual way to query
+      configuration properties, e.g. by using methods like <code>getString()</code>,
+      or <code>getInt()</code>. A frequent use case is that a configuration
+      file is shipped with an application inside its jar archive. For instance,
+      the jar could have a special folder where all configuration files are
+      located as in the following example:
+    </p>
+    <source><![CDATA[
+/classes
+/conf
+/conf/mainConfig.xml
+/conf/subConfig1.properties
+/conf/subConfig2.xml
+]]></source>
+    <p>
+      Here the <em>conf</em> folder in the jar contains a main configuration
+      file - this is the definition file for the combined builder - and two
+      configuration sources referenced from the main file.
+      <code>mainConfig.xml</code> looks as follows:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<configuration>
+  <properties fileName="subConfig1.properties"/>
+  <xml fileName="subConfig2.xml"/>
+</configuration>
+]]></source>
+    <p>
+      In order to load this file and the referenced configuration sources, the
+      previous example can slightly be adapted to determine a URL to the main
+      configuration file from the application's class loader:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder()
+    .configure(params.fileBased().setURL(
+      getClass().getClassLoader().getResource("/conf/mainConfig.xml")
+    ));
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      The point to take here is that it is possible to load a combined
+      configuration directly from a jar file by specifying the URL to the
+      configuration definition file. The configuration sources to be embedded
+      are specified as relative paths; they are automatically resolved based on
+      the URL of the main configuration file.
+    </p>
+    <p>
+      Just defining the configuration definition file
+      via a file-based parameters object is a special case. Internally, a builder
+      for an <code>XMLConfiguration</code> object is constructed which is then
+      used to load and interpret the definition file. This should be appropriate
+      for many cases. A drawback of this method is that there is no way to set
+      additional initialization parameters for the
+      <code>CombinedConfigurationBuilder</code>. For this purpose, a special
+      parameters object exists offering some more specialized settings. If this
+      object is to be used, information about the file to be loaded can be
+      passed via the <code>definitionBuilderParameters</code> property:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder()
+    .configure(params.combined().setDefinitionBuilderParameters(
+        params.fileBased().setFileName("definition.xml")
+    ));
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      In this example, the <code>combined()</code> method of
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Parameters.html">
+      Parameters</a></code> is used to obtain a special parameters object for a
+      combined configuration builder. Internally, again a builder for
+      constructing an <code>XMLConfiguration</code> for the definition file is
+      created. The object stored in the <code>definitionBuilderParameters</code>
+      property is passed to this builder's <code>configure()</code> method.
+    </p>
+    <p>
+      It is even possible to construct the builder for the configuration
+      definition file externally and then pass it to the
+      <code>CombinedConfigurationBuilder</code> via the
+      <code>definitionBuilder</code> property of its initialization parameters
+      object:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+// set up the builder for the configuration definition file
+ConfigurationBuilder<? extends HierarchicalConfiguration<?>> defBuilder = ...;
+
+// Create the combined builder and pass it the definition builder
+CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder()
+    .configure(params.combined().setDefinitionBuilder(defBuilder));
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      This is the most flexible variant. It makes it possible in theory to
+      read the definition for the combined configuration builder from a
+      completely different source. In practice, most applications will stick
+      to XML files defining a combined configuration source because this is
+      the native format for listing configuration sources and defining
+      additional meta data (as described in the following sections). But
+      making use of the <code>definitionBuilder</code> property allows at least
+      passing in a specially configured builder object. Please refer to the
+      section <a href="#Builder_Configuration_Related_to_Combined_Configurations">
+      Builder Configuration Related to Combined Configurations</a> for
+      additional parameters supported by builders for combined configurations.
+    </p>
+    <p>
+      If you do not need any specific initialization and just want to read the
+      configuration definition from an XML document, the
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Configurations.html">
+      Configurations</a></code> helper class introduced in section
+      <a href="howto_filebased.html#Making_it_easier">Making it easier</a> is
+      made for you. It offers convenience methods for creating a builder for
+      combined configurations from various sources. Here is an example how a
+      builder can be constructed from a definition file specified as a file
+      path:
+    </p>
+    <source><![CDATA[
+Configurations configs = new Configurations();
+CombinedConfigurationBuilder builder = configs.combinedBuilder("path/to/definition/file.xml");
+]]></source>
+    </subsection>
+
+    <subsection name="Overriding properties">
+    <p>
+      Using <code>CombinedConfigurationBuilder</code> to collect configuration
+      sources does not make much sense if there is only a single source to be
+      loaded. So let's add another one to the example definition file used
+      before! This time we will embed a XML file: <em>gui.xml</em> which is
+      shown in the next listing:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<gui-definition>
+  <colors>
+    <background>#808080</background>
+    <text>#000000</text>
+    <header>#008000</header>
+    <link normal="#000080" visited="#800080"/>
+  </colors>
+  <rowsPerPage>15</rowsPerPage>
+</gui-definition>
+]]></source>
+    <p>
+      To make this XML document part of our global configuration we have to
+      modify our configuration definition file to also include the new file. For
+      XML documents the element <code>&lt;xml&gt;</code> can be used so that we
+      have now:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<configuration>
+  <properties fileName="usergui.properties"/>
+  <xml fileName="gui.xml"/>
+</configuration>
+]]></source>
+    <p>
+      The code for setting up the <code>CombinedConfigurationBuilder</code>
+      object remains the same. From the <code>Configuration</code> object
+      returned by the factory the new properties can be accessed in the usual
+      way.
+    </p>
+    <p>
+      There is one open question with this example configuration setup: The
+      <code>color.background</code> property is defined in both the properties
+      and the XML file, and - to make things worse - with different values.
+      Which value will be returned by a call to <code>getString()</code>?
+    </p>
+    <p>
+      The answer is that the configuration sources are searched in the order
+      they are defined in the configuration definition file. Here the properties
+      file is included first, then comes the XML file. Because the
+      <code>color.background</code> property can be found in the properties file
+      the value specified there will be returned (which happens to be
+      <code>#FFFFFF</code>).
+    </p>
+    <p>
+      It might not be obvious why it makes sense to define the value of one and
+      the same property in multiple configuration sources. But consider the
+      following scenario: An application comes with a set of default properties
+      and allows the user to override some or all of them. This can now easily
+      be realized by saving the user's settings in one file and the default
+      settings in another. Then in the configuration definition file the file
+      with the user settings is included first and after that the file with the
+      default values. The application code that queries these settings does not
+      have to bother whether a property was overridden by the user. <code>CombinedConfigurationBuilder</code>
+      takes care that properties defined in the first file (the user file) are
+      found; other properties which the user has not changed will still be
+      returned from the second file (the defaults file).
+    </p>
+    </subsection>
+
+    <subsection name="Optional configuration sources">
+    <p>
+      The example above with two configuration sources - one for user settings
+      and one with default values - raises an interesting question: What happens
+      if the user has not defined specific properties yet? Or what if a new user
+      starts our application for the first time and thus no user specific
+      properties exist?
+    </p>
+    <p>
+      The default behavior of <code>CombinedConfigurationBuilder</code> is to
+      throw a <code>ConfigurationException</code> exception if one of the sources
+      defined in the configuration definition file cannot be loaded. For our
+      example this behavior is not desired: the properties file with specific user
+      settings is not required. If it cannot be loaded, the example application
+      should still work because a complete set of configuration properties is
+      defined in the second file.
+    </p>
+    <p>
+      <code>CombinedConfigurationBuilder</code> supports such optional configuration
+      sources. For this purpose in the definition of a configuration source the
+      <code>config-optional</code> attribute can be placed. An example of this
+      is shown below:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<configuration>
+  <properties fileName="usersettings.properties" config-optional="true"/>
+  <properties fileName="default.properties"/>
+</configuration>
+]]></source>
+    <p>
+      In this configuration definition file the first properties file with user
+      specific settings is marked as optional. This means that if it cannot be
+      loaded, <code>CombinedConfigurationBuilder</code> will not throw an exception,
+      but only write a warning message to its logger. Note that the
+      <code>config-optional</code> attribute is absent for the second properties
+      file. Thus it is mandatory, and the <code>getConfiguration()</code> method
+      of <code>CombinedConfigurationBuilder</code> would throw an exception if it
+      could not be found.
+    </p>
+    <p>
+      A configuration source with the <code>config-optional</code> attribute
+      that cannot be loaded is simply ignored; in the resulting combined
+      configuration no reference for this source is stored. In the example
+      with the user configuration, it would be good if in case of a failure
+      (because the user configuration file does not yet exist) an empty
+      configuration object is created and added to the combined configuration.
+      This configuration object can then be used to store specific user
+      settings which the user might define.
+    </p>
+    <p>
+      For configuration sources marked as optional, an additional attribute is
+      supported providing exactly this functionality: <code>config-forceCreate</code>.
+      If set to <strong>true</strong>, a configuration is created in any case
+      for this source. If the source can be loaded successfully, this is of
+      course the resulting configuration. Otherwise, an empty configuration
+      (of the same type) is created. The example below shows how this attribute
+      can be used. Here we also define a name for the configuration source, so
+      that the produced configuration can later be retrieved from the resulting
+      combined configuration.
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<configuration>
+  <properties fileName="usersettings.properties" config-name="userConfig"
+    config-optional="true" config-forceCreate="true"/>
+  <properties fileName="default.properties"/>
+</configuration>
+]]></source>
+    </subsection>
+
+    <subsection name="Union configuration">
+    <p>
+      In an earlier section about the configuration definition file for
+      <code>CombinedConfigurationBuilder</code> it was stated that configuration
+      files included first can override properties in configuration files
+      included later, and an example use case for this behavior was given. There
+      may be cases when there are other requirements.
+    </p>
+    <p>
+      Let's continue the example with the application that somehow process
+      database tables and that reads the definitions of the affected tables from
+      its configuration. This example and the corresponding XML configuration
+      files were introduced in the section about
+      <a href="howto_hierarchical.html">hierarchical configurations</a>.
+      Now consider that this application grows larger and must be maintained by
+      a team of developers. Each developer works on a separated set of tables.
+      In such a scenario it would be problematic if the definitions for all
+      tables were kept in a single file. It can be expected that this file
+      needs to be changed very often and thus can be a bottleneck for team
+      development when it is nearly steadily checked out. It would be much better
+      if each developer had an associated file with table definitions, and all
+      these information could be linked together at the end.
+    </p>
+    <p>
+      <code>CombinedConfigurationBuilder</code> provides support for such a use case,
+      too. It is possible to specify in the configuration definition file that
+      from a set of configuration sources a logic union configuration is to be
+      constructed. Then all properties defined in the provided sources are
+      collected and can be accessed as if they had been defined in a single source.
+      To demonstrate this feature let us assume that a developer of the database
+      application has defined a specific XML file with a table definition named
+      <code>tasktables.xml</code>:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<config>
+  <table tableType="application">
+    <name>tasks</name>
+    <fields>
+      <field>
+        <name>taskid</name>
+        <type>long</type>
+      </field>
+      <field>
+        <name>name</name>
+        <type>java.lang.String</type>
+      </field>
+      <field>
+        <name>description</name>
+        <type>java.lang.String</type>
+      </field>
+      <field>
+        <name>responsibleID</name>
+        <type>long</type>
+      </field>
+      <field>
+        <name>creatorID</name>
+        <type>long</type>
+      </field>
+      <field>
+        <name>startDate</name>
+        <type>java.util.Date</type>
+      </field>
+      <field>
+        <name>endDate</name>
+        <type>java.util.Date</type>
+      </field>
+    </fields>
+  </table>
+</config>
+]]></source>
+    <p>
+      This file defines the structure of an additional table, which should be
+      added to the so far existing table definitions. To achieve this the
+      configuration definition file has to be changed: A new section is added
+      that contains the declaring elements of all configuration sources which
+      are to be combined.
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- Configuration definition file that demonstrates the
+     override and additional sections -->
+
+<configuration>
+  <override>
+    <properties fileName="usergui.properties"/>
+    <xml fileName="gui.xml"/>
+  </override>
+
+  <additional>
+    <xml fileName="tables.xml"/>
+    <xml fileName="tasktables.xml" config-at="tables"/>
+  </additional>
+</configuration>
+]]></source>
+    <p>
+      Compared to the older versions of this file some changes have been done.
+      One major difference is that the elements for including configuration
+      sources are no longer direct children of the root element, but are now
+      contained in either an <code>&lt;override&gt;</code> or <code>&lt;additional&gt;</code>
+      section. The names of these sections already imply their purpose.
+    </p>
+    <p>
+      The <code>override</code> section is not strictly necessary. Elements in
+      this section are treated as if they were children of the root element, i.e.
+      properties in the included configuration sources override properties in
+      sources included later. So the <code>&lt;override&gt;</code> tags could have
+      been omitted, but for the sake of clarity it is recommended to use them
+      if there is also an <code>&lt;additional&gt;</code> section.
+    </p>
+    <p>
+      It is the <code>&lt;additional&gt;</code> section that introduces a new behavior.
+      All configuration sources listed here are combined to a union configuration.
+      In our example we have put two <code>xml</code> elements in this area
+      that load the available files with database table definitions. The syntax
+      of elements in the <code>additional</code> section is analogous to the
+      syntax described so far. In this example the <code>config-at</code>
+      attribute is introduced. It specifies the position in the logic union
+      configuration where the included properties are to be added. Here it is set
+      for the second element to the value <em>tables</em>. This is because the
+      file starts with a <code>&lt;table&gt;</code> element, but to be compatible
+      with the other table definition file it should be accessible under the key
+      <code>tables.table</code>.
+    </p>
+    <p>
+      After these modifications have been performed, the configuration obtained
+      from <code>CombinedConfigurationBuilder</code> allows access to three database
+      tables. A call of <code>config.getString("tables.table(2).name");</code>
+      results in a value of <em>tasks</em>. In an analogous way it is possible
+      to retrieve the fields of the third table.
+    </p>
+    <p>
+      Note that it is also possible to override properties defined in an
+      <code>additional</code> section. This can be done by placing a configuration
+      source in the <code>override</code> section that defines properties that
+      are also defined in one of the sources listed in the <code>additional</code>
+      section. The example does not make use of that. Note also that the order of
+      the <code>override</code> and <code>additional</code> sections in a
+      configuration definition file does not matter. Sources in an <code>override</code>
+      section are always treated with higher priority (otherwise they could not
+      override the values of other sources).
+    </p>
+    </subsection>
+
+   <subsection name="Configuration definition file reference">
+    <p>
+      Configuration definition files are XML documents telling
+      <code>CombinedConfigurationBuilder</code> which configuration sources to
+      load and how to process them in order to create the resulting combined
+      configuration.
+    </p>
+    <p>
+      <strong>Overall structure of a configuration definition file</strong>
+    </p>
+    <p>
+      A configuration definition file for <code>CombinedConfigurationBuilder</code>
+      can contain three sections, all of which are optional. A skeleton looks as
+      follows:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<configuration systemProperties="path to property file">
+  <header>
+    <!-- Meta data about the resulting combined configuration -->
+  </header>
+  <override>
+    <!-- Configuration declarations with override semantics -->
+  </override>
+  <additional>
+    <!-- Configuration declarations that form a union configuration -->
+  </additional>
+</configuration>
+]]></source>
+    <p>
+      <strong>Declaring configuration sources</strong>
+    </p>
+    <p>
+      The <code>override</code> and <code>additional</code> sections have already
+      been introduced when the basics of <code>CombinedConfigurationBuilder</code>
+      were discussed. They contain declarations for the configuration sources to be
+      embedded. For convenience reasons it is also possible to declare
+      configuration sources outside these sections; they are then treated as if
+      they were placed inside the <code>override</code> section.
+    </p>
+    <p>
+      Each declaration of a configuration source is represented by an XML
+      element whose name determines the type of the configuration source.
+      Attributes or nested elements can be used to provide additional
+      configuration options for the sources to be included (e.g. a name of a
+      file to be loaded or further flags). Below is a list of all
+      tags which can be used out of the box:
+    </p>
+    <p>
+      <dl>
+        <dt>properties</dt>
+        <dd>With this element properties files can be included. The name of
+        the file to load is specified using the <code>fileName</code>
+        attribute. Which configuration class is created by this tag
+        depends on the extension of the file to load: If the extension
+        is ".xml", a
+        <code><a href="../apidocs/org/apache/commons/configuration2/XMLPropertiesConfiguration.html">
+        XMLPropertiesConfiguration</a></code> object is
+        created, which is able to process the XML properties format
+        introduced in Java 5.0. Otherwise a
+        <code><a href="../apidocs/org/apache/commons/configuration2/PropertiesConfiguration.html">
+        PropertiesConfiguration</a></code> object is created, the default reader
+        for properties files.</dd>
+        <dt>xml</dt>
+        <dd>The <code>xml</code> element can be used to load XML configuration
+        files. It also uses the <code>fileName</code> attribute to
+        determine the name of the file to load and creates an instance
+        of <code><a href="../apidocs/org/apache/commons/configuration2/XMLConfiguration.html">
+        XMLConfiguration</a></code>.</dd>
+        <dt>jndi</dt>
+        <dd>As the name implies, with this element JNDI resources can be
+        included in the resulting configuration. Under the hood this is
+        done by an instance of the
+        <code><a href="../apidocs/org/apache/commons/configuration2/JndiConfiguration.html">
+        JndiConfiguration</a></code> class. The <code>prefix</code> attribute
+        can be used to select a subset of the JNDI tree.</dd>
+        <dt>plist</dt>
+        <dd>The <code>plist</code> element allows embedding configuration
+        files in the NeXT / OpenStep or Mac OS X format. Again the
+        name of the file to load is specified through the
+        <code>fileName</code> attribute. If a XML file is specified,
+        a <code><a href="../apidocs/org/apache/commons/configuration2/plist/XMLPropertyListConfiguration.html">
+        XMLPropertyListConfiguration</a></code> object is created
+        to process the file. Otherwise, this task is delegated to a
+        <code><a href="../apidocs/org/apache/commons/configuration2/plist/PropertyListConfiguration.html">
+        PropertyListConfiguration</a></code> instance.</dd>
+        <dt>system</dt>
+        <dd>With this element an instance of
+        <code><a href="../apidocs/org/apache/commons/configuration2/SystemConfiguration.html">
+        SystemConfiguration</a></code> is added to the resulting configuration
+        allowing access to system properties. <em>Note:</em> Using this element
+        system properties are directly made available. Alternatively the
+        interpolation features (see <a href="howto_basicfeatures.html#Variable_Interpolation">
+        Variable Interpolation</a> for more details) can be used for referencing
+        system properties.</dd>
+        <dt>ini</dt>
+        <dd>This tag can be used to include an ini file into the resulting
+        combined configuration. Behind the scenes an instance of
+        <code><a href="../apidocs/org/apache/commons/configuration2/INIConfiguration.html">
+        INIConfiguration</a></code> is used to load the ini file.</dd>
+        <dt>env</dt>
+        <dd>With this tag direct access to environment properties can be enabled.
+        This works in the same way as the <code>&lt;system&gt;</code> tag for
+        Java system properties.</dd>
+        <dt>multFile</dt>
+        <dd>Using this tag, a builder for a multi-file configuration can be
+        integrated into the resulting combined configuration. This is described in a
+        <a href="howto_multitenant.html#MultiFileHierarchicalConfiguration">later
+        chapter</a>.</dd>
+        <dt>configuration</dt>
+        <dd>The <code>configuration</code> tag allows other configuration
+        definition files to be included. This makes it possible to nest these
+        definition files up to an arbitrary depth. In fact, this tag will
+        create another <code>CombinedConfigurationBuilder</code> object,
+        initialize it, and obtain the <code>CombinedConfiguation</code> from it.
+        This combined configuration will then be added to the resulting
+        combined configuration. Like all file-based configurations the
+        <code>fileName</code> attribute can be used to specify the configuration
+        definition file to be loaded. This file must be an XML document that
+        conforms to the format described here. Some of the most important
+        settings are copied from the original <code>CombinedConfigurationBuilder</code>
+        object to the newly created builder:
+        <ul>
+        <li>the base path under which configuration files are searched</li>
+        <li>some flags, e.g. for controlling delimiter parsing or throwing
+        exceptions on missing properties</li>
+        <li>the logger</li>
+        <li>the configuration and error listeners</li>
+        </ul>
+        </dd>
+      </dl>
+    </p>
+    <p>
+      In the declaration of a configuration source it is possible to set
+      properties on the corresponding configuration objects. Configuration
+      declarations are indeed
+      <a href="howto_beans.html">Bean declarations</a>. That means they can have attributes matching simple
+      properties of the configuration object to create, and sub elements
+      matching complex properties. The following example fragment shows how
+      complex initialization can be performed in a configuration declaration:
+    </p>
+    <source><![CDATA[
+  <properties fileName="test.properties" throwExceptionOnMissing="true">
+    <reloadingDetectorFactory
+    config-class="com.foo.MyReloadingDetector" strict=true"/>
+  </properties>
+  <xml fileName="test.xml" validating="true">
+    <expressionEngine config-class="org.apache.commons.configuration2.tree.xpath.XPathExpressionEngine"/>
+  </xml>
+]]></source>
+    <p>
+      In this example a configuration source for a properties file and one for
+      an XML document are defined. For the properties source the
+      <code>throwExceptionOnMissing</code> property is set to <b>true</b>,
+      which means that it should throw an exception if a requested property is
+      not found. In addition, it is assigned a custom reloading detector, which is
+      declared and configured in a sub element. The XML configuration source is
+      initialized in a similar way: a simple property is set, and an expression
+      engine is assigned. In fact, the properties defined in these declarations
+      are not directly set on configuration instances, but on
+      <a href="howto_builders.html#Initialization_Parameters">initialization
+      parameters objects</a> for configuration builders. These builders are
+      created for the declared configuration sources and configured with the
+      defined properties. Then their managed configurations are obtained and
+      combined into the resulting configuration. Nevertheless, the declarations
+      share the same syntax as other bean declarations supported by
+      <em>Commons Configuration</em>. More information about the format for
+      declaring beans and initializing their properties can be found in the
+      section about <a href="howto_beans.html">bean declarations</a>.
+    </p>
+    <p>
+      In addition to the attributes that correspond to properties of the
+      configuration sources to be created, a configuration declaration can have a
+      set of special attributes that are evaluated by
+      <code>CombinedConfigurationBuilder</code> when it creates the objects.
+      These attributes are listed in the following table:
+    </p>
+    <p>
+    <table border="1">
+    <tr>
+      <th>Attribute</th>
+      <th>Meaning</th>
+    </tr>
+    <tr>
+      <td valign="top"><code>config-name</code></td>
+      <td>Allows a name to be specified for this configuration. This name can
+      be used to obtain a reference to the configuration from the resulting
+      combined configuration (see below).</td>
+    </tr>
+    <tr>
+      <td valign="top"><code>config-at</code></td>
+      <td>With this attribute an optional prefix can be specified for the
+      properties of the corresponding configuration.</td>
+    </tr>
+    <tr>
+      <td valign="top"><code>config-optional</code></td>
+      <td>Declares a configuration as optional. This means that errors that
+      occur when creating the configuration are silently ignored. The default
+      behavior when an error occurs is that no configuration is added to
+      the resulting combined configuration. This behavior can be used to find
+      out whether an optional configuration could be successfully created or
+      not. If you specify a name for the optional configuration (using the
+      <code>config-name</code> attribute), you can later check whether the
+      combined configuration contains a configuration with this name. With the
+      <code>config-forceCreate</code> attribute (see below) this default
+      behavior can be changed.</td>
+    </tr>
+    <tr>
+      <td valign="top"><code>config-forceCreate</code></td>
+      <td>This boolean attribute is only evaluated for configurations declared as
+      optional. It determines the behavior of the combined configuration builder when
+      the optional configuration could not be created. If set to <b>true</b>,
+      the builder tries to create an empty, uninitialized configuration of the
+      correct type and add it to the resulting combined configuration. This is
+      especially useful for file-based configurations. Consider a use case
+      where an application wants to store user specific configuration files in
+      the users' home directories. When a user starts this application for the
+      first time, the user configuration does not exist yet. If it is declared
+      as <em>optional</em> and <em>forceCreate</em>, the missing configuration
+      file won't cause an error, but an empty configuration will be created.
+      The application can then obtain this configuration, add properties to it
+      (e.g. user specific settings) and save it. Without the
+      <code>config-forceCreate</code> attribute the application would have to
+      check whether the user configuration exists in the combined configuration
+      and eventually create it manually. Note that not all configuration
+      providers support this mechanism. Sometimes it may not be possible to
+      create an empty configuration if the standard initialization fails. In
+      this case no configuration will be added to the combined configuration
+      (with other words: the <code>config-forceCreate</code> attribute will not
+      have any effect).</td>
+    </tr>
+    </table>
+    </p>
+    <p>
+      <em>Note:</em> In older versions of Commons Configuration the attributes
+      <code>config-at</code> and <code>config-optional</code> were named
+      <code>at</code> and <code>optional</code> respective. They have been
+      renamed in order to avoid possible name clashes with property names for
+      configuration sources. However, for reasons of backwards compatibility,
+      the old attribute names can still be used.
+    </p>
+    <p>
+      Another useful feature is the built-in support for interpolation (i.e.
+      variable substitution): You can use variables in your configuration
+      definition file that are defined in declared configuration sources. For
+      instance, if the name of a configuration file to be loaded is defined by
+      the system property <code>CONFIG_FILE</code>, you can do something like
+      this:
+    </p>
+    <source><![CDATA[
+<configuration>
+  <!-- Load the system properties -->
+  <system/>
+  <!-- Now load the config file, using a system property as file name -->
+  <properties fileName="${CONFIG_FILE}"/>
+</configuration>
+]]></source>
+    <p>
+      Note that you can refer only to properties that have already been loaded.
+      If you change the order of the <code>&lt;system&gt;</code> and the
+      <code>&lt;properties&gt;</code> elements in the example above, an error
+      will occur because the <code>${CONFIG_FILE}</code> variable will then be
+      undefined at the moment it is evaluated.
+    </p>
+     <source><![CDATA[
+<configuration systemProperties="systemProperties.xml">
+  <!-- Load the system properties -->
+  <system/>
+  <!-- Now load the config file, using a system property as file name -->
+  <properties fileName="${CONFIG_FILE}"/>
+</configuration>
+]]></source>
+    <p>
+      This example differs from the previous one by the <code>systemProperties</code>
+      attribute added to the root element. It causes the specified properties file to be read
+      and all properties defined therein to be added to the system properties.
+      So properties like <em>CONFIG_FILE</em> can be defined in a properties
+      file and are then treated as if they were system properties.
+    </p>
+    <p>
+      <strong>The header section</strong>
+    </p>
+    <p>
+      In the header section properties of the resulting combined configuration
+      object can be set. The main part of this section is a bean declaration
+      that is used for creating the resulting configuration object. Other
+      elements can be used for customizing the
+      <a href="howto_combinedconfiguration.html#Node_combiners">Node combiners</a>
+      used by the override and the union combined configuration. The following
+      example shows a header section that uses some of the supported properties:
+    </p>
+    <source><![CDATA[
+  <header>
+    <result throwExceptionOnMissing="true">
+      <nodeCombiner config-class="org.apache.commons.configuration2.tree.OverrideCombiner"/>
+      <expressionEngine config-class="org.apache.commons.configuration2.tree.xpath.XPathExpressionEngine"/>
+    </result>
+    <combiner>
+      <override>
+        <list-nodes>
+          <node>table</node>
+          <node>list</node>
+        </list-nodes>
+      </override>
+      <additional>
+        <list-nodes>
+          <node>table</node>
+        </list-nodes>
+      </additional>
+    </combiner>
+  </header>
+]]></source>
+    <p>
+      The <code>result</code> element points to the bean declaration for the
+      resulting combined configuration. In this example we set some attributes
+      and initialize the node combiner (which is not necessary because the
+      default override combiner is specified), and the expression engine to be
+      used. Note that the <code>config-class</code> attribute makes it
+      possible to inject custom classes for the resulting configuration or the
+      node combiner.
+    </p>
+    <p>
+      The <code>combiner</code> section allows nodes to be defined as list nodes.
+      This can be necessary for certain node combiner implementations to work
+      correctly. More information can be found in the section about
+      <a href="howto_combinedconfiguration.html#Node_combiners">Node combiners</a>.
+    </p>
+    <p>
+      There are some more tags for specific use cases which can occur in the
+      header section of a configuration declaration:
+      <dl>
+        <dt>providers</dt>
+        <dd>This tag can be used to define new tags for including custom
+        configuration sources. An example is provided later in this document.</dd>
+        <dt>fileSystem</dt>
+        <dd>Allows defining the <a href="howto_filebased.html#File_Systems">File
+        System</a> to be used for file-based configuration sources:
+    <source><![CDATA[
+<configuration>
+  <header>
+    <fileSystem
+      config-class="org.apache.commons.configuration2.io.VFSFileSystem"/>
+  </header>
+  <xml fileName="test.xml" config-name="xml"/>
+</configuration>
+]]></source>
+        </dd>
+        <dt>lookups</dt>
+        <dd>In the sub section
+        <a href="howto_basicfeatures.html#Customizing_interpolation">Customizing
+        interpolation</a> it was described how variable interpolation can be
+        extended by defining custom lookup objects. In the configuration
+        definition file of <code>CombinedConfigurationBuilder</code> it is
+        possible to declare such lookup objects and make them available for
+        the processing of this definition file and the resulting combined
+        configuration. For this purpose, the header section of the definition
+        file can contain a <code>&lt;lookup&gt;</code> element in which an
+        arbitrary number of lookups can be defined. Have a look at the
+        following example:
+    <source><![CDATA[
+<configuration>
+  <header>
+    <lookups>
+      <lookup config-prefix="file"
+              config-class="com.foo.FileLookup"/>
+    </lookups>
+  </header>
+  <!-- Fetch the file name from a variable -->
+  <xml fileName="${file:config_file}" config-name="xml"/>
+</configuration>
+]]></source>
+        Here a custom lookup class is declared and registered under the prefix
+        <em>file</em> (as defined by the <code>config-prefix</code> attribute).
+        The lookup is immediately active. It is then used to obtain the concrete
+        file name for the embedded XML configuration. Note that the variable
+        prefix matches the prefix provided in the lookup declaration. The
+        variable name is passed to the lookup object, and the custom implementation
+        can compute a suitable value.</dd>
+      </dl>
+    </p>
+    <p>
+      <em>Note:</em> From time to time the question is raised whether there is a
+      document type definition or a schema defining exactly the structure of a
+      configuration definition file. Frankly, the answer is no. This is due to
+      the fact that the format is extensible. As will be shown below, it is
+      possible to register your own tags in order to embed custom configuration
+      sources.
+    </p>
+    </subsection>
+
+    <subsection name="Reloading Support">
+    <p>
+      The chapter <a href="howto_reloading.html">Automatic
+      Reloading of Configuration Sources</a> explains how reloading facilities
+      can be enabled for single configuration sources. This feature is also
+      useful when working with combined configuration sources. Here you might
+      want to support reloading for some or all of the configuration sources
+      referenced in the configuration definition file. And - to be really
+      flexible - external changes in the configuration definition file itself
+      should also be detected and cause a re-construction of the whole
+      combined configuration.
+    </p>
+    <p>
+      To enable reloading support for combined configurations, <em>Commons
+      Configuration</em> provides a special extension of
+      <code>CombinedConfigurationBuilder</code>:
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/combined/ReloadingCombinedConfigurationBuilder.html">
+      ReloadingCombinedConfigurationBuilder</a></code>. The relation between the
+      two is analogous to the relation between
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/FileBasedConfigurationBuilder.html">
+      FileBasedConfigurationBuilder</a></code> and
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/ReloadingFileBasedConfigurationBuilder.html">
+      ReloadingFileBasedConfigurationBuilder</a></code>. The reloading-enabled
+      variant of combined configuration builder manages and exposes a special
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/ReloadingController.html">
+      ReloadingController</a></code> that can be used to trigger reloading
+      checks. (Please refer to the chapter about <a href="howto_reloading.html">reloading</a>
+      for a detailed description of the reloading implementation in <em>Commons
+      Configuration</em> and the components involved.)
+    </p>
+    <p>
+      The reloading controller exposed by a <code>ReloadingCombinedConfigurationBuilder</code>
+      is special because it is also a combined reloading controller. It manages
+      the specific reloading controllers of all configuration sources with
+      reloading support. So when the reloading controller of the combined
+      builder is triggered, in fact all reloading-aware configuration sources
+      perform a reload check; sources that have actually been changed generate
+      a reloading event causing the invalidation of the combined builder's
+      managed configuration - it has to be re-constructed the next time it is
+      accessed making the reloaded changes visible.
+    </p>
+    <p>
+      The configuration builder providing access to the configuration definition
+      file is treated in the same way as a configuration source in respect to
+      reloading, i.e. if this builder supports reloading, it becomes part of the
+      combined reloading controller. <code>ReloadingCombinedConfigurationBuilder</code>
+      per default creates a reloading-aware builder for its definition configuration
+      when no specific builder was defined in the initialization parameters. (If
+      a builder for the definition configuration is explicitly passed in the
+      initialization parameters, it lies in the responsibility of the caller to
+      use a builder with reloading support.)
+    </p>
+    <p>
+      With a <code>ReloadingCombinedConfigurationBuilder</code> in place, enabling
+      reload support for specific configuration sources is as simple as adding
+      another attribute to the source declaration: <code>config-reload</code>.
+      Remember that a combined configuration builder internally creates child
+      configuration builders for each of the configuration sources to be loaded.
+      For sources having a <code>config-reload</code> attribute with a value of
+      <strong>true</strong> a builder with reloading support is created if
+      possible. This may not be supported by all types of configuration
+      sources, but it is for instance for file-based configuration sources; in
+      this case the builder created for a source with enabled reloading support
+      is of type <code><a href="../apidocs/org/apache/commons/configuration2/builder/ReloadingFileBasedConfigurationBuilder.html">
+      ReloadingFileBasedConfigurationBuilder</a></code>.
+    </p>
+    <p>
+      A more complex example of a combined configuration populated from multiple
+      sources with reloading support is presented below.
+    </p>
+    </subsection>
+
+    <subsection name="An example">
+    <p>
+      After all that theory let's go through a more complex example! We start
+      with the configuration definition file that looks like the following:
+    </p>
+    <source><![CDATA[
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!-- Test configuration definition file that demonstrates complex initialization -->
+<configuration>
+  <header>
+    <result>
+      <expressionEngine config-class="org.apache.commons.configuration2.tree.xpath.XPathExpressionEngine"/>
+      <listDelimiterHandler
+        config-class="org.apache.commons.configuration2.convert.DefaultListDelimiterHandler">
+        <config-constrarg config-value=","/>
+      </listDelimiterHandler>
+    </result>
+    <combiner>
+      <additional>
+        <list-nodes>
+          <node>table</node>
+        </list-nodes>
+      </additional>
+    </combiner>
+  </header>
+  <override>
+    <properties fileName="user.properties" throwExceptionOnMissing="true"
+      reloadingRefreshDelay="10000" config-name="properties"
+      config-reload="true" config-optional="true"/>
+    <xml fileName="settings.xml" config-name="xml"/>
+  </override>
+  <additional>
+    <xml config-name="tab1" fileName="table1.xml" config-at="database.tables"/>
+    <xml config-name="tab2" fileName="table2.xml" config-at="database.tables"
+        validating="true"/>
+  </additional>
+</configuration>
+]]></source>
+    <p>
+      This configuration definition file includes four configuration sources and
+      sets some properties for the resulting <code>CombinedConfiguration</code>.
+      We also set some properties for the configurations to be loaded; for
+      instance we declare that one of the XML configurations should be validated.
+    </p>
+    <p>
+      With the following code we can create a <code>CombinedConfigurationBuilder</code>
+      and load this file; because one of the configuration sources supports
+      reloading we use the reloading-aware variant of a combined configuration
+      builder:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+ReloadingCombinedConfigurationBuilder builder = new ReloadingCombinedConfigurationBuilder()
+    .configure(params.fileBased().setFile(new File("configuration.xml")));
+CombinedConfiguration cc = builder.getConfiguration();
+]]></source>
+    <p>
+      Here the easiest way to specify the configuration definition file was used:
+      a parameters object for a file-based configuration. This is sufficient for
+      this example because no other properties for the builder have to be set.
+      As described under <a href="#Setting_up_a_CombinedConfigurationBuilder">Setting
+      up a CombinedConfigurationBuilder</a>, other options are available. If we
+      wanted a special processing of the XML document with the configuration
+      definition - e.g. enabling validation to a schema -, we could have passed
+      a correspondingly initialized XML parameters object in the
+      <code>definitionBuilderParameters</code> property of a combined parameters
+      object or even use a specially configured builder for the definition
+      configuration.
+    </p>
+    <p>
+      In the <code>header</code> section we have chosen an XPATH expression
+      engine for the resulting configuration. So we can query our properties
+      using the convenient XPATH syntax. We also enabled list delimiter parsing
+      by specifying a
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/DefaultListDelimiterHandler.html">
+      DefaultListDelimiterHandler</a></code> object. (Note the syntax for
+      creating a bean instance via its constructor.) By providing the <code>config-name</code>
+      attribute we have given all configuration sources a name. These names can
+      be used to obtain the corresponding sources from the combined
+      configuration. For configurations in the override section this is
+      directly possible:
+    </p>
+    <source><![CDATA[
+Configuration propertiesConfig = cc.getConfiguration("properties");
+Configuration xmlConfig = cc.getConfiguration("xml");
+]]></source>
+    <p>
+      Configurations in the <code>additional</code> section are treated a bit
+      differently: they are all packed together in another combined configuration
+      and then added to the resulting combined configuration. So in our example
+      the combined configuration <code>cc</code> will contain three configurations:
+      the two configurations from the override section, and the combined
+      configuration with the <code>additional</code> configurations. The latter
+      is stored under a name determined by the <code>ADDITIONAL_NAME</code>
+      constant of <code>CombinedConfigurationBuilder</code>. The following
+      code shows how the configurations of the <code>additional</code> section
+      can be accessed:
+    </p>
+    <source><![CDATA[
+CombinedConfiguration ccAdd = (CombinedConfiguration)
+  cc.getConfiguration(CombinedConfigurationBuilder.ADDITIONAL_NAME);
+Configuration tab1Config = ccAdd.getConfiguration("tab1");
+Configuration tab2Config = ccAdd.getConfiguration("tab2");
+]]></source>
+    <p>
+      To make sure that reloading checks are periodically performed, a suitable
+      trigger has to be used to ensure that the reloading controller managed by
+      the builder is called in regular intervals. This can be done in the same
+      way as for simple configuration sources, for instance by setting up a
+      <code><a href="../apidocs/org/apache/commons/configuration2/reloading/PeriodicReloadingTrigger.html">
+      PeriodicReloadingTrigger</a></code> object:
+    </p>
+    <source><![CDATA[
+PeriodicReloadingTrigger trigger = new PeriodicReloadingTrigger(builder.getReloadingController(),
+    null, 1, TimeUnit.MINUTES);
+trigger.start();
+]]></source>
+    </subsection>
+
+    <subsection name="Extending the configuration definition file format">
+    <p>
+      If you have written a custom configuration class, you might want to
+      declare instances of this class in a configuration definition file, too.
+      <code>CombinedConfigurationBuilder</code> supports this use case by
+      registering a
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/combined/ConfigurationBuilderProvider.html">
+      ConfigurationBuilderProvider</a></code> object.
+    </p>
+    <p>
+      The task of a <code>ConfigurationBuilderProvider</code> is to create and
+      initialize a configuration builder object which can then be used to obtain
+      a configuration source. Whenever <code>CombinedConfigurationBuilder</code>
+      encounters a tag in the <code>override</code> or the <code>additional</code>
+      section it checks whether for this tag a <code>ConfigurationBuilderProvider</code>
+      has been registered. If this is the case, the provider is asked to create a
+      new configuration builder instance; otherwise an exception is thrown.
+    </p>
+    <p>
+      So for adding support for a new configuration class you have to create an
+      implementation of <code>ConfigurationBuilderProvider</code> and
+      register an instance of it. Registration can be done via the combined
+      parameters object passed to the builder which offers a
+      <code>registerProvider()</code> method. This method expects the
+      name of the associated tag and the provider instance as arguments.
+    </p>
+    <p>
+      There is already a fully functional implementation of the
+      <code>ConfigurationBuilderProvider</code> interface available in the class
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/combined/BaseConfigurationBuilderProvider.html">
+      BaseConfigurationBuilderProvider</a></code> class. When creating an
+      instance the following information has to be passed:
+      <ul>
+        <li>The fully-qualified name of the configuration builder class to be
+        used for the associated configuration source.</li>
+        <li>The fully-qualified name of the configuration builder class to be
+        used if reloading is enabled for this source. This is optional; if a
+        configuration source does not support reloading, <strong>null</strong>
+        can be passed here. Then an exception is thrown if a configuration
+        source of this type is declared with the <code>config-reload</code>
+        attribute set to <strong>true</strong>.</li>
+        <li>The fully-qualified name of the configuration class created by
+        this builder.</li>
+        <li>A collection with parameter object classes supported by this
+        builder.</li>
+      </ul>
+      With this information, <code>BaseConfigurationBuilderProvider</code> can
+      create and configure a correct configuration builder object for a specific
+      configuration source. In detail, it performs the following steps:
+      <ul>
+        <li>It determines the builder class to be used based on the presence and
+        value of the <code>config-reload</code> attribute; this means that either
+        the normal or the reloading builder - if defined - is used.</li>
+        <li>An instance of the builder class is created via reflection.</li>
+        <li>Instances of all of the parameter object classes are created.</li>
+        <li>The parameter objects are initialized from the properties defined
+        for the current configuration source.</li>
+        <li>The initialized parameter objects are passed to the configuration
+        builder's <code>configure()</code> method.</li>
+      </ul>
+    </p>
+    <p>
+      For most cases, the functionality provided by
+      <code>BaseConfigurationBuilderProvider</code> should be sufficient. So
+      a properly initialized instance can be directly used for the registration
+      of a new builder provider. Let's take a look at an example
+      where we want to add support for a configuration class called
+      <code>com.foo.MyConfiguration</code>. The class is a file-based configuration;
+      therefore, already existing standard builder classes can be used to
+      construct instances. (Otherwise, a custom builder implementation has to be
+      created, and its name has to be passed to the provider instance.) The
+      corresponding tag in the configuration definition file should have the
+      name <code>myconfig</code>. The code for registering the new provider and
+      loading the configuration definition file looks as follows:
+    </p>
+    <source><![CDATA[
+ConfigurationProvider provider = new BaseConfigurationProvider(
+    /* normal builder */
+    "org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder",
+    /* reloading builder */
+    "org.apache.commons.configuration2.builder.ReloadingFileBasedConfigurationBuilder",
+    /* configuration class */
+    "com.foo.MyConfig",
+    /* Parameters; here we assume that we have a custom parameters class
+       derived from FileBasedBuilderParametersImpl */
+    Collections.singleton(MyConfigParams.class.getName()));
+
+Parameters params = new Parameters();
+CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder()
+    .configure(
+        params.combined()
+            .setDefinitionBuilderParameters(
+                params.fileBased().setFileName("definition.xml"))
+            .registerProvider("myconfig", provider)
+    );
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      If your configuration provider is registered this way, your configuration
+      definition file can contain the <code>myconfig</code> tag just as any
+      other tag for declaring a configuration source:
+    </p>
+    <source><![CDATA[
+<configuration>
+  <additional>
+    <xml fileName="settings.xml"/>
+    <myconfig fileName="special.cfg" throwExceptionOnMissing="false"/>
+  </additional>
+</configuration>
+]]></source>
+    <p>
+      Alternatively, it is also possible to declare and register custom
+      configuration builder providers directly in the configuration definition
+      file. This is an interesting option because it makes the definition
+      file self-contained; no special initialization is required on the
+      configuration builder in order to load them. The registration of builder
+      providers is done in the <code>&lt;providers&gt;</code> section in the
+      header of the definition file. Each builder provider to be added has to
+      be defined by specifying the tag name and the fully-qualified provider
+      class. To make use of this mechanism for the custom configuration class
+      used in this example, a specialized provider class has to be created
+      (before <code>BaseConfigurationBuilderProvider</code> was instantiated
+      directly):
+    </p>
+    <source><![CDATA[
+package com.foo;
+
+public class MyConfigurationBuilderProvider extends BaseConfigurationBuilderProvider
+{
+    public MyConfigurationBuilderProvider()
+    {
+        super("org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder",
+            "org.apache.commons.configuration2.builder.ReloadingFileBasedConfigurationBuilder",
+            "com.foo.MyConfig",
+            Collections.singleton(MyConfigParams.class.getName()));
+    }
+}
+]]></source>
+    <p>
+      Now this class can be referenced in the configuration definition file.
+    </p>
+    <source><![CDATA[
+<configuration>
+  <header>
+    <providers>
+      <provider config-tag="myconfig"
+                config-class="com.foo.MyConfigurationBuilderProvider"/>
+    </providers>
+  </header>
+  <additional>
+    <xml fileName="settings.xml"/>
+    <myconfig fileName="special.cfg" throwExceptionOnMissing="false"/>
+  </additional>
+</configuration>
+]]></source>
+    <p>
+      Now this file can be processed by a default <code>CombinedConfigurationBuilder</code>
+      instance. No special configuration related to builder providers is
+      necessary any more:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+CombinedConfigurationBuilder builder = new CombinedConfigurationBuilder()
+    .configure(params.fileBased().setFileName("definition.xml"));
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    </subsection>
+
+    <subsection name="Builder Configuration Related to Combined Configurations">
+    <p>
+      The special parameters object for <code>CombinedConfigurationBuilder</code>
+      has already been mentioned and used within examples before. It can be obtained
+      from the <code>combined()</code> method of a
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Parameter.html">
+      Parameters</a></code> instance. Its type is
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/CombinedBuilderParameters.html">
+      CombinedBuilderParameters</a></code>.
+    </p>
+    <p>
+      This type supports the settings common to all configurations. Additional
+      settings specific to <code>CombinedConfigurationBuilder</code> are
+      defined by the
+      <code><a href="../apidocs/org/apache/commons/configuration2/builder/CombinedBuilderProperties.html">
+      CombinedBuilderProperties</a></code> interface. This includes
+      <ul>
+        <li>the configuration builder for obtaining the definition configuration</li>
+        <li>the parameters object for the configuration builder for obtaining the
+        definition configuration</li>
+        <li>a base path for file-based configuration sources; sources with a
+        relative file name are searched in this path.</li>
+        <li>information about
+        <a href="#Extending_the_configuration_definition_file_format">custom
+        configuration builder providers</a></li>
+        <li>default handlers for initialization parameters of configuration
+        sources. They work in the same way as global
+        <a href="howto_builders.html#Default_Initialization_Parameters">default
+        initialization parameters</a> for configuration builders,
+        but only impact the configuration sources defined in the current
+        definition file. For instance, it is possible to define default settings
+        for all XML configuration sources. These are applied for every XML
+        source defined in the definition file unless they are overridden there.
+        See below for an example.</li>
+        <li>controlling the inheritance of builder parameters to child
+        configuration builders (see below).</li>
+      </ul>
+    </p>
+    <p>
+      Specifying default settings for the configuration sources to be included
+      is a convenient feature. Often the configuration files to be included
+      share similar conventions, and thus can be read using similar
+      parameters. Rather than repeating these settings in the configuration
+      definition file for each configuration source, there are ways to define
+      default settings.
+    </p>
+    <p>
+      One option is to use a mechanism similar to
+      <a href="howto_builders.html#Default_Initialization_Parameters">default
+      initialization parameters</a>: The parameters object for a combined
+      configuration builder allows defining default parameter objects for
+      specific types of configuration sources. In the following example all
+      XML configuration sources are configured to make use of a specific list
+      delimiter handler:
+    </p>
+    <source><![CDATA[
+DefaultListDelimiterHandler listDelimiterHandler = new DefaultListDelimiterHandler(',');
+Parameters params = new Parameters();
+XMLBuilderParameters xmlParams = params.xml()
+    .setListDelimiterHandler(listDelimiterHandler);
+XMLBuilderParameters definitionParams = params.xml()
+    .setFile(new File("configDefinition.xml"));
+CombinedBuilderParameters combinedParameters = params.combined()
+    .setDefinitionBuilderParameters(definitionParams)
+    .registerChildDefaultsHandler(XMLBuilderProperties.class,
+        new CopyObjectDefaultHandler(xmlParams));
+builder.configure(combinedParameters);
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      Here the <code>xmlParams</code> object defines default settings for all
+      XML configuration sources to be included. Note how it is used to register
+      a defaults handler using the <code>registerChildDefaultsHandler()</code>
+      method of the parameters object for the combined builder. This mechanism
+      of default parameters is very flexible because it allows setting
+      different options for different types of configuration sources. However,
+      as the example demonstrates, the initialization of the builder becomes
+      complex; multiple parameter objects have to be dealt with.
+    </p>
+    <p>
+      A more lightweight alternative is the ability of a combined configuration
+      builder to inherit its parameters to the child configurations created by
+      it. This feature is enabled by default and it works as follows: Whenever
+      a parameter object for a child configuration source is created, it is
+      first populated with compatible parameters set for the combined builder.
+      Then the specific settings as defined by the configuration definition
+      file are applied. So the settings defined for the combined builder as a
+      whole serve as a kind of default parameters. With this mechanism the
+      following code can be used to set a special list delimiter handler for
+      all child configurations and a special expression engine for all
+      hierarchical child configurations:
+    </p>
+    <source><![CDATA[
+Parameters params = new Parameters();
+DefaultExpressionEngineSymbols symbols = new DefaultExpressionEngineSymbols.Builder(
+    DefaultExpressionEngineSymbols.DEFAULT_SYMBOLS)
+    .setPropertyDelimiter("/").create();
+DefaultExpressionEngine engine = new DefaultExpressionEngine(symbols);
+DefaultListDelimiterHandler listDelimiterHandler = new DefaultListDelimiterHandler(',');
+XMLBuilderParameters xmlParams = params.xml()
+    .setExpressionEngine(engine)
+    .setListDelimiterHandler(listDelimiterHandler)
+    .setFile(new File("configDefinition.xml"));
+builder.configure(xmlParams);
+CombinedConfiguration config = builder.getConfiguration();
+]]></source>
+    <p>
+      So here the builder is configured with an XML parameters object which
+      defines some default settings and also the file to be loaded. The default
+      settings are applied automatically to child configuration sources where
+      applicable. This is often a natural approach; for many use cases it makes
+      sense that settings defined for the parent combined builder are also
+      applied to child configuration sources. Only if child configuration
+      sources follow different conventions - maybe some files from a legacy
+      system need to be integrated that use a different list delimiter
+      character -, inheritance does not help. But in such cases it is often
+      possible to use settings inheritance by default and override specific
+      settings in affected child configuration sources; of course, the settings
+      defined for a configuration source in the configuration definition file
+      take precedence over inherited settings. The inheritance mechanism can
+      also be turned off completely by invoking
+      <code>CombinedBuilderParameters.setInheritSettings()</code> with a
+      value of <strong>false</strong>.
+    </p>
+    </subsection>
+    </section>
+</body>
+
+</document>

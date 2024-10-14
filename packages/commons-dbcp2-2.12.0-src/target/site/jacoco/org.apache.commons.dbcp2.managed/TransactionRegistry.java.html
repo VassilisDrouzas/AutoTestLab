@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransactionRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.managed</a> &gt; <span class="el_source">TransactionRegistry.java</span></div><h1>TransactionRegistry.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.managed;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.Objects;
+import java.util.WeakHashMap;
+
+import javax.transaction.SystemException;
+import javax.transaction.Transaction;
+import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
+import javax.transaction.xa.XAResource;
+
+import org.apache.commons.dbcp2.DelegatingConnection;
+
+/**
+ * TransactionRegistry tracks Connections and XAResources in a transacted environment for a single XAConnectionFactory.
+ * &lt;p&gt;
+ * The TransactionRegistry hides the details of transaction processing from the existing DBCP pooling code, and gives
+ * the ManagedConnection a way to enlist connections in a transaction, allowing for the maximal rescue of DBCP.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class TransactionRegistry {
+    private final TransactionManager transactionManager;
+<span class="fc" id="L44">    private final Map&lt;Transaction, TransactionContext&gt; caches = new WeakHashMap&lt;&gt;();</span>
+<span class="fc" id="L45">    private final Map&lt;Connection, XAResource&gt; xaResources = new WeakHashMap&lt;&gt;();</span>
+    private final TransactionSynchronizationRegistry transactionSynchronizationRegistry;
+
+    /**
+     * Provided for backwards compatibility
+     * @param transactionManager the transaction manager used to enlist connections
+     */
+    public TransactionRegistry(final TransactionManager transactionManager) {
+<span class="fc" id="L53">        this (transactionManager, null);</span>
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Creates a TransactionRegistry for the specified transaction manager.
+     *
+     * @param transactionManager
+     *            the transaction manager used to enlist connections.
+     * @param transactionSynchronizationRegistry
+     *              The optional TSR to register synchronizations with
+     * @since 2.6.0
+     */
+<span class="fc" id="L65">    public TransactionRegistry(final TransactionManager transactionManager, final TransactionSynchronizationRegistry transactionSynchronizationRegistry) {</span>
+<span class="fc" id="L66">        this.transactionManager = transactionManager;</span>
+<span class="fc" id="L67">        this.transactionSynchronizationRegistry = transactionSynchronizationRegistry;</span>
+<span class="fc" id="L68">    }</span>
+
+    /**
+     * Gets the active TransactionContext or null if not Transaction is active.
+     *
+     * @return The active TransactionContext or null if no Transaction is active.
+     * @throws SQLException
+     *             Thrown when an error occurs while fetching the transaction.
+     */
+    public TransactionContext getActiveTransactionContext() throws SQLException {
+<span class="fc" id="L78">        Transaction transaction = null;</span>
+        try {
+<span class="fc" id="L80">            transaction = transactionManager.getTransaction();</span>
+
+            // was there a transaction?
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (transaction == null) {</span>
+<span class="fc" id="L84">                return null;</span>
+            }
+
+            // This is the transaction on the thread so no need to check its status - we should try to use it and
+            // fail later based on the subsequent status
+<span class="nc" id="L89">        } catch (final SystemException e) {</span>
+<span class="nc" id="L90">            throw new SQLException(&quot;Unable to determine current transaction &quot;, e);</span>
+<span class="fc" id="L91">        }</span>
+
+        // register the context (or create a new one)
+<span class="fc" id="L94">        synchronized (this) {</span>
+<span class="fc" id="L95">            return caches.computeIfAbsent(transaction, k -&gt; new TransactionContext(this, k, transactionSynchronizationRegistry));</span>
+        }
+    }
+
+    private Connection getConnectionKey(final Connection connection) {
+        final Connection result;
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (connection instanceof DelegatingConnection) {</span>
+<span class="fc" id="L102">            result = ((DelegatingConnection&lt;?&gt;) connection).getInnermostDelegateInternal();</span>
+        } else {
+<span class="nc" id="L104">            result = connection;</span>
+        }
+<span class="fc" id="L106">        return result;</span>
+    }
+
+    /**
+     * Gets the XAResource registered for the connection.
+     *
+     * @param connection
+     *            the connection
+     * @return The XAResource registered for the connection; never null.
+     * @throws SQLException
+     *             Thrown when the connection does not have a registered XAResource.
+     */
+    public synchronized XAResource getXAResource(final Connection connection) throws SQLException {
+<span class="fc" id="L119">        Objects.requireNonNull(connection, &quot;connection&quot;);</span>
+<span class="fc" id="L120">        final Connection key = getConnectionKey(connection);</span>
+<span class="fc" id="L121">        final XAResource xaResource = xaResources.get(key);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (xaResource == null) {</span>
+<span class="fc" id="L123">            throw new SQLException(&quot;Connection does not have a registered XAResource &quot; + connection);</span>
+        }
+<span class="fc" id="L125">        return xaResource;</span>
+    }
+
+    /**
+     * Registers the association between a Connection and a XAResource. When a connection is enlisted in a transaction,
+     * it is actually the XAResource that is given to the transaction manager.
+     *
+     * @param connection
+     *            The JDBC connection.
+     * @param xaResource
+     *            The XAResource which managed the connection within a transaction.
+     */
+    public synchronized void registerConnection(final Connection connection, final XAResource xaResource) {
+<span class="fc" id="L138">        Objects.requireNonNull(connection, &quot;connection&quot;);</span>
+<span class="fc" id="L139">        Objects.requireNonNull(xaResource, &quot;xaResource&quot;);</span>
+<span class="fc" id="L140">        xaResources.put(connection, xaResource);</span>
+<span class="fc" id="L141">    }</span>
+
+    /**
+     * Unregisters a destroyed connection from {@link TransactionRegistry}.
+     *
+     * @param connection
+     *            A destroyed connection from {@link TransactionRegistry}.
+     */
+    public synchronized void unregisterConnection(final Connection connection) {
+<span class="fc" id="L150">        xaResources.remove(getConnectionKey(connection));</span>
+<span class="fc" id="L151">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

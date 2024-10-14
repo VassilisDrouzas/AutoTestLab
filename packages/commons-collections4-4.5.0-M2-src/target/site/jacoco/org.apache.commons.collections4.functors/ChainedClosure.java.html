@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChainedClosure.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.functors</a> &gt; <span class="el_source">ChainedClosure.java</span></div><h1>ChainedClosure.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.functors;
+
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.Objects;
+
+import org.apache.commons.collections4.Closure;
+
+/**
+ * Closure implementation that chains the specified closures together.
+ *
+ * @since 3.0
+ */
+public class ChainedClosure&lt;E&gt; implements Closure&lt;E&gt;, Serializable {
+
+    /** Serial version UID */
+    private static final long serialVersionUID = -3520677225766901240L;
+
+    /**
+     * Factory method that performs validation and copies the parameter array.
+     *
+     * @param &lt;E&gt; the type that the closure acts on
+     * @param closures  the closures to chain, copied, no nulls
+     * @return the {@code chained} closure
+     * @throws NullPointerException if the closures array is null
+     * @throws NullPointerException if any closure in the array is null
+     */
+    public static &lt;E&gt; Closure&lt;E&gt; chainedClosure(final Closure&lt;? super E&gt;... closures) {
+<span class="fc" id="L45">        FunctorUtils.validate(closures);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (closures.length == 0) {</span>
+<span class="fc" id="L47">            return NOPClosure.&lt;E&gt;nopClosure();</span>
+        }
+<span class="fc" id="L49">        return new ChainedClosure&lt;&gt;(closures);</span>
+    }
+
+    /**
+     * Create a new Closure that calls each closure in turn, passing the
+     * result into the next closure. The ordering is that of the iterator()
+     * method on the collection.
+     *
+     * @param &lt;E&gt; the type that the closure acts on
+     * @param closures  a collection of closures to chain
+     * @return the {@code chained} closure
+     * @throws NullPointerException if the closures collection is null
+     * @throws NullPointerException if any closure in the collection is null
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;E&gt; Closure&lt;E&gt; chainedClosure(final Collection&lt;? extends Closure&lt;? super E&gt;&gt; closures) {
+<span class="fc" id="L65">        Objects.requireNonNull(closures, &quot;closures&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (closures.isEmpty()) {</span>
+<span class="fc" id="L67">            return NOPClosure.&lt;E&gt;nopClosure();</span>
+        }
+        // convert to array like this to guarantee iterator() ordering
+<span class="fc" id="L70">        final Closure&lt;? super E&gt;[] cmds = new Closure[closures.size()];</span>
+<span class="fc" id="L71">        int i = 0;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (final Closure&lt;? super E&gt; closure : closures) {</span>
+<span class="fc" id="L73">            cmds[i++] = closure;</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">        FunctorUtils.validate(cmds);</span>
+<span class="fc" id="L76">        return new ChainedClosure&lt;&gt;(false, cmds);</span>
+    }
+
+    /** The closures to call in turn */
+    private final Closure&lt;? super E&gt;[] iClosures;
+
+    /**
+     * Hidden constructor for the use by the static factory methods.
+     *
+     * @param clone  if {@code true} the input argument will be cloned
+     * @param closures  the closures to chain, no nulls
+     */
+<span class="fc" id="L88">    private ChainedClosure(final boolean clone, final Closure&lt;? super E&gt;... closures) {</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        iClosures = clone ? FunctorUtils.copy(closures) : closures;</span>
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * Constructor that performs no validation.
+     * Use {@code chainedClosure} if you want that.
+     *
+     * @param closures  the closures to chain, copied, no nulls
+     */
+    public ChainedClosure(final Closure&lt;? super E&gt;... closures) {
+<span class="fc" id="L99">        this(true, closures);</span>
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Execute a list of closures.
+     *
+     * @param input  the input object passed to each closure
+     */
+    @Override
+    public void execute(final E input) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        for (final Closure&lt;? super E&gt; iClosure : iClosures) {</span>
+<span class="fc" id="L110">            iClosure.execute(input);</span>
+        }
+<span class="fc" id="L112">    }</span>
+
+    /**
+     * Gets the closures.
+     *
+     * @return a copy of the closures
+     * @since 3.1
+     */
+    public Closure&lt;? super E&gt;[] getClosures() {
+<span class="nc" id="L121">        return FunctorUtils.&lt;E&gt;copy(iClosures);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

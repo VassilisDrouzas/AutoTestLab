@@ -1,0 +1,585 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThreadUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">ThreadUtils.java</span></div><h1>ThreadUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.time.Duration;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.commons.lang3.time.DurationUtils;
+
+/**
+ * Helpers for {@link Thread} and {@link ThreadGroup}.
+ *
+ * &lt;p&gt;
+ * #ThreadSafe#
+ * &lt;/p&gt;
+ *
+ * @see Thread
+ * @see ThreadGroup
+ * @since 3.5
+ */
+public class ThreadUtils {
+
+    /**
+     * A predicate implementation which always returns true.
+     *
+     * @deprecated Use a {@link Predicate}.
+     */
+    @Deprecated
+    private static final class AlwaysTruePredicate implements ThreadPredicate, ThreadGroupPredicate {
+
+        private AlwaysTruePredicate() {
+        }
+
+        @Override
+        public boolean test(final Thread thread) {
+<span class="fc" id="L56">            return true;</span>
+        }
+
+        @Override
+        public boolean test(final ThreadGroup threadGroup) {
+<span class="nc" id="L61">            return true;</span>
+        }
+    }
+
+    /**
+     * Used internally, consider private.
+     * &lt;p&gt;
+     * A predicate implementation which matches a thread or thread group name.
+     * &lt;/p&gt;
+     *
+     * @deprecated Use a {@link Predicate}.
+     */
+    @Deprecated
+    public static class NamePredicate implements ThreadPredicate, ThreadGroupPredicate {
+
+        private final String name;
+
+        /**
+         * Constructs an instance.
+         *
+         * @param name thread or thread group name
+         * @throws NullPointerException if the name is {@code null}
+         */
+<span class="nc" id="L84">        public NamePredicate(final String name) {</span>
+<span class="nc" id="L85">            Objects.requireNonNull(name, &quot;name&quot;);</span>
+<span class="nc" id="L86">            this.name = name;</span>
+<span class="nc" id="L87">        }</span>
+
+        @Override
+        public boolean test(final Thread thread) {
+<span class="nc bnc" id="L91" title="All 4 branches missed.">            return thread != null &amp;&amp; thread.getName().equals(name);</span>
+        }
+
+        @Override
+        public boolean test(final ThreadGroup threadGroup) {
+<span class="nc bnc" id="L96" title="All 4 branches missed.">            return threadGroup != null &amp;&amp; threadGroup.getName().equals(name);</span>
+        }
+    }
+
+    /**
+     * A predicate for selecting thread groups.
+     *
+     * @deprecated Use a {@link Predicate}.
+     */
+    @Deprecated
+    // When breaking BC, replace this with Predicate&lt;ThreadGroup&gt;
+    @FunctionalInterface
+    public interface ThreadGroupPredicate {
+
+        /**
+         * Evaluates this predicate on the given thread group.
+         * @param threadGroup the thread group
+         * @return {@code true} if the threadGroup matches the predicate, otherwise {@code false}
+         */
+        boolean test(ThreadGroup threadGroup);
+    }
+
+    /**
+     * A predicate implementation which matches a thread id.
+     *
+     * @deprecated Use a {@link Predicate}.
+     */
+    @Deprecated
+    public static class ThreadIdPredicate implements ThreadPredicate {
+
+        private final long threadId;
+
+        /**
+         * Predicate constructor
+         *
+         * @param threadId the threadId to match
+         * @throws IllegalArgumentException if the threadId is zero or negative
+         */
+<span class="nc" id="L134">        public ThreadIdPredicate(final long threadId) {</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (threadId &lt;= 0) {</span>
+<span class="nc" id="L136">                throw new IllegalArgumentException(&quot;The thread id must be greater than zero&quot;);</span>
+            }
+<span class="nc" id="L138">            this.threadId = threadId;</span>
+<span class="nc" id="L139">        }</span>
+
+        @Override
+        public boolean test(final Thread thread) {
+<span class="nc bnc" id="L143" title="All 4 branches missed.">            return thread != null &amp;&amp; thread.getId() == threadId;</span>
+        }
+    }
+
+    /**
+     * A predicate for selecting threads.
+     *
+     * @deprecated Use a {@link Predicate}.
+     */
+    @Deprecated
+    // When breaking BC, replace this with Predicate&lt;Thread&gt;
+    @FunctionalInterface
+    public interface ThreadPredicate {
+
+        /**
+         * Evaluates this predicate on the given thread.
+         * @param thread the thread
+         * @return {@code true} if the thread matches the predicate, otherwise {@code false}
+         */
+        boolean test(Thread thread);
+    }
+
+    /**
+     * Predicate which always returns true.
+     *
+     * @deprecated Use a {@link Predicate}.
+     */
+    @Deprecated
+<span class="fc" id="L171">    public static final AlwaysTruePredicate ALWAYS_TRUE_PREDICATE = new AlwaysTruePredicate();</span>
+
+<span class="fc" id="L173">    private static final Predicate&lt;?&gt; ALWAYS_TRUE = t -&gt; true;</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private static &lt;T&gt; Predicate&lt;T&gt; alwaysTruePredicate() {
+<span class="fc" id="L177">        return (Predicate&lt;T&gt;) ALWAYS_TRUE;</span>
+    }
+
+    /**
+     * Finds the active thread with the specified id.
+     *
+     * @param threadId The thread id
+     * @return The thread with the specified id or {@code null} if no such thread exists
+     * @throws IllegalArgumentException if the specified id is zero or negative
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Thread findThreadById(final long threadId) {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (threadId &lt;= 0) {</span>
+<span class="fc" id="L194">            throw new IllegalArgumentException(&quot;The thread id must be greater than zero&quot;);</span>
+        }
+<span class="pc bpc" id="L196" title="1 of 4 branches missed.">        final Collection&lt;Thread&gt; result = findThreads((Predicate&lt;Thread&gt;) t -&gt; t != null &amp;&amp; t.getId() == threadId);</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        return result.isEmpty() ? null : result.iterator().next();</span>
+    }
+
+    /**
+     * Finds the active thread with the specified id if it belongs to a thread group with the specified group name.
+     *
+     * @param threadId The thread id
+     * @param threadGroupName The thread group name
+     * @return The threads which belongs to a thread group with the specified group name and the thread's id match the specified id.
+     * {@code null} is returned if no such thread exists
+     * @throws NullPointerException if the group name is null
+     * @throws IllegalArgumentException if the specified id is zero or negative
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Thread findThreadById(final long threadId, final String threadGroupName) {
+<span class="fc" id="L216">        Objects.requireNonNull(threadGroupName, &quot;threadGroupName&quot;);</span>
+<span class="fc" id="L217">        final Thread thread = findThreadById(threadId);</span>
+<span class="pc bpc" id="L218" title="2 of 6 branches missed.">        if (thread != null &amp;&amp; thread.getThreadGroup() != null &amp;&amp; thread.getThreadGroup().getName().equals(threadGroupName)) {</span>
+<span class="fc" id="L219">            return thread;</span>
+        }
+<span class="fc" id="L221">        return null;</span>
+    }
+
+    /**
+     * Finds the active thread with the specified id if it belongs to the specified thread group.
+     *
+     * @param threadId The thread id
+     * @param threadGroup The thread group
+     * @return The thread which belongs to a specified thread group and the thread's id match the specified id.
+     * {@code null} is returned if no such thread exists
+     * @throws NullPointerException if {@code threadGroup == null}
+     * @throws IllegalArgumentException if the specified id is zero or negative
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Thread findThreadById(final long threadId, final ThreadGroup threadGroup) {
+<span class="fc" id="L240">        Objects.requireNonNull(threadGroup, &quot;threadGroup&quot;);</span>
+<span class="fc" id="L241">        final Thread thread = findThreadById(threadId);</span>
+<span class="pc bpc" id="L242" title="1 of 4 branches missed.">        if (thread != null &amp;&amp; threadGroup.equals(thread.getThreadGroup())) {</span>
+<span class="fc" id="L243">            return thread;</span>
+        }
+<span class="fc" id="L245">        return null;</span>
+    }
+
+    /**
+     * Finds all active thread groups which match the given predicate.
+     *
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active thread groups matching the given predicate
+     * @throws NullPointerException if the predicate is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @since 3.13.0
+     */
+    public static Collection&lt;ThreadGroup&gt; findThreadGroups(final Predicate&lt;ThreadGroup&gt; predicate) {
+<span class="fc" id="L261">        return findThreadGroups(getSystemThreadGroup(), true, predicate);</span>
+    }
+
+    /**
+     * Finds all active thread groups which match the given predicate and which is a subgroup of the given thread group (or one of its subgroups).
+     *
+     * @param threadGroup the thread group
+     * @param recurse if {@code true} then evaluate the predicate recursively on all thread groups in all subgroups of the given group
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active thread groups which match the given predicate and which is a subgroup of the given thread group
+     * @throws NullPointerException if the given group or predicate is null
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @since 3.13.0
+     */
+    public static Collection&lt;ThreadGroup&gt; findThreadGroups(final ThreadGroup threadGroup, final boolean recurse, final Predicate&lt;ThreadGroup&gt; predicate) {
+<span class="fc" id="L277">        Objects.requireNonNull(threadGroup, &quot;threadGroup&quot;);</span>
+<span class="fc" id="L278">        Objects.requireNonNull(predicate, &quot;predicate&quot;);</span>
+
+<span class="fc" id="L280">        int count = threadGroup.activeGroupCount();</span>
+        ThreadGroup[] threadGroups;
+        do {
+<span class="fc" id="L283">            threadGroups = new ThreadGroup[count + count / 2 + 1]; //slightly grow the array size</span>
+<span class="fc" id="L284">            count = threadGroup.enumerate(threadGroups, recurse);</span>
+            //return value of enumerate() must be strictly less than the array size according to Javadoc
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">        } while (count &gt;= threadGroups.length);</span>
+<span class="fc" id="L287">        return Collections.unmodifiableCollection(Stream.of(threadGroups).limit(count).filter(predicate).collect(Collectors.toList()));</span>
+    }
+
+    /**
+     * Finds all active thread groups which match the given predicate and which is a subgroup of the given thread group (or one of its subgroups).
+     *
+     * @param threadGroup the thread group
+     * @param recurse if {@code true} then evaluate the predicate recursively on all thread groups in all subgroups of the given group
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active thread groups which match the given predicate and which is a subgroup of the given thread group
+     * @throws NullPointerException if the given group or predicate is null
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @deprecated Use {@link #findThreadGroups(ThreadGroup, boolean, Predicate)}.
+     */
+    @Deprecated
+    public static Collection&lt;ThreadGroup&gt; findThreadGroups(final ThreadGroup threadGroup, final boolean recurse, final ThreadGroupPredicate predicate) {
+<span class="nc" id="L304">        return findThreadGroups(threadGroup, recurse, (Predicate&lt;ThreadGroup&gt;) predicate::test);</span>
+    }
+
+    /**
+     * Finds all active thread groups which match the given predicate.
+     *
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active thread groups matching the given predicate
+     * @throws NullPointerException if the predicate is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @deprecated Use {@link #findThreadGroups(Predicate)}.
+     */
+    @Deprecated
+    public static Collection&lt;ThreadGroup&gt; findThreadGroups(final ThreadGroupPredicate predicate) {
+<span class="nc" id="L321">        return findThreadGroups(getSystemThreadGroup(), true, predicate);</span>
+    }
+
+    /**
+     * Finds active thread groups with the specified group name.
+     *
+     * @param threadGroupName The thread group name
+     * @return the thread groups with the specified group name or an empty collection if no such thread group exists. The collection returned is always unmodifiable.
+     * @throws NullPointerException if group name is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Collection&lt;ThreadGroup&gt; findThreadGroupsByName(final String threadGroupName) {
+<span class="fc" id="L337">        return findThreadGroups(predicateThreadGroup(threadGroupName));</span>
+    }
+
+    /**
+     * Finds all active threads which match the given predicate.
+     *
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active threads matching the given predicate
+     *
+     * @throws NullPointerException if the predicate is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @since 3.13.0
+     */
+    public static Collection&lt;Thread&gt; findThreads(final Predicate&lt;Thread&gt; predicate) {
+<span class="fc" id="L354">        return findThreads(getSystemThreadGroup(), true, predicate);</span>
+    }
+
+    /**
+     * Finds all active threads which match the given predicate and which belongs to the given thread group (or one of its subgroups).
+     *
+     * @param threadGroup the thread group
+     * @param recurse if {@code true} then evaluate the predicate recursively on all threads in all subgroups of the given group
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active threads which match the given predicate and which belongs to the given thread group
+     * @throws NullPointerException if the given group or predicate is null
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @since 3.13.0
+     */
+    public static Collection&lt;Thread&gt; findThreads(final ThreadGroup threadGroup, final boolean recurse, final Predicate&lt;Thread&gt; predicate) {
+<span class="fc" id="L370">        Objects.requireNonNull(threadGroup, &quot;The group must not be null&quot;);</span>
+<span class="fc" id="L371">        Objects.requireNonNull(predicate, &quot;The predicate must not be null&quot;);</span>
+<span class="fc" id="L372">        int count = threadGroup.activeCount();</span>
+        Thread[] threads;
+        do {
+<span class="fc" id="L375">            threads = new Thread[count + count / 2 + 1]; //slightly grow the array size</span>
+<span class="fc" id="L376">            count = threadGroup.enumerate(threads, recurse);</span>
+            //return value of enumerate() must be strictly less than the array size according to javadoc
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">        } while (count &gt;= threads.length);</span>
+<span class="fc" id="L379">        return Collections.unmodifiableCollection(Stream.of(threads).limit(count).filter(predicate).collect(Collectors.toList()));</span>
+    }
+
+    /**
+     * Finds all active threads which match the given predicate and which belongs to the given thread group (or one of its subgroups).
+     *
+     * @param threadGroup the thread group
+     * @param recurse if {@code true} then evaluate the predicate recursively on all threads in all subgroups of the given group
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active threads which match the given predicate and which belongs to the given thread group
+     * @throws NullPointerException if the given group or predicate is null
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @deprecated Use {@link #findThreads(ThreadGroup, boolean, Predicate)}.
+     */
+    @Deprecated
+    public static Collection&lt;Thread&gt; findThreads(final ThreadGroup threadGroup, final boolean recurse, final ThreadPredicate predicate) {
+<span class="fc" id="L396">        return findThreads(threadGroup, recurse, (Predicate&lt;Thread&gt;) predicate::test);</span>
+    }
+
+    /**
+     * Finds all active threads which match the given predicate.
+     *
+     * @param predicate the predicate
+     * @return An unmodifiable {@link Collection} of active threads matching the given predicate
+     *
+     * @throws NullPointerException if the predicate is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     * @deprecated Use {@link #findThreads(Predicate)}.
+     */
+    @Deprecated
+    public static Collection&lt;Thread&gt; findThreads(final ThreadPredicate predicate) {
+<span class="fc" id="L414">        return findThreads(getSystemThreadGroup(), true, predicate);</span>
+    }
+
+    /**
+     * Finds active threads with the specified name.
+     *
+     * @param threadName The thread name
+     * @return The threads with the specified name or an empty collection if no such thread exists. The collection returned is always unmodifiable.
+     * @throws NullPointerException if the specified name is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Collection&lt;Thread&gt; findThreadsByName(final String threadName) {
+<span class="fc" id="L430">        return findThreads(predicateThread(threadName));</span>
+    }
+
+    /**
+     * Finds active threads with the specified name if they belong to a thread group with the specified group name.
+     *
+     * @param threadName The thread name
+     * @param threadGroupName The thread group name
+     * @return The threads which belongs to a thread group with the specified group name and the thread's name match the specified name,
+     * An empty collection is returned if no such thread exists. The collection returned is always unmodifiable.
+     * @throws NullPointerException if the specified thread name or group name is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Collection&lt;Thread&gt; findThreadsByName(final String threadName, final String threadGroupName) {
+<span class="fc" id="L448">        Objects.requireNonNull(threadName, &quot;threadName&quot;);</span>
+<span class="fc" id="L449">        Objects.requireNonNull(threadGroupName, &quot;threadGroupName&quot;);</span>
+<span class="fc" id="L450">        return Collections.unmodifiableCollection(findThreadGroups(predicateThreadGroup(threadGroupName)).stream()</span>
+<span class="fc" id="L451">            .flatMap(group -&gt; findThreads(group, false, predicateThread(threadName)).stream()).collect(Collectors.toList()));</span>
+    }
+
+    /**
+     * Finds active threads with the specified name if they belong to a specified thread group.
+     *
+     * @param threadName The thread name
+     * @param threadGroup The thread group
+     * @return The threads which belongs to a thread group and the thread's name match the specified name,
+     * An empty collection is returned if no such thread exists. The collection returned is always unmodifiable.
+     * @throws NullPointerException if the specified thread name or group is null
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Collection&lt;Thread&gt; findThreadsByName(final String threadName, final ThreadGroup threadGroup) {
+<span class="fc" id="L469">        return findThreads(threadGroup, false, predicateThread(threadName));</span>
+    }
+
+    /**
+     * Gets all active thread groups excluding the system thread group (A thread group is active if it has been not destroyed).
+     *
+     * @return all thread groups excluding the system thread group. The collection returned is always unmodifiable.
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Collection&lt;ThreadGroup&gt; getAllThreadGroups() {
+<span class="fc" id="L483">        return findThreadGroups(alwaysTruePredicate());</span>
+    }
+
+    /**
+     * Gets all active threads (A thread is active if it has been started and has not yet died).
+     *
+     * @return all active threads. The collection returned is always unmodifiable.
+     * @throws  SecurityException
+     *          if the current thread cannot access the system thread group
+     *
+     * @throws  SecurityException  if the current thread cannot modify
+     *          thread groups from this thread's thread group up to the system thread group
+     */
+    public static Collection&lt;Thread&gt; getAllThreads() {
+<span class="fc" id="L497">        return findThreads(alwaysTruePredicate());</span>
+    }
+
+    /**
+     * Gets the system thread group (sometimes also referred as &quot;root thread group&quot;).
+     * &lt;p&gt;
+     * This method returns null if this thread has died (been stopped).
+     * &lt;/p&gt;
+     *
+     * @return the system thread group
+     * @throws SecurityException if the current thread cannot modify thread groups from this thread's thread group up to the
+     *         system thread group
+     */
+    public static ThreadGroup getSystemThreadGroup() {
+<span class="fc" id="L511">        ThreadGroup threadGroup = Thread.currentThread().getThreadGroup();</span>
+<span class="pc bpc" id="L512" title="1 of 4 branches missed.">        while (threadGroup != null &amp;&amp; threadGroup.getParent() != null) {</span>
+<span class="fc" id="L513">            threadGroup = threadGroup.getParent();</span>
+        }
+<span class="fc" id="L515">        return threadGroup;</span>
+    }
+
+    /**
+     * Waits for the given thread to die for the given duration. Implemented using {@link Thread#join(long, int)}.
+     *
+     * @param thread The thread to join.
+     * @param duration How long to wait.
+     * @throws InterruptedException if any thread has interrupted the current thread.
+     * @see Thread#join(long, int)
+     * @since 3.12.0
+     */
+    public static void join(final Thread thread, final Duration duration) throws InterruptedException {
+<span class="fc" id="L528">        DurationUtils.accept(thread::join, duration);</span>
+<span class="fc" id="L529">    }</span>
+
+    private static &lt;T&gt; Predicate&lt;T&gt; namePredicate(final String name, final Function&lt;T, String&gt; nameGetter) {
+<span class="pc bpc" id="L532" title="1 of 4 branches missed.">        return (Predicate&lt;T&gt;) t -&gt; t != null &amp;&amp; Objects.equals(nameGetter.apply(t), Objects.requireNonNull(name));</span>
+    }
+
+    private static Predicate&lt;Thread&gt; predicateThread(final String threadName) {
+<span class="fc" id="L536">        return namePredicate(threadName, Thread::getName);</span>
+    }
+
+    private static Predicate&lt;ThreadGroup&gt; predicateThreadGroup(final String threadGroupName) {
+<span class="fc" id="L540">        return namePredicate(threadGroupName, ThreadGroup::getName);</span>
+    }
+
+    /**
+     * Sleeps the current thread for the given duration. Implemented using {@link Thread#sleep(long, int)}.
+     *
+     * @param duration How long to sleep.
+     * @throws InterruptedException if any thread has interrupted the current thread.
+     * @see Thread#sleep(long, int)
+     * @since 3.12.0
+     */
+    public static void sleep(final Duration duration) throws InterruptedException {
+<span class="fc" id="L552">        DurationUtils.accept(Thread::sleep, duration);</span>
+<span class="fc" id="L553">    }</span>
+
+    /**
+     * Sleeps for the given duration while ignoring {@link InterruptedException}.
+     * &lt;p&gt;
+     * The sleep duration may be shorter than duration if we catch a {@link InterruptedException}.
+     * &lt;/p&gt;
+     *
+     * @param duration the length of time to sleep.
+     * @since 3.13.0
+     */
+    public static void sleepQuietly(final Duration duration) {
+        try {
+<span class="fc" id="L566">            sleep(duration);</span>
+<span class="nc" id="L567">        } catch (final InterruptedException ignore) {</span>
+            // Ignore &amp; be quiet.
+<span class="fc" id="L569">        }</span>
+<span class="fc" id="L570">    }</span>
+
+    /**
+     * ThreadUtils instances should NOT be constructed in standard programming. Instead, the class should be used as {@code ThreadUtils.getAllThreads()}
+     * &lt;p&gt;
+     * This constructor is public to permit tools that require a JavaBean instance to operate.
+     * &lt;/p&gt;
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="fc" id="L581">    public ThreadUtils() {</span>
+        // empty
+<span class="fc" id="L583">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

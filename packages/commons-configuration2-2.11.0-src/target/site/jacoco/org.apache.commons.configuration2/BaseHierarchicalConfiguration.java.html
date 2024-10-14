@@ -1,0 +1,799 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseHierarchicalConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">BaseHierarchicalConfiguration.java</span></div><h1>BaseHierarchicalConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.interpol.ConfigurationInterpolator;
+import org.apache.commons.configuration2.tree.ConfigurationNodeVisitorAdapter;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.InMemoryNodeModel;
+import org.apache.commons.configuration2.tree.InMemoryNodeModelSupport;
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.configuration2.tree.NodeModel;
+import org.apache.commons.configuration2.tree.NodeSelector;
+import org.apache.commons.configuration2.tree.NodeTreeWalker;
+import org.apache.commons.configuration2.tree.QueryResult;
+import org.apache.commons.configuration2.tree.ReferenceNodeHandler;
+import org.apache.commons.configuration2.tree.TrackedNodeModel;
+import org.apache.commons.lang3.ObjectUtils;
+
+/**
+ * &lt;p&gt;
+ * A specialized hierarchical configuration implementation that is based on a structure of {@link ImmutableNode}
+ * objects.
+ * &lt;/p&gt;
+ */
+public class BaseHierarchicalConfiguration extends AbstractHierarchicalConfiguration&lt;ImmutableNode&gt; implements InMemoryNodeModelSupport {
+
+    /**
+     * A specialized visitor base class that can be used for storing the tree of configuration nodes. The basic idea is that
+     * each node can be associated with a reference object. This reference object has a concrete meaning in a derived class,
+     * e.g. an entry in a JNDI context or an XML element. When the configuration tree is set up, the {@code load()} method
+     * is responsible for setting the reference objects. When the configuration tree is later modified, new nodes do not
+     * have a defined reference object. This visitor class processes all nodes and finds the ones without a defined
+     * reference object. For those nodes the {@code insert()} method is called, which must be defined in concrete sub
+     * classes. This method can perform all steps to integrate the new node into the original structure.
+     */
+<span class="fc" id="L63">    protected abstract static class BuilderVisitor extends ConfigurationNodeVisitorAdapter&lt;ImmutableNode&gt; {</span>
+        /**
+         * Inserts a new node into the structure constructed by this builder. This method is called for each node that has been
+         * added to the configuration tree after the configuration has been loaded from its source. These new nodes have to be
+         * inserted into the original structure. The passed in nodes define the position of the node to be inserted: its parent
+         * and the siblings between to insert.
+         *
+         * @param newNode the node to be inserted
+         * @param parent the parent node
+         * @param sibling1 the sibling after which the node is to be inserted; can be &lt;b&gt;null&lt;/b&gt; if the new node is going to be
+         *        the first child node
+         * @param sibling2 the sibling before which the node is to be inserted; can be &lt;b&gt;null&lt;/b&gt; if the new node is going to
+         *        be the last child node
+         * @param refHandler the {@code ReferenceNodeHandler}
+         */
+        protected abstract void insert(ImmutableNode newNode, ImmutableNode parent, ImmutableNode sibling1, ImmutableNode sibling2,
+            ReferenceNodeHandler refHandler);
+
+        /**
+         * Inserts new children that have been added to the specified node.
+         *
+         * @param node the current node to be processed
+         * @param refHandler the {@code ReferenceNodeHandler}
+         */
+        private void insertNewChildNodes(final ImmutableNode node, final ReferenceNodeHandler refHandler) {
+<span class="fc" id="L88">            final Collection&lt;ImmutableNode&gt; subNodes = new LinkedList&lt;&gt;(refHandler.getChildren(node));</span>
+<span class="fc" id="L89">            final Iterator&lt;ImmutableNode&gt; children = subNodes.iterator();</span>
+            ImmutableNode sibling1;
+<span class="fc" id="L91">            ImmutableNode nd = null;</span>
+
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            while (children.hasNext()) {</span>
+                // find the next new node
+                do {
+<span class="fc" id="L96">                    sibling1 = nd;</span>
+<span class="fc" id="L97">                    nd = children.next();</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">                } while (refHandler.getReference(nd) != null &amp;&amp; children.hasNext());</span>
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                if (refHandler.getReference(nd) == null) {</span>
+                    // find all following new nodes
+<span class="fc" id="L102">                    final List&lt;ImmutableNode&gt; newNodes = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L103">                    newNodes.add(nd);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                    while (children.hasNext()) {</span>
+<span class="fc" id="L105">                        nd = children.next();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                        if (refHandler.getReference(nd) != null) {</span>
+<span class="fc" id="L107">                            break;</span>
+                        }
+<span class="fc" id="L109">                        newNodes.add(nd);</span>
+                    }
+
+                    // Insert all new nodes
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    final ImmutableNode sibling2 = refHandler.getReference(nd) == null ? null : nd;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                    for (final ImmutableNode insertNode : newNodes) {</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                        if (refHandler.getReference(insertNode) == null) {</span>
+<span class="fc" id="L116">                            insert(insertNode, node, sibling1, sibling2, refHandler);</span>
+<span class="fc" id="L117">                            sibling1 = insertNode;</span>
+                        }
+<span class="fc" id="L119">                    }</span>
+<span class="fc" id="L120">                }</span>
+            }
+<span class="fc" id="L122">        }</span>
+
+        /**
+         * Updates a node that already existed in the original hierarchy. This method is called for each node that has an
+         * assigned reference object. A concrete implementation should update the reference according to the node's current
+         * value.
+         *
+         * @param node the current node to be processed
+         * @param reference the reference object for this node
+         * @param refHandler the {@code ReferenceNodeHandler}
+         */
+        protected abstract void update(ImmutableNode node, Object reference, ReferenceNodeHandler refHandler);
+
+        /**
+         * Updates the value of a node. If this node is associated with a reference object, the {@code update()} method is
+         * called.
+         *
+         * @param node the current node to be processed
+         * @param refHandler the {@code ReferenceNodeHandler}
+         */
+        private void updateNode(final ImmutableNode node, final ReferenceNodeHandler refHandler) {
+<span class="fc" id="L143">            final Object reference = refHandler.getReference(node);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (reference != null) {</span>
+<span class="fc" id="L145">                update(node, reference, refHandler);</span>
+            }
+<span class="fc" id="L147">        }</span>
+
+        @Override
+        public void visitBeforeChildren(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L151">            final ReferenceNodeHandler refHandler = (ReferenceNodeHandler) handler;</span>
+<span class="fc" id="L152">            updateNode(node, refHandler);</span>
+<span class="fc" id="L153">            insertNewChildNodes(node, refHandler);</span>
+<span class="fc" id="L154">        }</span>
+    }
+
+    /**
+     * A specialized visitor implementation which constructs the root node of a configuration with all variables replaced by
+     * their interpolated values.
+     */
+    private final class InterpolatedVisitor extends ConfigurationNodeVisitorAdapter&lt;ImmutableNode&gt; {
+        /** A stack for managing node builder instances. */
+        private final List&lt;ImmutableNode.Builder&gt; builderStack;
+
+        /** The resulting root node. */
+        private ImmutableNode interpolatedRoot;
+
+        /**
+         * Creates a new instance of {@code InterpolatedVisitor}.
+         */
+<span class="fc" id="L171">        public InterpolatedVisitor() {</span>
+<span class="fc" id="L172">            builderStack = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L173">        }</span>
+
+        /**
+         * Gets the result of this builder: the root node of the interpolated nodes hierarchy.
+         *
+         * @return the resulting root node
+         */
+        public ImmutableNode getInterpolatedRoot() {
+<span class="fc" id="L181">            return interpolatedRoot;</span>
+        }
+
+        /**
+         * Handles interpolation for a node with no children. If interpolation does not change this node, it is copied as is to
+         * the resulting structure. Otherwise, a new node is created with the interpolated values.
+         *
+         * @param node the current node to be processed
+         * @param handler the {@code NodeHandler}
+         */
+        private void handleLeafNode(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L192">            final Object value = interpolate(node.getValue());</span>
+<span class="fc" id="L193">            final Map&lt;String, Object&gt; interpolatedAttributes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L194">            final boolean attributeChanged = interpolateAttributes(node, handler, interpolatedAttributes);</span>
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">            final ImmutableNode newNode = valueChanged(value, handler.getValue(node)) || attributeChanged</span>
+<span class="fc" id="L196">                ? new ImmutableNode.Builder().name(handler.nodeName(node)).value(value).addAttributes(interpolatedAttributes).create()</span>
+                : node;
+<span class="fc" id="L198">            storeInterpolatedNode(newNode);</span>
+<span class="fc" id="L199">        }</span>
+
+        /**
+         * Returns a map with interpolated attributes of the passed in node.
+         *
+         * @param node the current node to be processed
+         * @param handler the {@code NodeHandler}
+         * @return the map with interpolated attributes
+         */
+        private Map&lt;String, Object&gt; interpolateAttributes(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L209">            final Map&lt;String, Object&gt; attributes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L210">            interpolateAttributes(node, handler, attributes);</span>
+<span class="fc" id="L211">            return attributes;</span>
+        }
+
+        /**
+         * Populates a map with interpolated attributes of the passed in node.
+         *
+         * @param node the current node to be processed
+         * @param handler the {@code NodeHandler}
+         * @param interpolatedAttributes a map for storing the results
+         * @return a flag whether an attribute value was changed by interpolation
+         */
+        private boolean interpolateAttributes(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler,
+            final Map&lt;String, Object&gt; interpolatedAttributes) {
+<span class="fc" id="L224">            boolean attributeChanged = false;</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">            for (final String attr : handler.getAttributes(node)) {</span>
+<span class="nc" id="L226">                final Object attrValue = interpolate(handler.getAttributeValue(node, attr));</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">                if (valueChanged(attrValue, handler.getAttributeValue(node, attr))) {</span>
+<span class="nc" id="L228">                    attributeChanged = true;</span>
+                }
+<span class="nc" id="L230">                interpolatedAttributes.put(attr, attrValue);</span>
+<span class="nc" id="L231">            }</span>
+<span class="fc" id="L232">            return attributeChanged;</span>
+        }
+
+        /**
+         * Returns a flag whether the given node is a leaf. This is the case if it does not have children.
+         *
+         * @param node the node in question
+         * @param handler the {@code NodeHandler}
+         * @return a flag whether this is a leaf node
+         */
+        private boolean isLeafNode(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L243">            return handler.getChildren(node).isEmpty();</span>
+        }
+
+        /**
+         * Returns the top-level element from the stack without removing it.
+         *
+         * @return the top-level element from the stack
+         */
+        private ImmutableNode.Builder peek() {
+<span class="fc" id="L252">            return builderStack.get(0);</span>
+        }
+
+        /**
+         * Pops the top-level element from the stack.
+         *
+         * @return the element popped from the stack
+         */
+        private ImmutableNode.Builder pop() {
+<span class="fc" id="L261">            return builderStack.remove(0);</span>
+        }
+
+        /**
+         * Pushes a new builder on the stack.
+         *
+         * @param builder the builder
+         */
+        private void push(final ImmutableNode.Builder builder) {
+<span class="fc" id="L270">            builderStack.add(0, builder);</span>
+<span class="fc" id="L271">        }</span>
+
+        /**
+         * Stores a processed node. Per default, the node is added to the current builder on the stack. If no such builder
+         * exists, this is the result node.
+         *
+         * @param node the node to be stored
+         */
+        private void storeInterpolatedNode(final ImmutableNode node) {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            if (builderStack.isEmpty()) {</span>
+<span class="fc" id="L281">                interpolatedRoot = node;</span>
+            } else {
+<span class="fc" id="L283">                peek().addChild(node);</span>
+            }
+<span class="fc" id="L285">        }</span>
+
+        /**
+         * Tests whether a value is changed because of interpolation.
+         *
+         * @param interpolatedValue the interpolated value
+         * @param value the original value
+         * @return a flag whether the value was changed
+         */
+        private boolean valueChanged(final Object interpolatedValue, final Object value) {
+<span class="fc" id="L295">            return ObjectUtils.notEqual(interpolatedValue, value);</span>
+        }
+
+        @Override
+        public void visitAfterChildren(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc bfc" id="L300" title="All 2 branches covered.">            if (!isLeafNode(node, handler)) {</span>
+<span class="fc" id="L301">                final ImmutableNode newNode = pop().create();</span>
+<span class="fc" id="L302">                storeInterpolatedNode(newNode);</span>
+            }
+<span class="fc" id="L304">        }</span>
+
+        @Override
+        public void visitBeforeChildren(final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">            if (isLeafNode(node, handler)) {</span>
+<span class="fc" id="L309">                handleLeafNode(node, handler);</span>
+            } else {
+<span class="fc" id="L311">                final ImmutableNode.Builder builder = new ImmutableNode.Builder(handler.getChildrenCount(node, null)).name(handler.nodeName(node))</span>
+<span class="fc" id="L312">                    .value(interpolate(handler.getValue(node))).addAttributes(interpolateAttributes(node, handler));</span>
+<span class="fc" id="L313">                push(builder);</span>
+            }
+<span class="fc" id="L315">        }</span>
+    }
+
+    /**
+     * Creates the {@code NodeModel} for this configuration based on a passed in source configuration. This implementation
+     * creates an {@link InMemoryNodeModel}. If the passed in source configuration is defined, its root node also becomes
+     * the root node of this configuration. Otherwise, a new, empty root node is used.
+     *
+     * @param c the configuration that is to be copied
+     * @return the {@code NodeModel} for the new configuration
+     */
+    private static NodeModel&lt;ImmutableNode&gt; createNodeModel(final HierarchicalConfiguration&lt;ImmutableNode&gt; c) {
+<span class="fc" id="L327">        return new InMemoryNodeModel(obtainRootNode(c));</span>
+    }
+
+    /**
+     * Obtains the root node from a configuration whose data is to be copied. It has to be ensured that the synchronizer is
+     * called correctly.
+     *
+     * @param c the configuration that is to be copied
+     * @return the root node of this configuration
+     */
+    private static ImmutableNode obtainRootNode(final HierarchicalConfiguration&lt;ImmutableNode&gt; c) {
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        return c != null ? c.getNodeModel().getNodeHandler().getRootNode() : null;</span>
+    }
+
+    /**
+     * Creates a list with immutable configurations from the given input list.
+     *
+     * @param subs a list with mutable configurations
+     * @return a list with corresponding immutable configurations
+     */
+    private static List&lt;ImmutableHierarchicalConfiguration&gt; toImmutable(final List&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; subs) {
+<span class="fc" id="L348">        return subs.stream().map(ConfigurationUtils::unmodifiableConfiguration).collect(Collectors.toList());</span>
+    }
+
+    /** A listener for reacting on changes caused by sub configurations. */
+    private final EventListener&lt;ConfigurationEvent&gt; changeListener;
+
+    /**
+     * Creates a new instance of {@code BaseHierarchicalConfiguration}.
+     */
+    public BaseHierarchicalConfiguration() {
+<span class="fc" id="L358">        this((HierarchicalConfiguration&lt;ImmutableNode&gt;) null);</span>
+<span class="fc" id="L359">    }</span>
+
+    /**
+     * Creates a new instance of {@code BaseHierarchicalConfiguration} and copies all data contained in the specified
+     * configuration into the new one.
+     *
+     * @param c the configuration that is to be copied (if &lt;b&gt;null&lt;/b&gt;, this constructor will behave like the standard
+     *        constructor)
+     * @since 1.4
+     */
+    public BaseHierarchicalConfiguration(final HierarchicalConfiguration&lt;ImmutableNode&gt; c) {
+<span class="fc" id="L370">        this(createNodeModel(c));</span>
+<span class="fc" id="L371">    }</span>
+
+    /**
+     * Creates a new instance of {@code BaseHierarchicalConfiguration} and initializes it with the given {@code NodeModel}.
+     *
+     * @param model the {@code NodeModel}
+     */
+    protected BaseHierarchicalConfiguration(final NodeModel&lt;ImmutableNode&gt; model) {
+<span class="fc" id="L379">        super(model);</span>
+<span class="fc" id="L380">        changeListener = createChangeListener();</span>
+<span class="fc" id="L381">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation resolves the node(s) selected by the given key. If not a single node is selected,
+     * an empty list is returned. Otherwise, sub configurations for each child of the node are created.
+     */
+    @Override
+    public List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; childConfigurationsAt(final String key) {
+        List&lt;ImmutableNode&gt; nodes;
+<span class="fc" id="L390">        beginRead(false);</span>
+        try {
+<span class="fc" id="L392">            nodes = fetchFilteredNodeResults(key);</span>
+        } finally {
+<span class="fc" id="L394">            endRead();</span>
+        }
+
+<span class="fc bfc" id="L397" title="All 2 branches covered.">        if (nodes.size() != 1) {</span>
+<span class="fc" id="L398">            return Collections.emptyList();</span>
+        }
+
+<span class="fc" id="L401">        return nodes.get(0).stream().map(this::createIndependentSubConfigurationForNode).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * {@inheritDoc} This method works like {@link #childConfigurationsAt(String)}; however, depending on the value of the
+     * {@code supportUpdates} flag, connected sub configurations may be created.
+     */
+    @Override
+    public List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; childConfigurationsAt(final String key, final boolean supportUpdates) {
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        if (!supportUpdates) {</span>
+<span class="nc" id="L411">            return childConfigurationsAt(key);</span>
+        }
+
+<span class="fc" id="L414">        final InMemoryNodeModel parentModel = getSubConfigurationParentModel();</span>
+<span class="fc" id="L415">        return createConnectedSubConfigurations(this, parentModel.trackChildNodes(key, this));</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates a new instance of {@link InMemoryNodeModel}, initialized with this
+     * configuration's root node. This has the effect that although the same nodes are used, the original and copied
+     * configurations are independent on each other.
+     */
+    @Override
+    protected NodeModel&lt;ImmutableNode&gt; cloneNodeModel() {
+<span class="fc" id="L425">        return new InMemoryNodeModel(getModel().getNodeHandler().getRootNode());</span>
+    }
+
+    /**
+     * {@inheritDoc} This is a short form for {@code configurationAt(key,
+     * &lt;b&gt;false&lt;/b&gt;)}.
+     *
+     * @throws ConfigurationRuntimeException if the key does not select a single node
+     */
+    @Override
+    public HierarchicalConfiguration&lt;ImmutableNode&gt; configurationAt(final String key) {
+<span class="fc" id="L436">        return configurationAt(key, false);</span>
+    }
+
+    /**
+     * {@inheritDoc} The result of this implementation depends on the {@code supportUpdates} flag: If it is &lt;b&gt;false&lt;/b&gt;, a
+     * plain {@code BaseHierarchicalConfiguration} is returned using the selected node as root node. This is suitable for
+     * read-only access to properties. Because the configuration returned in this case is not connected to the parent
+     * configuration, updates on properties made by one configuration are not reflected by the other one. A value of
+     * &lt;b&gt;true&lt;/b&gt; for this parameter causes a tracked node to be created, and result is a {@link SubnodeConfiguration}
+     * based on this tracked node. This configuration is really connected to its parent, so that updated properties are
+     * visible on both.
+     *
+     * @see SubnodeConfiguration
+     * @throws ConfigurationRuntimeException if the key does not select a single node
+     */
+    @Override
+    public HierarchicalConfiguration&lt;ImmutableNode&gt; configurationAt(final String key, final boolean supportUpdates) {
+<span class="fc" id="L453">        beginRead(false);</span>
+        try {
+<span class="fc bfc" id="L455" title="All 2 branches covered.">            return supportUpdates ? createConnectedSubConfiguration(key) : createIndependentSubConfiguration(key);</span>
+        } finally {
+<span class="fc" id="L457">            endRead();</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates sub configurations in the same way as described for
+     * {@link #configurationAt(String)}.
+     */
+    @Override
+    public List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; configurationsAt(final String key) {
+        List&lt;ImmutableNode&gt; nodes;
+<span class="fc" id="L468">        beginRead(false);</span>
+        try {
+<span class="fc" id="L470">            nodes = fetchFilteredNodeResults(key);</span>
+        } finally {
+<span class="fc" id="L472">            endRead();</span>
+        }
+<span class="fc" id="L474">        return nodes.stream().map(this::createIndependentSubConfigurationForNode).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates tracked nodes for the specified key. Then sub configurations for these
+     * nodes are created and returned.
+     */
+    @Override
+    public List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; configurationsAt(final String key, final boolean supportUpdates) {
+<span class="fc bfc" id="L483" title="All 2 branches covered.">        if (!supportUpdates) {</span>
+<span class="fc" id="L484">            return configurationsAt(key);</span>
+        }
+
+        InMemoryNodeModel parentModel;
+<span class="fc" id="L488">        beginRead(false);</span>
+        try {
+<span class="fc" id="L490">            parentModel = getSubConfigurationParentModel();</span>
+        } finally {
+<span class="fc" id="L492">            endRead();</span>
+        }
+
+<span class="fc" id="L495">        final Collection&lt;NodeSelector&gt; selectors = parentModel.selectAndTrackNodes(key, this);</span>
+<span class="fc" id="L496">        return createConnectedSubConfigurations(this, selectors);</span>
+    }
+
+    /**
+     * Creates a listener which reacts on all changes on this configuration or one of its {@code SubnodeConfiguration}
+     * instances. If such a change is detected, some updates have to be performed.
+     *
+     * @return the newly created change listener
+     */
+    private EventListener&lt;ConfigurationEvent&gt; createChangeListener() {
+<span class="fc" id="L506">        return this::subnodeConfigurationChanged;</span>
+    }
+
+    /**
+     * Creates a sub configuration from the specified key which is connected to this configuration. This implementation
+     * creates a {@link SubnodeConfiguration} with a tracked node identified by the passed in key.
+     *
+     * @param key the key of the sub configuration
+     * @return the new sub configuration
+     */
+    private BaseHierarchicalConfiguration createConnectedSubConfiguration(final String key) {
+<span class="fc" id="L517">        final NodeSelector selector = getSubConfigurationNodeSelector(key);</span>
+<span class="fc" id="L518">        getSubConfigurationParentModel().trackNode(selector, this);</span>
+<span class="fc" id="L519">        return createSubConfigurationForTrackedNode(selector, this);</span>
+    }
+
+    /**
+     * Creates a list of connected sub configurations based on a passed in list of node selectors.
+     *
+     * @param parentModelSupport the parent node model support object
+     * @param selectors the list of {@code NodeSelector} objects
+     * @return the list with sub configurations
+     */
+    private List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; createConnectedSubConfigurations(final InMemoryNodeModelSupport parentModelSupport,
+        final Collection&lt;NodeSelector&gt; selectors) {
+<span class="fc" id="L531">        return selectors.stream().map(sel -&gt; createSubConfigurationForTrackedNode(sel, parentModelSupport)).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Creates a sub configuration from the specified key which is independent on this configuration. This means that the
+     * sub configuration operates on a separate node model (although the nodes are initially shared).
+     *
+     * @param key the key of the sub configuration
+     * @return the new sub configuration
+     */
+    private BaseHierarchicalConfiguration createIndependentSubConfiguration(final String key) {
+<span class="fc" id="L542">        final List&lt;ImmutableNode&gt; targetNodes = fetchFilteredNodeResults(key);</span>
+<span class="fc" id="L543">        final int size = targetNodes.size();</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (size != 1) {</span>
+<span class="fc" id="L545">            throw new ConfigurationRuntimeException(&quot;Passed in key must select exactly one node (found %,d): %s&quot;, size, key);</span>
+        }
+<span class="fc" id="L547">        final BaseHierarchicalConfiguration sub = new BaseHierarchicalConfiguration(new InMemoryNodeModel(targetNodes.get(0)));</span>
+<span class="fc" id="L548">        initSubConfiguration(sub);</span>
+<span class="fc" id="L549">        return sub;</span>
+    }
+
+    /**
+     * Returns an initialized sub configuration for this configuration that is based on another
+     * {@code BaseHierarchicalConfiguration}. Thus, it is independent from this configuration.
+     *
+     * @param node the root node for the sub configuration
+     * @return the initialized sub configuration
+     */
+    private BaseHierarchicalConfiguration createIndependentSubConfigurationForNode(final ImmutableNode node) {
+<span class="fc" id="L560">        final BaseHierarchicalConfiguration sub = new BaseHierarchicalConfiguration(new InMemoryNodeModel(node));</span>
+<span class="fc" id="L561">        initSubConfiguration(sub);</span>
+<span class="fc" id="L562">        return sub;</span>
+    }
+
+    /**
+     * Creates a connected sub configuration based on a selector for a tracked node.
+     *
+     * @param selector the {@code NodeSelector}
+     * @param parentModelSupport the {@code InMemoryNodeModelSupport} object for the parent node model
+     * @return the newly created sub configuration
+     * @since 2.0
+     */
+    protected SubnodeConfiguration createSubConfigurationForTrackedNode(final NodeSelector selector, final InMemoryNodeModelSupport parentModelSupport) {
+<span class="fc" id="L574">        final SubnodeConfiguration subConfig = new SubnodeConfiguration(this, new TrackedNodeModel(parentModelSupport, selector, true));</span>
+<span class="fc" id="L575">        initSubConfigurationForThisParent(subConfig);</span>
+<span class="fc" id="L576">        return subConfig;</span>
+    }
+
+    /**
+     * Creates a root node for a subset configuration based on the passed in query results. This method creates a new root
+     * node and adds the children and attributes of all result nodes to it. If only a single node value is defined, it is
+     * assigned as value of the new root node.
+     *
+     * @param results the collection of query results
+     * @return the root node for the subset configuration
+     */
+    private ImmutableNode createSubsetRootNode(final Collection&lt;QueryResult&lt;ImmutableNode&gt;&gt; results) {
+<span class="fc" id="L588">        final ImmutableNode.Builder builder = new ImmutableNode.Builder();</span>
+<span class="fc" id="L589">        Object value = null;</span>
+<span class="fc" id="L590">        int valueCount = 0;</span>
+
+<span class="fc bfc" id="L592" title="All 2 branches covered.">        for (final QueryResult&lt;ImmutableNode&gt; result : results) {</span>
+<span class="fc bfc" id="L593" title="All 2 branches covered.">            if (result.isAttributeResult()) {</span>
+<span class="fc" id="L594">                builder.addAttribute(result.getAttributeName(), result.getAttributeValue(getModel().getNodeHandler()));</span>
+            } else {
+<span class="fc bfc" id="L596" title="All 2 branches covered.">                if (result.getNode().getValue() != null) {</span>
+<span class="fc" id="L597">                    value = result.getNode().getValue();</span>
+<span class="fc" id="L598">                    valueCount++;</span>
+                }
+<span class="fc" id="L600">                builder.addChildren(result.getNode().getChildren());</span>
+<span class="fc" id="L601">                builder.addAttributes(result.getNode().getAttributes());</span>
+            }
+<span class="fc" id="L603">        }</span>
+
+<span class="fc bfc" id="L605" title="All 2 branches covered.">        if (valueCount == 1) {</span>
+<span class="fc" id="L606">            builder.value(value);</span>
+        }
+<span class="fc" id="L608">        return builder.create();</span>
+    }
+
+    /**
+     * Executes a query on the specified key and filters it for node results.
+     *
+     * @param key the key
+     * @return the filtered list with result nodes
+     */
+    private List&lt;ImmutableNode&gt; fetchFilteredNodeResults(final String key) {
+<span class="fc" id="L618">        final NodeHandler&lt;ImmutableNode&gt; handler = getModel().getNodeHandler();</span>
+<span class="fc" id="L619">        return resolveNodeKey(handler.getRootNode(), key, handler);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation returns the {@code InMemoryNodeModel} used by this configuration.
+     */
+    @Override
+    public InMemoryNodeModel getNodeModel() {
+<span class="fc" id="L627">        return (InMemoryNodeModel) super.getNodeModel();</span>
+    }
+
+    /**
+     * Gets the {@code NodeSelector} to be used for a sub configuration based on the passed in key. This method is called
+     * whenever a sub configuration is to be created. This base implementation returns a new {@code NodeSelector}
+     * initialized with the passed in key. Sub classes may override this method if they have a different strategy for
+     * creating a selector.
+     *
+     * @param key the key of the sub configuration
+     * @return a {@code NodeSelector} for initializing a sub configuration
+     * @since 2.0
+     */
+    protected NodeSelector getSubConfigurationNodeSelector(final String key) {
+<span class="fc" id="L641">        return new NodeSelector(key);</span>
+    }
+
+    /**
+     * Gets the {@code InMemoryNodeModel} to be used as parent model for a new sub configuration. This method is called
+     * whenever a sub configuration is to be created. This base implementation returns the model of this configuration. Sub
+     * classes with different requirements for the parent models of sub configurations have to override it.
+     *
+     * @return the parent model for a new sub configuration
+     */
+    protected InMemoryNodeModel getSubConfigurationParentModel() {
+<span class="fc" id="L652">        return (InMemoryNodeModel) getModel();</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation first delegates to {@code childConfigurationsAt()} to create a list of mutable
+     * child configurations. Then a list with immutable wrapper configurations is created.
+     */
+    @Override
+    public List&lt;ImmutableHierarchicalConfiguration&gt; immutableChildConfigurationsAt(final String key) {
+<span class="fc" id="L661">        return toImmutable(childConfigurationsAt(key));</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates a {@code SubnodeConfiguration} by delegating to {@code configurationAt()}.
+     * Then an immutable wrapper is created and returned.
+     *
+     * @throws ConfigurationRuntimeException if the key does not select a single node
+     */
+    @Override
+    public ImmutableHierarchicalConfiguration immutableConfigurationAt(final String key) {
+<span class="fc" id="L672">        return ConfigurationUtils.unmodifiableConfiguration(configurationAt(key));</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates a {@code SubnodeConfiguration} by delegating to {@code configurationAt()}.
+     * Then an immutable wrapper is created and returned.
+     */
+    @Override
+    public ImmutableHierarchicalConfiguration immutableConfigurationAt(final String key, final boolean supportUpdates) {
+<span class="fc" id="L681">        return ConfigurationUtils.unmodifiableConfiguration(configurationAt(key, supportUpdates));</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation first delegates to {@code configurationsAt()} to create a list of
+     * {@code SubnodeConfiguration} objects. Then for each element of this list an unmodifiable wrapper is created.
+     */
+    @Override
+    public List&lt;ImmutableHierarchicalConfiguration&gt; immutableConfigurationsAt(final String key) {
+<span class="fc" id="L690">        return toImmutable(configurationsAt(key));</span>
+    }
+
+    /**
+     * Initializes properties of a sub configuration. A sub configuration inherits some settings from its parent, e.g. the
+     * expression engine or the synchronizer. The corresponding values are copied by this method.
+     *
+     * @param sub the sub configuration to be initialized
+     */
+    private void initSubConfiguration(final BaseHierarchicalConfiguration sub) {
+<span class="fc" id="L700">        sub.setSynchronizer(getSynchronizer());</span>
+<span class="fc" id="L701">        sub.setExpressionEngine(getExpressionEngine());</span>
+<span class="fc" id="L702">        sub.setListDelimiterHandler(getListDelimiterHandler());</span>
+<span class="fc" id="L703">        sub.setThrowExceptionOnMissing(isThrowExceptionOnMissing());</span>
+<span class="fc" id="L704">        sub.getInterpolator().setParentInterpolator(getInterpolator());</span>
+<span class="fc" id="L705">    }</span>
+
+    /**
+     * Initializes a {@code SubnodeConfiguration} object. This method should be called for each sub configuration created
+     * for this configuration. It ensures that the sub configuration is correctly connected to its parent instance and that
+     * update events are correctly propagated.
+     *
+     * @param subConfig the sub configuration to be initialized
+     * @since 2.0
+     */
+    protected void initSubConfigurationForThisParent(final SubnodeConfiguration subConfig) {
+<span class="fc" id="L716">        initSubConfiguration(subConfig);</span>
+<span class="fc" id="L717">        subConfig.addEventListener(ConfigurationEvent.ANY, changeListener);</span>
+<span class="fc" id="L718">    }</span>
+
+    /**
+     * Returns a configuration with the same content as this configuration, but with all variables replaced by their actual
+     * values. This implementation is specific for hierarchical configurations. It clones the current configuration and runs
+     * a specialized visitor on the clone, which performs interpolation on the single configuration nodes.
+     *
+     * @return a configuration with all variables interpolated
+     * @since 1.5
+     */
+    @Override
+    public Configuration interpolatedConfiguration() {
+<span class="fc" id="L730">        final InterpolatedVisitor visitor = new InterpolatedVisitor();</span>
+<span class="fc" id="L731">        final NodeHandler&lt;ImmutableNode&gt; handler = getModel().getNodeHandler();</span>
+<span class="fc" id="L732">        NodeTreeWalker.INSTANCE.walkDFS(handler.getRootNode(), visitor, handler);</span>
+
+<span class="fc" id="L734">        final BaseHierarchicalConfiguration c = (BaseHierarchicalConfiguration) clone();</span>
+<span class="fc" id="L735">        c.getNodeModel().setRootNode(visitor.getInterpolatedRoot());</span>
+<span class="fc" id="L736">        return c;</span>
+    }
+
+    /**
+     * This method is always called when a subnode configuration created from this configuration has been modified. This
+     * implementation transforms the received event into an event of type {@code SUBNODE_CHANGED} and notifies the
+     * registered listeners.
+     *
+     * @param event the event describing the change
+     * @since 1.5
+     */
+    protected void subnodeConfigurationChanged(final ConfigurationEvent event) {
+<span class="fc" id="L748">        fireEvent(ConfigurationEvent.SUBNODE_CHANGED, null, event, event.isBeforeUpdate());</span>
+<span class="fc" id="L749">    }</span>
+
+    /**
+     * Creates a new {@code Configuration} object containing all keys that start with the specified prefix. This
+     * implementation will return a {@code BaseHierarchicalConfiguration} object so that the structure of the keys will be
+     * saved. The nodes selected by the prefix (it is possible that multiple nodes are selected) are mapped to the root node
+     * of the returned configuration, i.e. their children and attributes will become children and attributes of the new root
+     * node. However, a value of the root node is only set if exactly one of the selected nodes contain a value (if multiple
+     * nodes have a value, there is simply no way to decide how these values are merged together). Note that the returned
+     * {@code Configuration} object is not connected to its source configuration: updates on the source configuration are
+     * not reflected in the subset and vice versa. The returned configuration uses the same {@code Synchronizer} as this
+     * configuration.
+     *
+     * @param prefix the prefix of the keys for the subset
+     * @return a new configuration object representing the selected subset
+     */
+    @Override
+    public Configuration subset(final String prefix) {
+<span class="fc" id="L767">        beginRead(false);</span>
+        try {
+<span class="fc" id="L769">            final List&lt;QueryResult&lt;ImmutableNode&gt;&gt; results = fetchNodeList(prefix);</span>
+<span class="fc bfc" id="L770" title="All 2 branches covered.">            if (results.isEmpty()) {</span>
+<span class="fc" id="L771">                return new BaseHierarchicalConfiguration();</span>
+            }
+
+<span class="fc" id="L774">            final BaseHierarchicalConfiguration parent = this;</span>
+<span class="fc" id="L775">            final BaseHierarchicalConfiguration result = new BaseHierarchicalConfiguration() {</span>
+                @Override
+                public ConfigurationInterpolator getInterpolator() {
+<span class="fc" id="L778">                    return parent.getInterpolator();</span>
+                }
+
+                // Override interpolate to always interpolate on the parent
+                @Override
+                protected Object interpolate(final Object value) {
+<span class="nc" id="L784">                    return parent.interpolate(value);</span>
+                }
+            };
+<span class="fc" id="L787">            result.getModel().setRootNode(createSubsetRootNode(results));</span>
+
+<span class="fc bfc" id="L789" title="All 2 branches covered.">            if (result.isEmpty()) {</span>
+<span class="fc" id="L790">                return new BaseHierarchicalConfiguration();</span>
+            }
+<span class="fc" id="L792">            result.setSynchronizer(getSynchronizer());</span>
+<span class="fc" id="L793">            return result;</span>
+        } finally {
+<span class="fc" id="L795">            endRead();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,562 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PropertyListConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.plist</a> &gt; <span class="el_source">PropertyListConfiguration.java</span></div><h1>PropertyListConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2.plist;
+
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
+
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.configuration2.BaseHierarchicalConfiguration;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.configuration2.FileBasedConfiguration;
+import org.apache.commons.configuration2.HierarchicalConfiguration;
+import org.apache.commons.configuration2.ImmutableConfiguration;
+import org.apache.commons.configuration2.MapConfiguration;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.InMemoryNodeModel;
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * NeXT / OpenStep style configuration. This configuration can read and write ASCII plist files. It supports the GNUStep
+ * extension to specify date objects.
+ * &lt;p&gt;
+ * References:
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;a href=
+ * &quot;https://developer.apple.com/documentation/Cocoa/Conceptual/PropertyLists/OldStylePlists/OldStylePLists.html&quot;&gt; Apple
+ * Documentation - Old-Style ASCII Property Lists&lt;/a&gt;&lt;/li&gt;
+ * &lt;li&gt;&lt;a href=&quot;http://www.gnustep.org/resources/documentation/Developer/Base/Reference/NSPropertyList.html&quot;&gt; GNUStep
+ * Documentation&lt;/a&gt;&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;
+ * Example:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * {
+ *     foo = &quot;bar&quot;;
+ *
+ *     array = ( value1, value2, value3 );
+ *
+ *     data = &amp;lt;4f3e0145ab&amp;gt;;
+ *
+ *     date = &amp;lt;*D2007-05-05 20:05:00 +0100&amp;gt;;
+ *
+ *     nested =
+ *     {
+ *         key1 = value1;
+ *         key2 = value;
+ *         nested =
+ *         {
+ *             foo = bar
+ *         }
+ *     }
+ * }
+ * &lt;/pre&gt;
+ *
+ * @since 1.2
+ */
+public class PropertyListConfiguration extends BaseHierarchicalConfiguration implements FileBasedConfiguration {
+    /**
+     * A helper class for parsing and formatting date literals. Usually we would use {@code SimpleDateFormat} for this
+     * purpose, but in Java 1.3 the functionality of this class is limited. So we have a hierarchy of parser classes instead
+     * that deal with the different components of a date literal.
+     */
+    private abstract static class DateComponentParser {
+        /**
+         * Checks whether the given string has at least {@code length} characters starting from the given parsing position. If
+         * this is not the case, an exception will be thrown.
+         *
+         * @param s the string to be tested
+         * @param index the current index
+         * @param length the minimum length after the index
+         * @throws ParseException if the string is too short
+         */
+        protected void checkLength(final String s, final int index, final int length) throws ParseException {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            final int len = s == null ? 0 : s.length();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (index + length &gt; len) {</span>
+<span class="fc" id="L105">                throw new ParseException(&quot;Input string too short: &quot; + s + &quot;, index: &quot; + index);</span>
+            }
+<span class="fc" id="L107">        }</span>
+
+        /**
+         * Formats a date component. This method is used for converting a date in its internal representation into a string
+         * literal.
+         *
+         * @param buf the target buffer
+         * @param cal the calendar with the current date
+         */
+        public abstract void formatComponent(StringBuilder buf, Calendar cal);
+
+        /**
+         * Adds a number to the given string buffer and adds leading '0' characters until the given length is reached.
+         *
+         * @param buf the target buffer
+         * @param num the number to add
+         * @param length the required length
+         */
+        protected void padNum(final StringBuilder buf, final int num, final int length) {
+<span class="fc" id="L126">            buf.append(StringUtils.leftPad(String.valueOf(num), length, PAD_CHAR));</span>
+<span class="fc" id="L127">        }</span>
+
+        /**
+         * Parses a component from the given input string.
+         *
+         * @param s the string to be parsed
+         * @param index the current parsing position
+         * @param cal the calendar where to store the result
+         * @return the length of the processed component
+         * @throws ParseException if the component cannot be extracted
+         */
+        public abstract int parseComponent(String s, int index, Calendar cal) throws ParseException;
+    }
+
+    /**
+     * A specialized date component parser implementation that deals with numeric calendar fields. The class is able to
+     * extract fields from a string literal and to format a literal from a calendar.
+     */
+    private static final class DateFieldParser extends DateComponentParser {
+        /** Stores the calendar field to be processed. */
+        private final int calendarField;
+
+        /** Stores the length of this field. */
+        private final int length;
+
+        /** An optional offset to add to the calendar field. */
+        private final int offset;
+
+        /**
+         * Creates a new instance of {@code DateFieldParser}.
+         *
+         * @param calFld the calendar field code
+         * @param len the length of this field
+         */
+        public DateFieldParser(final int calFld, final int len) {
+<span class="fc" id="L162">            this(calFld, len, 0);</span>
+<span class="fc" id="L163">        }</span>
+
+        /**
+         * Creates a new instance of {@code DateFieldParser} and fully initializes it.
+         *
+         * @param calFld the calendar field code
+         * @param len the length of this field
+         * @param ofs an offset to add to the calendar field
+         */
+<span class="fc" id="L172">        public DateFieldParser(final int calFld, final int len, final int ofs) {</span>
+<span class="fc" id="L173">            calendarField = calFld;</span>
+<span class="fc" id="L174">            length = len;</span>
+<span class="fc" id="L175">            offset = ofs;</span>
+<span class="fc" id="L176">        }</span>
+
+        @Override
+        public void formatComponent(final StringBuilder buf, final Calendar cal) {
+<span class="fc" id="L180">            padNum(buf, cal.get(calendarField) + offset, length);</span>
+<span class="fc" id="L181">        }</span>
+
+        @Override
+        public int parseComponent(final String s, final int index, final Calendar cal) throws ParseException {
+<span class="fc" id="L185">            checkLength(s, index, length);</span>
+            try {
+<span class="fc" id="L187">                cal.set(calendarField, Integer.parseInt(s.substring(index, index + length)) - offset);</span>
+<span class="fc" id="L188">                return length;</span>
+<span class="fc" id="L189">            } catch (final NumberFormatException nfex) {</span>
+<span class="fc" id="L190">                throw new ParseException(&quot;Invalid number: &quot; + s + &quot;, index &quot; + index);</span>
+            }
+        }
+    }
+
+    /**
+     * A specialized date component parser implementation that deals with separator characters.
+     */
+    private static final class DateSeparatorParser extends DateComponentParser {
+        /** Stores the separator. */
+        private final String separator;
+
+        /**
+         * Creates a new instance of {@code DateSeparatorParser} and sets the separator string.
+         *
+         * @param sep the separator string
+         */
+<span class="fc" id="L207">        public DateSeparatorParser(final String sep) {</span>
+<span class="fc" id="L208">            separator = sep;</span>
+<span class="fc" id="L209">        }</span>
+
+        @Override
+        public void formatComponent(final StringBuilder buf, final Calendar cal) {
+<span class="fc" id="L213">            buf.append(separator);</span>
+<span class="fc" id="L214">        }</span>
+
+        @Override
+        public int parseComponent(final String s, final int index, final Calendar cal) throws ParseException {
+<span class="fc" id="L218">            checkLength(s, index, separator.length());</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            if (!s.startsWith(separator, index)) {</span>
+<span class="fc" id="L220">                throw new ParseException(&quot;Invalid input: &quot; + s + &quot;, index &quot; + index + &quot;, expected &quot; + separator);</span>
+            }
+<span class="fc" id="L222">            return separator.length();</span>
+        }
+    }
+
+    /**
+     * A specialized date component parser implementation that deals with the time zone part of a date component.
+     */
+<span class="fc" id="L229">    private static final class DateTimeZoneParser extends DateComponentParser {</span>
+        @Override
+        public void formatComponent(final StringBuilder buf, final Calendar cal) {
+<span class="fc" id="L232">            final TimeZone tz = cal.getTimeZone();</span>
+<span class="fc" id="L233">            int ofs = tz.getRawOffset() / MILLIS_PER_MINUTE;</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            if (ofs &lt; 0) {</span>
+<span class="fc" id="L235">                buf.append('-');</span>
+<span class="fc" id="L236">                ofs = -ofs;</span>
+            } else {
+<span class="fc" id="L238">                buf.append('+');</span>
+            }
+<span class="fc" id="L240">            final int hour = ofs / MINUTES_PER_HOUR;</span>
+<span class="fc" id="L241">            final int min = ofs % MINUTES_PER_HOUR;</span>
+<span class="fc" id="L242">            padNum(buf, hour, 2);</span>
+<span class="fc" id="L243">            padNum(buf, min, 2);</span>
+<span class="fc" id="L244">        }</span>
+
+        @Override
+        public int parseComponent(final String s, final int index, final Calendar cal) throws ParseException {
+<span class="fc" id="L248">            checkLength(s, index, TIME_ZONE_LENGTH);</span>
+<span class="fc" id="L249">            final TimeZone tz = TimeZone.getTimeZone(TIME_ZONE_PREFIX + s.substring(index, index + TIME_ZONE_LENGTH));</span>
+<span class="fc" id="L250">            cal.setTimeZone(tz);</span>
+<span class="fc" id="L251">            return TIME_ZONE_LENGTH;</span>
+        }
+    }
+
+    /** Constant for the separator parser for the date part. */
+<span class="fc" id="L256">    private static final DateComponentParser DATE_SEPARATOR_PARSER = new DateSeparatorParser(&quot;-&quot;);</span>
+
+    /** Constant for the separator parser for the time part. */
+<span class="fc" id="L259">    private static final DateComponentParser TIME_SEPARATOR_PARSER = new DateSeparatorParser(&quot;:&quot;);</span>
+
+    /** Constant for the separator parser for blanks between the parts. */
+<span class="fc" id="L262">    private static final DateComponentParser BLANK_SEPARATOR_PARSER = new DateSeparatorParser(&quot; &quot;);</span>
+
+    /** An array with the component parsers for dealing with dates. */
+<span class="fc" id="L265">    private static final DateComponentParser[] DATE_PARSERS = {new DateSeparatorParser(&quot;&lt;*D&quot;), new DateFieldParser(Calendar.YEAR, 4), DATE_SEPARATOR_PARSER,</span>
+        new DateFieldParser(Calendar.MONTH, 2, 1), DATE_SEPARATOR_PARSER, new DateFieldParser(Calendar.DATE, 2), BLANK_SEPARATOR_PARSER,
+        new DateFieldParser(Calendar.HOUR_OF_DAY, 2), TIME_SEPARATOR_PARSER, new DateFieldParser(Calendar.MINUTE, 2), TIME_SEPARATOR_PARSER,
+        new DateFieldParser(Calendar.SECOND, 2), BLANK_SEPARATOR_PARSER, new DateTimeZoneParser(), new DateSeparatorParser(&quot;&gt;&quot;)};
+
+    /** Constant for the ID prefix for GMT time zones. */
+    private static final String TIME_ZONE_PREFIX = &quot;GMT&quot;;
+
+    /** Constant for the milliseconds of a minute. */
+    private static final int MILLIS_PER_MINUTE = 1000 * 60;
+
+    /** Constant for the minutes per hour. */
+    private static final int MINUTES_PER_HOUR = 60;
+
+    /** Size of the indentation for the generated file. */
+    private static final int INDENT_SIZE = 4;
+
+    /** Constant for the length of a time zone. */
+    private static final int TIME_ZONE_LENGTH = 5;
+
+    /** Constant for the padding character in the date format. */
+    private static final char PAD_CHAR = '0';
+
+    /**
+     * Returns a string representation for the date specified by the given calendar.
+     *
+     * @param cal the calendar with the initialized date
+     * @return a string for this date
+     */
+    static String formatDate(final Calendar cal) {
+<span class="fc" id="L295">        final StringBuilder buf = new StringBuilder();</span>
+
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (final DateComponentParser element : DATE_PARSERS) {</span>
+<span class="fc" id="L298">            element.formatComponent(buf, cal);</span>
+        }
+
+<span class="fc" id="L301">        return buf.toString();</span>
+    }
+
+    /**
+     * Returns a string representation for the specified date.
+     *
+     * @param date the date
+     * @return a string for this date
+     */
+    static String formatDate(final Date date) {
+<span class="fc" id="L311">        final Calendar cal = Calendar.getInstance();</span>
+<span class="fc" id="L312">        cal.setTime(date);</span>
+<span class="fc" id="L313">        return formatDate(cal);</span>
+    }
+
+    /**
+     * Parses a date in a format like {@code &lt;*D2002-03-22 11:30:00 +0100&gt;}.
+     *
+     * @param s the string with the date to be parsed
+     * @return the parsed date
+     * @throws ParseException if an error occurred while parsing the string
+     */
+    static Date parseDate(final String s) throws ParseException {
+<span class="fc" id="L324">        final Calendar cal = Calendar.getInstance();</span>
+<span class="fc" id="L325">        cal.clear();</span>
+<span class="fc" id="L326">        int index = 0;</span>
+
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        for (final DateComponentParser parser : DATE_PARSERS) {</span>
+<span class="fc" id="L329">            index += parser.parseComponent(s, index, cal);</span>
+        }
+
+<span class="fc" id="L332">        return cal.getTime();</span>
+    }
+
+    /**
+     * Transform a map of arbitrary types into a map with string keys and object values. All keys of the source map which
+     * are not of type String are dropped.
+     *
+     * @param src the map to be converted
+     * @return the resulting map
+     */
+    private static Map&lt;String, Object&gt; transformMap(final Map&lt;?, ?&gt; src) {
+<span class="nc" id="L343">        final Map&lt;String, Object&gt; dest = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L344">        src.forEach((k, v) -&gt; {</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">            if (k instanceof String) {</span>
+<span class="nc" id="L346">                dest.put((String) k, v);</span>
+            }
+<span class="nc" id="L348">        });</span>
+<span class="nc" id="L349">        return dest;</span>
+    }
+
+    /**
+     * Creates an empty PropertyListConfiguration object which can be used to synthesize a new plist file by adding values
+     * and then saving().
+     */
+<span class="fc" id="L356">    public PropertyListConfiguration() {</span>
+<span class="fc" id="L357">    }</span>
+
+    /**
+     * Creates a new instance of {@code PropertyListConfiguration} and copies the content of the specified configuration
+     * into this object.
+     *
+     * @param c the configuration to copy
+     * @since 1.4
+     */
+    public PropertyListConfiguration(final HierarchicalConfiguration&lt;ImmutableNode&gt; c) {
+<span class="fc" id="L367">        super(c);</span>
+<span class="fc" id="L368">    }</span>
+
+    /**
+     * Creates a new instance of {@code PropertyListConfiguration} with the given root node.
+     *
+     * @param root the root node
+     */
+    PropertyListConfiguration(final ImmutableNode root) {
+<span class="fc" id="L376">        super(new InMemoryNodeModel(root));</span>
+<span class="fc" id="L377">    }</span>
+
+    @Override
+    protected void addPropertyInternal(final String key, final Object value) {
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        if (value instanceof byte[]) {</span>
+<span class="fc" id="L382">            addPropertyDirect(key, value);</span>
+        } else {
+<span class="fc" id="L384">            super.addPropertyInternal(key, value);</span>
+        }
+<span class="fc" id="L386">    }</span>
+
+    /**
+     * Append a node to the writer, indented according to a specific level.
+     */
+    private void printNode(final PrintWriter out, final int indentLevel, final ImmutableNode node, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L392">        final String padding = StringUtils.repeat(&quot; &quot;, indentLevel * INDENT_SIZE);</span>
+
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        if (node.getNodeName() != null) {</span>
+<span class="fc" id="L395">            out.print(padding + quoteString(node.getNodeName()) + &quot; = &quot;);</span>
+        }
+
+<span class="fc" id="L398">        final List&lt;ImmutableNode&gt; children = new ArrayList&lt;&gt;(node.getChildren());</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">        if (!children.isEmpty()) {</span>
+            // skip a line, except for the root dictionary
+<span class="fc bfc" id="L401" title="All 2 branches covered.">            if (indentLevel &gt; 0) {</span>
+<span class="fc" id="L402">                out.println();</span>
+            }
+
+<span class="fc" id="L405">            out.println(padding + &quot;{&quot;);</span>
+
+            // display the children
+<span class="fc" id="L408">            final Iterator&lt;ImmutableNode&gt; it = children.iterator();</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc" id="L410">                final ImmutableNode child = it.next();</span>
+
+<span class="fc" id="L412">                printNode(out, indentLevel + 1, child, handler);</span>
+
+                // add a semi colon for elements that are not dictionaries
+<span class="fc" id="L415">                final Object value = child.getValue();</span>
+<span class="pc bpc" id="L416" title="2 of 6 branches missed.">                if (value != null &amp;&amp; !(value instanceof Map) &amp;&amp; !(value instanceof Configuration)) {</span>
+<span class="fc" id="L417">                    out.println(&quot;;&quot;);</span>
+                }
+
+                // skip a line after arrays and dictionaries
+<span class="fc bfc" id="L421" title="All 6 branches covered.">                if (it.hasNext() &amp;&amp; (value == null || value instanceof List)) {</span>
+<span class="fc" id="L422">                    out.println();</span>
+                }
+<span class="fc" id="L424">            }</span>
+
+<span class="fc" id="L426">            out.print(padding + &quot;}&quot;);</span>
+
+            // line feed if the dictionary is not in an array
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            if (handler.getParent(node) != null) {</span>
+<span class="fc" id="L430">                out.println();</span>
+            }
+<span class="fc bfc" id="L432" title="All 2 branches covered.">        } else if (node.getValue() == null) {</span>
+<span class="fc" id="L433">            out.println();</span>
+<span class="fc" id="L434">            out.print(padding + &quot;{ };&quot;);</span>
+
+            // line feed if the dictionary is not in an array
+<span class="pc bpc" id="L437" title="1 of 2 branches missed.">            if (handler.getParent(node) != null) {</span>
+<span class="fc" id="L438">                out.println();</span>
+            }
+        } else {
+            // display the leaf value
+<span class="fc" id="L442">            final Object value = node.getValue();</span>
+<span class="fc" id="L443">            printValue(out, indentLevel, value);</span>
+        }
+<span class="fc" id="L445">    }</span>
+
+    /**
+     * Append a value to the writer, indented according to a specific level.
+     */
+    private void printValue(final PrintWriter out, final int indentLevel, final Object value) {
+<span class="fc" id="L451">        final String padding = StringUtils.repeat(&quot; &quot;, indentLevel * INDENT_SIZE);</span>
+
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        if (value instanceof List) {</span>
+<span class="fc" id="L454">            out.print(&quot;( &quot;);</span>
+<span class="fc" id="L455">            final Iterator&lt;?&gt; it = ((List&lt;?&gt;) value).iterator();</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc" id="L457">                printValue(out, indentLevel + 1, it.next());</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">                if (it.hasNext()) {</span>
+<span class="fc" id="L459">                    out.print(&quot;, &quot;);</span>
+                }
+            }
+<span class="fc" id="L462">            out.print(&quot; )&quot;);</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        } else if (value instanceof PropertyListConfiguration) {</span>
+<span class="fc" id="L464">            final NodeHandler&lt;ImmutableNode&gt; handler = ((PropertyListConfiguration) value).getModel().getNodeHandler();</span>
+<span class="fc" id="L465">            printNode(out, indentLevel, handler.getRootNode(), handler);</span>
+<span class="pc bpc" id="L466" title="1 of 2 branches missed.">        } else if (value instanceof ImmutableConfiguration) {</span>
+            // display a flat Configuration as a dictionary
+<span class="nc" id="L468">            out.println();</span>
+<span class="nc" id="L469">            out.println(padding + &quot;{&quot;);</span>
+
+<span class="nc" id="L471">            final ImmutableConfiguration config = (ImmutableConfiguration) value;</span>
+<span class="nc" id="L472">            final Iterator&lt;String&gt; it = config.getKeys();</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L474">                final String key = it.next();</span>
+<span class="nc" id="L475">                final ImmutableNode node = new ImmutableNode.Builder().name(key).value(config.getProperty(key)).create();</span>
+<span class="nc" id="L476">                final InMemoryNodeModel tempModel = new InMemoryNodeModel(node);</span>
+<span class="nc" id="L477">                printNode(out, indentLevel + 1, node, tempModel.getNodeHandler());</span>
+<span class="nc" id="L478">                out.println(&quot;;&quot;);</span>
+<span class="nc" id="L479">            }</span>
+<span class="nc" id="L480">            out.println(padding + &quot;}&quot;);</span>
+<span class="pc bpc" id="L481" title="1 of 2 branches missed.">        } else if (value instanceof Map) {</span>
+            // display a Map as a dictionary
+<span class="nc" id="L483">            final Map&lt;String, Object&gt; map = transformMap((Map&lt;?, ?&gt;) value);</span>
+<span class="nc" id="L484">            printValue(out, indentLevel, new MapConfiguration(map));</span>
+<span class="pc bfc" id="L485" title="All 2 branches covered.">        } else if (value instanceof byte[]) {</span>
+<span class="fc" id="L486">            out.print(&quot;&lt;&quot; + new String(Hex.encodeHex((byte[]) value)) + &quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">        } else if (value instanceof Date) {</span>
+<span class="fc" id="L488">            out.print(formatDate((Date) value));</span>
+<span class="pc bpc" id="L489" title="1 of 2 branches missed.">        } else if (value != null) {</span>
+<span class="fc" id="L490">            out.print(quoteString(String.valueOf(value)));</span>
+        }
+<span class="fc" id="L492">    }</span>
+
+    /**
+     * Quote the specified string if necessary, that's if the string contains:
+     * &lt;ul&gt;
+     * &lt;li&gt;a space character (' ', '\t', '\r', '\n')&lt;/li&gt;
+     * &lt;li&gt;a quote '&quot;'&lt;/li&gt;
+     * &lt;li&gt;special characters in plist files ('(', ')', '{', '}', '=', ';', ',')&lt;/li&gt;
+     * &lt;/ul&gt;
+     * Quotes within the string are escaped.
+     *
+     * &lt;p&gt;
+     * Examples:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;abcd -&gt; abcd&lt;/li&gt;
+     * &lt;li&gt;ab cd -&gt; &quot;ab cd&quot;&lt;/li&gt;
+     * &lt;li&gt;foo&quot;bar -&gt; &quot;foo\&quot;bar&quot;&lt;/li&gt;
+     * &lt;li&gt;foo;bar -&gt; &quot;foo;bar&quot;&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    String quoteString(String s) {
+<span class="fc bfc" id="L514" title="All 2 branches covered.">        if (s == null) {</span>
+<span class="fc" id="L515">            return null;</span>
+        }
+
+<span class="pc bpc" id="L518" title="4 of 12 branches missed.">        if (s.indexOf(' ') != -1 || s.indexOf('\t') != -1 || s.indexOf('\r') != -1 || s.indexOf('\n') != -1 || s.indexOf('&quot;') != -1 || s.indexOf('(') != -1</span>
+<span class="pc bpc" id="L519" title="5 of 12 branches missed.">            || s.indexOf(')') != -1 || s.indexOf('{') != -1 || s.indexOf('}') != -1 || s.indexOf('=') != -1 || s.indexOf(',') != -1 || s.indexOf(';') != -1) {</span>
+<span class="fc" id="L520">            s = s.replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;);</span>
+<span class="fc" id="L521">            s = &quot;\&quot;&quot; + s + &quot;\&quot;&quot;;</span>
+        }
+
+<span class="fc" id="L524">        return s;</span>
+    }
+
+    @Override
+    public void read(final Reader in) throws ConfigurationException {
+<span class="fc" id="L529">        final PropertyListParser parser = new PropertyListParser(in);</span>
+        try {
+<span class="fc" id="L531">            final PropertyListConfiguration config = parser.parse();</span>
+<span class="fc" id="L532">            getModel().setRootNode(config.getNodeModel().getNodeHandler().getRootNode());</span>
+<span class="fc" id="L533">        } catch (final ParseException e) {</span>
+<span class="fc" id="L534">            throw new ConfigurationException(e);</span>
+<span class="fc" id="L535">        }</span>
+<span class="fc" id="L536">    }</span>
+
+    @Override
+    protected void setPropertyInternal(final String key, final Object value) {
+        // special case for byte arrays, they must be stored as is in the configuration
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        if (value instanceof byte[]) {</span>
+<span class="fc" id="L542">            setDetailEvents(false);</span>
+            try {
+<span class="fc" id="L544">                clearProperty(key);</span>
+<span class="fc" id="L545">                addPropertyDirect(key, value);</span>
+            } finally {
+<span class="fc" id="L547">                setDetailEvents(true);</span>
+<span class="fc" id="L548">            }</span>
+        } else {
+<span class="fc" id="L550">            super.setPropertyInternal(key, value);</span>
+        }
+<span class="fc" id="L552">    }</span>
+
+    @Override
+    public void write(final Writer out) throws ConfigurationException {
+<span class="fc" id="L556">        final PrintWriter writer = new PrintWriter(out);</span>
+<span class="fc" id="L557">        final NodeHandler&lt;ImmutableNode&gt; handler = getModel().getNodeHandler();</span>
+<span class="fc" id="L558">        printNode(writer, 0, handler.getRootNode(), handler);</span>
+<span class="fc" id="L559">        writer.flush();</span>
+<span class="fc" id="L560">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

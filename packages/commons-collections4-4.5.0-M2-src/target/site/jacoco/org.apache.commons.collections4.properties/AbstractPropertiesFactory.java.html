@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractPropertiesFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.properties</a> &gt; <span class="el_source">AbstractPropertiesFactory.java</span></div><h1>AbstractPropertiesFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.collections4.properties;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Objects;
+import java.util.Properties;
+
+/**
+ * Subclasses create and load {@link Properties} and subclasses of {@link Properties} like {@link SortedProperties}.
+ *
+ * @param &lt;T&gt; {@link Properties} or a subclass like {@link SortedProperties}.
+ * @see Properties
+ * @since 4.4
+ */
+public abstract class AbstractPropertiesFactory&lt;T extends Properties&gt; {
+
+    /**
+     * Enumerates property formats.
+     *
+     * @since 4.5
+     */
+<span class="fc" id="L48">    public enum PropertyFormat {</span>
+
+        /** Properties file format. */
+<span class="fc" id="L51">        PROPERTIES,</span>
+
+        /** XML file format. */
+<span class="fc" id="L54">        XML;</span>
+
+        static PropertyFormat toPropertyFormat(final String fileName) {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            return Objects.requireNonNull(fileName, &quot;fileName&quot;).endsWith(&quot;.xml&quot;) ? XML : PROPERTIES;</span>
+        }
+    }
+
+    /**
+     * Constructs an instance.
+     */
+<span class="fc" id="L64">    protected AbstractPropertiesFactory() {</span>
+        // no init.
+<span class="fc" id="L66">    }</span>
+
+    /**
+     * Subclasses override to provide customized properties instances.
+     *
+     * @return a new Properties instance.
+     */
+    protected abstract T createProperties();
+
+    /**
+     * Creates and loads properties from the given file.
+     *
+     * @param classLoader the class loader to use to get the named resource.
+     * @param name        the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final ClassLoader classLoader, final String name) throws IOException {
+<span class="fc" id="L85">        try (InputStream inputStream = classLoader.getResourceAsStream(name)) {</span>
+<span class="fc" id="L86">            return load(inputStream, PropertyFormat.toPropertyFormat(name));</span>
+        }
+    }
+
+    /**
+     * Creates and loads properties from the given file.
+     *
+     * @param file the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     * @throws FileNotFoundException    Thrown if the file does not exist, is a directory, or cannot be opened for
+     *                                  reading.
+     * @throws SecurityException        Thrown if a security manager's {@code checkRead} method denies read access to
+     *                                  the file.
+     */
+    public T load(final File file) throws FileNotFoundException, IOException {
+<span class="fc" id="L103">        try (FileInputStream inputStream = new FileInputStream(file)) {</span>
+<span class="fc" id="L104">            return load(inputStream, PropertyFormat.toPropertyFormat(file.getName()));</span>
+        }
+    }
+
+    /**
+     * Creates and loads properties from the given input stream.
+     *
+     * @param inputStream the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final InputStream inputStream) throws IOException {
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (inputStream == null) {</span>
+<span class="nc" id="L118">            return null;</span>
+        }
+<span class="fc" id="L120">        final T properties = createProperties();</span>
+<span class="fc" id="L121">        properties.load(inputStream);</span>
+<span class="fc" id="L122">        return properties;</span>
+    }
+
+    /**
+     * Creates and loads properties from the given input stream.
+     *
+     * @param inputStream the location of the properties file.
+     * @param propertyFormat The format of the given file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     * @since 4.5
+     */
+    public T load(final InputStream inputStream, final PropertyFormat propertyFormat) throws IOException {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (inputStream == null) {</span>
+<span class="fc" id="L137">            return null;</span>
+        }
+<span class="fc" id="L139">        final T properties = createProperties();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (propertyFormat == PropertyFormat.XML) {</span>
+<span class="fc" id="L141">            properties.loadFromXML(inputStream);</span>
+        } else {
+<span class="fc" id="L143">            properties.load(inputStream);</span>
+        }
+<span class="fc" id="L145">        return properties;</span>
+    }
+
+    /**
+     * Creates and loads properties from the given path.
+     *
+     * @param path the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final Path path) throws IOException {
+<span class="fc" id="L157">        try (InputStream inputStream = Files.newInputStream(path)) {</span>
+<span class="fc" id="L158">            return load(inputStream, PropertyFormat.toPropertyFormat(Objects.toString(path.getFileName(), null)));</span>
+        }
+    }
+
+    /**
+     * Creates and loads properties from the given reader.
+     *
+     * @param reader the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final Reader reader) throws IOException {
+<span class="fc" id="L171">        final T properties = createProperties();</span>
+<span class="fc" id="L172">        properties.load(reader);</span>
+<span class="fc" id="L173">        return properties;</span>
+    }
+
+    /**
+     * Creates and loads properties from the given file name.
+     *
+     * @param name the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final String name) throws IOException {
+<span class="fc" id="L185">        try (FileInputStream inputStream = new FileInputStream(name)) {</span>
+<span class="fc" id="L186">            return load(inputStream, PropertyFormat.toPropertyFormat(name));</span>
+        }
+    }
+
+    /**
+     * Creates and loads properties from the given URI.
+     *
+     * @param uri the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final URI uri) throws IOException {
+<span class="fc" id="L199">        return load(Paths.get(uri));</span>
+    }
+
+    /**
+     * Creates and loads properties from the given URL.
+     *
+     * @param url the location of the properties file.
+     * @return a new properties object.
+     * @throws IOException              Thrown if an error occurred reading the input stream.
+     * @throws IllegalArgumentException Thrown if the input contains a malformed Unicode escape sequence.
+     */
+    public T load(final URL url) throws IOException {
+<span class="fc" id="L211">        try (InputStream inputStream = url.openStream()) {</span>
+<span class="fc" id="L212">            return load(inputStream, PropertyFormat.toPropertyFormat(url.getFile()));</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

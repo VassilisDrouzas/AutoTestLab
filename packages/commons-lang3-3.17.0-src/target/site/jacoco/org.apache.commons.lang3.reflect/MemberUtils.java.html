@@ -1,0 +1,343 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MemberUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.reflect</a> &gt; <span class="el_source">MemberUtils.java</span></div><h1>MemberUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.reflect;
+
+import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Member;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+
+import org.apache.commons.lang3.ClassUtils;
+
+/**
+ * Contains common code for working with {@link java.lang.reflect.Method Methods}/{@link java.lang.reflect.Constructor Constructors},
+ * extracted and refactored from {@link MethodUtils} when it was imported from Commons BeanUtils.
+ *
+ * @since 2.5
+ */
+<span class="nc" id="L33">final class MemberUtils {</span>
+    // TODO extract an interface to implement compareParameterSets(...)?
+
+    /**
+     *  A class providing a subset of the API of java.lang.reflect.Executable in Java 1.8,
+     * providing a common representation for function signatures for Constructors and Methods.
+     */
+    private static final class Executable {
+      private static Executable of(final Constructor&lt;?&gt; constructor) {
+<span class="fc" id="L42">          return new Executable(constructor);</span>
+      }
+      private static Executable of(final Method method) {
+<span class="fc" id="L45">          return new Executable(method);</span>
+      }
+
+      private final Class&lt;?&gt;[] parameterTypes;
+
+      private final boolean  isVarArgs;
+
+<span class="fc" id="L52">      private Executable(final Constructor&lt;?&gt; constructor) {</span>
+<span class="fc" id="L53">        parameterTypes = constructor.getParameterTypes();</span>
+<span class="fc" id="L54">        isVarArgs = constructor.isVarArgs();</span>
+<span class="fc" id="L55">      }</span>
+
+<span class="fc" id="L57">      private Executable(final Method method) {</span>
+<span class="fc" id="L58">        parameterTypes = method.getParameterTypes();</span>
+<span class="fc" id="L59">        isVarArgs = method.isVarArgs();</span>
+<span class="fc" id="L60">      }</span>
+
+      public Class&lt;?&gt;[] getParameterTypes() {
+<span class="fc" id="L63">          return parameterTypes;</span>
+      }
+
+      public boolean isVarArgs() {
+<span class="fc" id="L67">          return isVarArgs;</span>
+      }
+    }
+
+    private static final int ACCESS_TEST = Modifier.PUBLIC | Modifier.PROTECTED | Modifier.PRIVATE;
+
+    /** Array of primitive number types ordered by &quot;promotability&quot; */
+<span class="fc" id="L74">    private static final Class&lt;?&gt;[] ORDERED_PRIMITIVE_TYPES = { Byte.TYPE, Short.TYPE,</span>
+            Character.TYPE, Integer.TYPE, Long.TYPE, Float.TYPE, Double.TYPE };
+
+    /**
+     * Compares the relative fitness of two Constructors in terms of how well they
+     * match a set of runtime parameter types, such that a list ordered
+     * by the results of the comparison would return the best match first
+     * (least).
+     *
+     * @param left the &quot;left&quot; Constructor
+     * @param right the &quot;right&quot; Constructor
+     * @param actual the runtime parameter types to match against
+     * {@code left}/{@code right}
+     * @return int consistent with {@code compare} semantics
+     * @since 3.5
+     */
+    static int compareConstructorFit(final Constructor&lt;?&gt; left, final Constructor&lt;?&gt; right, final Class&lt;?&gt;[] actual) {
+<span class="fc" id="L91">      return compareParameterTypes(Executable.of(left), Executable.of(right), actual);</span>
+    }
+
+    /**
+     * Compares the relative fitness of two Methods in terms of how well they
+     * match a set of runtime parameter types, such that a list ordered
+     * by the results of the comparison would return the best match first
+     * (least).
+     *
+     * @param left the &quot;left&quot; Method
+     * @param right the &quot;right&quot; Method
+     * @param actual the runtime parameter types to match against
+     * {@code left}/{@code right}
+     * @return int consistent with {@code compare} semantics
+     * @since 3.5
+     */
+    static int compareMethodFit(final Method left, final Method right, final Class&lt;?&gt;[] actual) {
+<span class="fc" id="L108">      return compareParameterTypes(Executable.of(left), Executable.of(right), actual);</span>
+    }
+
+    /**
+     * Compares the relative fitness of two Executables in terms of how well they
+     * match a set of runtime parameter types, such that a list ordered
+     * by the results of the comparison would return the best match first
+     * (least).
+     *
+     * @param left the &quot;left&quot; Executable
+     * @param right the &quot;right&quot; Executable
+     * @param actual the runtime parameter types to match against
+     * {@code left}/{@code right}
+     * @return int consistent with {@code compare} semantics
+     */
+    private static int compareParameterTypes(final Executable left, final Executable right, final Class&lt;?&gt;[] actual) {
+<span class="fc" id="L124">        final float leftCost = getTotalTransformationCost(actual, left);</span>
+<span class="fc" id="L125">        final float rightCost = getTotalTransformationCost(actual, right);</span>
+<span class="fc" id="L126">        return Float.compare(leftCost, rightCost);</span>
+    }
+
+    /**
+     * Gets the number of steps needed to turn the source class into
+     * the destination class. This represents the number of steps in the object
+     * hierarchy graph.
+     * @param srcClass The source class
+     * @param destClass The destination class
+     * @return The cost of transforming an object
+     */
+    private static float getObjectTransformationCost(Class&lt;?&gt; srcClass, final Class&lt;?&gt; destClass) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (destClass.isPrimitive()) {</span>
+<span class="fc" id="L139">            return getPrimitivePromotionCost(srcClass, destClass);</span>
+        }
+<span class="fc" id="L141">        float cost = 0.0f;</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">        while (srcClass != null &amp;&amp; !destClass.equals(srcClass)) {</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">            if (destClass.isInterface() &amp;&amp; ClassUtils.isAssignable(srcClass, destClass)) {</span>
+                // slight penalty for interface match.
+                // we still want an exact match to override an interface match,
+                // but
+                // an interface match should override anything where we have to
+                // get a superclass.
+<span class="fc" id="L149">                cost += 0.25f;</span>
+<span class="fc" id="L150">                break;</span>
+            }
+<span class="fc" id="L152">            cost++;</span>
+<span class="fc" id="L153">            srcClass = srcClass.getSuperclass();</span>
+        }
+        /*
+         * If the destination class is null, we've traveled all the way up to
+         * an Object match. We'll penalize this by adding 1.5 to the cost.
+         */
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (srcClass == null) {</span>
+<span class="fc" id="L160">            cost += 1.5f;</span>
+        }
+<span class="fc" id="L162">        return cost;</span>
+    }
+
+    /**
+     * Gets the number of steps required to promote a primitive number to another
+     * type.
+     * @param srcClass the (primitive) source class
+     * @param destClass the (primitive) destination class
+     * @return The cost of promoting the primitive
+     */
+    private static float getPrimitivePromotionCost(final Class&lt;?&gt; srcClass, final Class&lt;?&gt; destClass) {
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (srcClass == null) {</span>
+<span class="nc" id="L174">            return 1.5f;</span>
+        }
+<span class="fc" id="L176">        float cost = 0.0f;</span>
+<span class="fc" id="L177">        Class&lt;?&gt; cls = srcClass;</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (!cls.isPrimitive()) {</span>
+            // slight unwrapping penalty
+<span class="fc" id="L180">            cost += 0.1f;</span>
+<span class="fc" id="L181">            cls = ClassUtils.wrapperToPrimitive(cls);</span>
+        }
+<span class="pc bpc" id="L183" title="1 of 4 branches missed.">        for (int i = 0; cls != destClass &amp;&amp; i &lt; ORDERED_PRIMITIVE_TYPES.length; i++) {</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            if (cls == ORDERED_PRIMITIVE_TYPES[i]) {</span>
+<span class="fc" id="L185">                cost += 0.1f;</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                if (i &lt; ORDERED_PRIMITIVE_TYPES.length - 1) {</span>
+<span class="fc" id="L187">                    cls = ORDERED_PRIMITIVE_TYPES[i + 1];</span>
+                }
+            }
+        }
+<span class="fc" id="L191">        return cost;</span>
+    }
+
+    /**
+     * Returns the sum of the object transformation cost for each class in the
+     * source argument list.
+     * @param srcArgs The source arguments
+     * @param executable The executable to calculate transformation costs for
+     * @return The total transformation cost
+     */
+    private static float getTotalTransformationCost(final Class&lt;?&gt;[] srcArgs, final Executable executable) {
+<span class="fc" id="L202">        final Class&lt;?&gt;[] destArgs = executable.getParameterTypes();</span>
+<span class="fc" id="L203">        final boolean isVarArgs = executable.isVarArgs();</span>
+
+        // &quot;source&quot; and &quot;destination&quot; are the actual and declared args respectively.
+<span class="fc" id="L206">        float totalCost = 0.0f;</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        final long normalArgsLen = isVarArgs ? destArgs.length - 1 : destArgs.length;</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (srcArgs.length &lt; normalArgsLen) {</span>
+<span class="nc" id="L209">            return Float.MAX_VALUE;</span>
+        }
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        for (int i = 0; i &lt; normalArgsLen; i++) {</span>
+<span class="fc" id="L212">            totalCost += getObjectTransformationCost(srcArgs[i], destArgs[i]);</span>
+        }
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (isVarArgs) {</span>
+            // When isVarArgs is true, srcArgs and dstArgs may differ in length.
+            // There are two special cases to consider:
+<span class="fc bfc" id="L217" title="All 2 branches covered.">            final boolean noVarArgsPassed = srcArgs.length &lt; destArgs.length;</span>
+<span class="fc bfc" id="L218" title="All 4 branches covered.">            final boolean explicitArrayForVarargs = srcArgs.length == destArgs.length &amp;&amp; srcArgs[srcArgs.length - 1] != null</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                &amp;&amp; srcArgs[srcArgs.length - 1].isArray();</span>
+
+<span class="fc" id="L221">            final float varArgsCost = 0.001f;</span>
+<span class="fc" id="L222">            final Class&lt;?&gt; destClass = destArgs[destArgs.length - 1].getComponentType();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (noVarArgsPassed) {</span>
+                // When no varargs passed, the best match is the most generic matching type, not the most specific.
+<span class="fc" id="L225">                totalCost += getObjectTransformationCost(destClass, Object.class) + varArgsCost;</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">            } else if (explicitArrayForVarargs) {</span>
+<span class="nc" id="L227">                final Class&lt;?&gt; sourceClass = srcArgs[srcArgs.length - 1].getComponentType();</span>
+<span class="nc" id="L228">                totalCost += getObjectTransformationCost(sourceClass, destClass) + varArgsCost;</span>
+<span class="nc" id="L229">            } else {</span>
+                // This is typical varargs case.
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                for (int i = destArgs.length - 1; i &lt; srcArgs.length; i++) {</span>
+<span class="fc" id="L232">                    final Class&lt;?&gt; srcClass = srcArgs[i];</span>
+<span class="fc" id="L233">                    totalCost += getObjectTransformationCost(srcClass, destClass) + varArgsCost;</span>
+                }
+            }
+        }
+<span class="fc" id="L237">        return totalCost;</span>
+    }
+
+    /**
+     * Tests whether a {@link Member} is accessible.
+     *
+     * @param member Member to test, may be null.
+     * @return {@code true} if {@code m} is accessible
+     */
+    static boolean isAccessible(final Member member) {
+<span class="fc bfc" id="L247" title="All 4 branches covered.">        return isPublic(member) &amp;&amp; !member.isSynthetic();</span>
+    }
+
+    static boolean isMatchingConstructor(final Constructor&lt;?&gt; method, final Class&lt;?&gt;[] parameterTypes) {
+<span class="fc" id="L251">        return isMatchingExecutable(Executable.of(method), parameterTypes);</span>
+    }
+
+    private static boolean isMatchingExecutable(final Executable method, final Class&lt;?&gt;[] parameterTypes) {
+<span class="fc" id="L255">        final Class&lt;?&gt;[] methodParameterTypes = method.getParameterTypes();</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (ClassUtils.isAssignable(parameterTypes, methodParameterTypes, true)) {</span>
+<span class="fc" id="L257">            return true;</span>
+        }
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (method.isVarArgs()) {</span>
+            int i;
+<span class="pc bpc" id="L261" title="1 of 4 branches missed.">            for (i = 0; i &lt; methodParameterTypes.length - 1 &amp;&amp; i &lt; parameterTypes.length; i++) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                if (!ClassUtils.isAssignable(parameterTypes[i], methodParameterTypes[i], true)) {</span>
+<span class="fc" id="L263">                    return false;</span>
+                }
+            }
+<span class="fc" id="L266">            final Class&lt;?&gt; varArgParameterType = methodParameterTypes[methodParameterTypes.length - 1].getComponentType();</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            for (; i &lt; parameterTypes.length; i++) {</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                if (!ClassUtils.isAssignable(parameterTypes[i], varArgParameterType, true)) {</span>
+<span class="fc" id="L269">                    return false;</span>
+                }
+            }
+<span class="fc" id="L272">            return true;</span>
+        }
+<span class="fc" id="L274">        return false;</span>
+    }
+
+    static boolean isMatchingMethod(final Method method, final Class&lt;?&gt;[] parameterTypes) {
+<span class="fc" id="L278">      return isMatchingExecutable(Executable.of(method), parameterTypes);</span>
+    }
+
+    /**
+     * Tests whether a given set of modifiers implies package access.
+     *
+     * @param modifiers to test
+     * @return {@code true} unless {@code package}/{@code protected}/{@code private} modifier detected
+     */
+    static boolean isPackageAccess(final int modifiers) {
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        return (modifiers &amp; ACCESS_TEST) == 0;</span>
+    }
+
+    /**
+     * Tests whether a {@link Member} is public.
+     *
+     * @param member Member to test, may be null.
+     * @return {@code true} if {@code m} is public
+     */
+    static boolean isPublic(final Member member) {
+<span class="fc bfc" id="L298" title="All 4 branches covered.">        return member != null &amp;&amp; Modifier.isPublic(member.getModifiers());</span>
+    }
+
+    /**
+     * Tests whether a {@link Member} is static.
+     *
+     * @param member Member to test, may be null.
+     * @return {@code true} if {@code m} is static
+     */
+    static boolean isStatic(final Member member) {
+<span class="pc bpc" id="L308" title="1 of 4 branches missed.">        return member != null &amp;&amp; Modifier.isStatic(member.getModifiers());</span>
+    }
+
+    /**
+     * Default access superclass workaround.
+     * &lt;p&gt;
+     * When a {@code public} class has a default access superclass with {@code public} members,
+     * these members are accessible. Calling them from compiled code works fine.
+     * Unfortunately, on some JVMs, using reflection to invoke these members
+     * seems to (wrongly) prevent access even when the modifier is {@code public}.
+     * Calling {@code setAccessible(true)} solves the problem but will only work from
+     * sufficiently privileged code. Better workarounds would be gratefully
+     * accepted.
+     * &lt;/p&gt;
+     *
+     * @param obj the AccessibleObject to set as accessible, may be null.
+     * @return a boolean indicating whether the accessibility of the object was set to true.
+     */
+    static &lt;T extends AccessibleObject&gt; T setAccessibleWorkaround(final T obj) {
+<span class="fc bfc" id="L327" title="All 4 branches covered.">        if (obj == null || obj.isAccessible()) {</span>
+<span class="fc" id="L328">            return obj;</span>
+        }
+<span class="fc" id="L330">        final Member m = (Member) obj;</span>
+<span class="pc bpc" id="L331" title="1 of 6 branches missed.">        if (!obj.isAccessible() &amp;&amp; isPublic(m) &amp;&amp; isPackageAccess(m.getDeclaringClass().getModifiers())) {</span>
+            try {
+<span class="fc" id="L333">                obj.setAccessible(true);</span>
+<span class="fc" id="L334">                return obj;</span>
+<span class="nc" id="L335">            } catch (final SecurityException ignored) {</span>
+                // ignore in favor of subsequent IllegalAccessException
+            }
+        }
+<span class="fc" id="L339">        return obj;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

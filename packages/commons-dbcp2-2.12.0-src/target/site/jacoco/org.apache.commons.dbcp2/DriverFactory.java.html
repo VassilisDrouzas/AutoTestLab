@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DriverFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">DriverFactory.java</span></div><h1>DriverFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+/*
+ * Creates {@link Driver} instances.
+ *
+ * @since 2.7.0
+ */
+<span class="nc" id="L28">final class DriverFactory {</span>
+
+    static Driver createDriver(final BasicDataSource basicDataSource) throws SQLException {
+        // Load the JDBC driver class
+<span class="fc" id="L32">        Driver driverToUse = basicDataSource.getDriver();</span>
+<span class="fc" id="L33">        final String driverClassName = basicDataSource.getDriverClassName();</span>
+<span class="fc" id="L34">        final ClassLoader driverClassLoader = basicDataSource.getDriverClassLoader();</span>
+<span class="fc" id="L35">        final String url = basicDataSource.getUrl();</span>
+
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        if (driverToUse == null) {</span>
+<span class="fc" id="L38">            Class&lt;?&gt; driverFromCCL = null;</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            if (driverClassName != null) {</span>
+                try {
+                    try {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                        if (driverClassLoader == null) {</span>
+<span class="fc" id="L43">                            driverFromCCL = Class.forName(driverClassName);</span>
+                        } else {
+<span class="fc" id="L45">                            driverFromCCL = Class.forName(driverClassName, true, driverClassLoader);</span>
+                        }
+<span class="nc" id="L47">                    } catch (final ClassNotFoundException cnfe) {</span>
+<span class="nc" id="L48">                        driverFromCCL = Thread.currentThread().getContextClassLoader().loadClass(driverClassName);</span>
+<span class="fc" id="L49">                    }</span>
+<span class="nc" id="L50">                } catch (final Exception t) {</span>
+<span class="nc" id="L51">                    final String message = &quot;Cannot load JDBC driver class '&quot; + driverClassName + &quot;'&quot;;</span>
+<span class="nc" id="L52">                    basicDataSource.log(message, t);</span>
+<span class="nc" id="L53">                    throw new SQLException(message, t);</span>
+<span class="fc" id="L54">                }</span>
+            }
+
+            try {
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                if (driverFromCCL == null) {</span>
+<span class="nc" id="L59">                    driverToUse = DriverManager.getDriver(url);</span>
+                } else {
+                    // Usage of DriverManager is not possible, as it does not
+                    // respect the ContextClassLoader
+                    // N.B. This cast may cause ClassCastException which is
+                    // handled below
+<span class="fc" id="L65">                    driverToUse = (Driver) driverFromCCL.getConstructor().newInstance();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                    if (!driverToUse.acceptsURL(url)) {</span>
+<span class="nc" id="L67">                        throw new SQLException(&quot;No suitable driver&quot;, &quot;08001&quot;);</span>
+                    }
+                }
+<span class="nc" id="L70">            } catch (final Exception t) {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                final String message = &quot;Cannot create JDBC driver of class '&quot;</span>
+                        + (driverClassName != null ? driverClassName : &quot;&quot;) + &quot;' for connect URL '&quot; + url + &quot;'&quot;;
+<span class="nc" id="L73">                basicDataSource.log(message, t);</span>
+<span class="nc" id="L74">                throw new SQLException(message, t);</span>
+<span class="fc" id="L75">            }</span>
+        }
+<span class="fc" id="L77">        return driverToUse;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

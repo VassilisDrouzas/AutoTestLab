@@ -1,0 +1,631 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BasicConfigurationBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder</a> &gt; <span class="el_source">BasicConfigurationBuilder.java</span></div><h1>BasicConfigurationBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.commons.configuration2.ConfigurationUtils;
+import org.apache.commons.configuration2.ImmutableConfiguration;
+import org.apache.commons.configuration2.Initializable;
+import org.apache.commons.configuration2.beanutils.BeanDeclaration;
+import org.apache.commons.configuration2.beanutils.BeanHelper;
+import org.apache.commons.configuration2.beanutils.ConstructorArg;
+import org.apache.commons.configuration2.event.Event;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.event.EventListenerList;
+import org.apache.commons.configuration2.event.EventListenerRegistrationData;
+import org.apache.commons.configuration2.event.EventSource;
+import org.apache.commons.configuration2.event.EventType;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.reloading.ReloadingController;
+
+/**
+ * &lt;p&gt;
+ * An implementation of the {@code ConfigurationBuilder} interface which is able to create different concrete
+ * {@code ImmutableConfiguration} implementations based on reflection.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When constructing an instance of this class the concrete {@code ImmutableConfiguration} implementation class has to
+ * be provided. Then properties for the new {@code ImmutableConfiguration} instance can be set. The first call to
+ * {@code getConfiguration()} creates and initializes the new {@code ImmutableConfiguration} object. It is cached and
+ * returned by subsequent calls. This cache - and also the initialization properties set so far - can be flushed by
+ * calling one of the {@code reset()} methods. That way other {@code ImmutableConfiguration} instances with different
+ * properties can be created.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If the newly created {@code ImmutableConfiguration} object implements the {@code Initializable} interface, its
+ * {@code initialize()} method is called after all initialization properties have been set. This way a concrete
+ * implementation class can perform arbitrary initialization steps.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are multiple options for setting up a {@code BasicConfigurationBuilder} instance:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;All initialization properties can be set in one or multiple calls of the {@code configure()} method. In each call
+ * an arbitrary number of {@link BuilderParameters} objects can be passed. The API allows method chaining and is
+ * intended to be used from Java code.&lt;/li&gt;
+ * &lt;li&gt;If builder instances are created by other means - e.g. using a dependency injection framework -, the fluent API
+ * approach may not be suitable. For those use cases it is also possible to pass in all initialization parameters as a
+ * map. The keys of the map have to match initialization properties of the {@code ImmutableConfiguration} object to be
+ * created, the values are the corresponding property values. For instance, the key &lt;em&gt;throwExceptionOnMissing&lt;/em&gt; in
+ * the map will cause the method {@code setThrowExceptionOnMissing()} on the {@code ImmutableConfiguration} object to be
+ * called with the corresponding value as parameter.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * A builder instance can be constructed with an &lt;em&gt;allowFailOnInit&lt;/em&gt; flag. If set to &lt;strong&gt;true&lt;/strong&gt;,
+ * exceptions during initialization of the configuration are ignored; in such a case an empty configuration object is
+ * returned. A use case for this flag is a scenario in which a configuration is optional and created on demand the first
+ * time configuration data is to be stored. Consider an application that stores user-specific configuration data in the
+ * user's home directory: When started for the first time by a new user there is no configuration file; so it makes
+ * sense to start with an empty configuration object. On application exit, settings can be stored in this object and
+ * written to the associated file. Then they are available on next application start.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is thread-safe. Multiple threads can modify initialization properties and call {@code getConfiguration()}.
+ * However, the intended use case is that the builder is configured by a single thread first. Then
+ * {@code getConfiguration()} can be called concurrently, and it is guaranteed that always the same
+ * {@code ImmutableConfiguration} instance is returned until the builder is reset.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ * @param &lt;T&gt; the concrete type of {@code ImmutableConfiguration} objects created by this builder
+ */
+public class BasicConfigurationBuilder&lt;T extends ImmutableConfiguration&gt; implements ConfigurationBuilder&lt;T&gt; {
+    /**
+     * Registers an event listener at an event source object.
+     *
+     * @param evSrc the event source
+     * @param regData the registration data object
+     * @param &lt;E&gt; the type of the event listener
+     */
+    private static &lt;E extends Event&gt; void registerListener(final EventSource evSrc, final EventListenerRegistrationData&lt;E&gt; regData) {
+<span class="fc" id="L100">        evSrc.addEventListener(regData.getEventType(), regData.getListener());</span>
+<span class="fc" id="L101">    }</span>
+
+    /**
+     * Removes an event listener from an event source object.
+     *
+     * @param evSrc the event source
+     * @param regData the registration data object
+     * @param &lt;E&gt; the type of the event listener
+     */
+    private static &lt;E extends Event&gt; void removeListener(final EventSource evSrc, final EventListenerRegistrationData&lt;E&gt; regData) {
+<span class="fc" id="L111">        evSrc.removeEventListener(regData.getEventType(), regData.getListener());</span>
+<span class="fc" id="L112">    }</span>
+
+    /** The class of the objects produced by this builder instance. */
+    private final Class&lt;? extends T&gt; resultClass;
+
+    /** An object managing the event listeners registered at this builder. */
+    private final EventListenerList eventListeners;
+
+    /** A flag whether exceptions on initializing configurations are allowed. */
+    private final boolean allowFailOnInit;
+
+    /** The map with current initialization parameters. */
+    private Map&lt;String, Object&gt; parameters;
+
+    /** The current bean declaration. */
+    private BeanDeclaration resultDeclaration;
+
+    /** The result object of this builder. */
+    private volatile T result;
+
+    /**
+     * Creates a new instance of {@code BasicConfigurationBuilder} and initializes it with the given result class. No
+     * initialization properties are set.
+     *
+     * @param resCls the result class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if the result class is &lt;b&gt;null&lt;/b&gt;
+     */
+    public BasicConfigurationBuilder(final Class&lt;? extends T&gt; resCls) {
+<span class="fc" id="L140">        this(resCls, null);</span>
+<span class="fc" id="L141">    }</span>
+
+    /**
+     * Creates a new instance of {@code BasicConfigurationBuilder} and initializes it with the given result class and an
+     * initial set of builder parameters. The &lt;em&gt;allowFailOnInit&lt;/em&gt; flag is set to &lt;strong&gt;false&lt;/strong&gt;.
+     *
+     * @param resCls the result class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param params a map with initialization parameters
+     * @throws IllegalArgumentException if the result class is &lt;b&gt;null&lt;/b&gt;
+     */
+    public BasicConfigurationBuilder(final Class&lt;? extends T&gt; resCls, final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L152">        this(resCls, params, false);</span>
+<span class="fc" id="L153">    }</span>
+
+    /**
+     * Creates a new instance of {@code BasicConfigurationBuilder} and initializes it with the given result class, an
+     * initial set of builder parameters, and the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag. The map with parameters may be &lt;b&gt;null&lt;/b&gt;,
+     * in this case no initialization parameters are set.
+     *
+     * @param resCls the result class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param params a map with initialization parameters
+     * @param allowFailOnInit a flag whether exceptions on initializing a newly created {@code ImmutableConfiguration}
+     *        object are allowed
+     * @throws IllegalArgumentException if the result class is &lt;b&gt;null&lt;/b&gt;
+     */
+<span class="fc" id="L166">    public BasicConfigurationBuilder(final Class&lt;? extends T&gt; resCls, final Map&lt;String, Object&gt; params, final boolean allowFailOnInit) {</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (resCls == null) {</span>
+<span class="fc" id="L168">            throw new IllegalArgumentException(&quot;Result class must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L171">        resultClass = resCls;</span>
+<span class="fc" id="L172">        this.allowFailOnInit = allowFailOnInit;</span>
+<span class="fc" id="L173">        eventListeners = new EventListenerList();</span>
+<span class="fc" id="L174">        updateParameters(params);</span>
+<span class="fc" id="L175">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation also takes care that the event listener is added to the managed configuration
+     * object.
+     *
+     * @throws IllegalArgumentException if the event type or the listener is &lt;b&gt;null&lt;/b&gt;
+     */
+    @Override
+    public &lt;E extends Event&gt; void addEventListener(final EventType&lt;E&gt; eventType, final EventListener&lt;? super E&gt; listener) {
+<span class="fc" id="L185">        installEventListener(eventType, listener);</span>
+<span class="fc" id="L186">    }</span>
+
+    /**
+     * Adds the content of the given map to the already existing initialization parameters.
+     *
+     * @param params the map with additional initialization parameters; may be &lt;b&gt;null&lt;/b&gt;, then this call has no effect
+     * @return a reference to this builder for method chaining
+     */
+    public synchronized BasicConfigurationBuilder&lt;T&gt; addParameters(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L195">        final Map&lt;String, Object&gt; newParams = new HashMap&lt;&gt;(getParameters());</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (params != null) {</span>
+<span class="fc" id="L197">            newParams.putAll(params);</span>
+        }
+<span class="fc" id="L199">        updateParameters(newParams);</span>
+<span class="fc" id="L200">        return this;</span>
+    }
+
+    /**
+     * Checks whether the class of the result configuration is compatible with this builder's result class. This is done to
+     * ensure that only objects of the expected result class are created.
+     *
+     * @param inst the result instance to be checked
+     * @throws ConfigurationRuntimeException if an invalid result class is detected
+     */
+    private void checkResultInstance(final Object inst) {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (!getResultClass().isInstance(inst)) {</span>
+<span class="fc" id="L212">            throw new ConfigurationRuntimeException(&quot;Incompatible result object: &quot; + inst);</span>
+        }
+<span class="fc" id="L214">    }</span>
+
+    /**
+     * Appends the content of the specified {@code BuilderParameters} objects to the current initialization parameters.
+     * Calling this method multiple times will create a union of the parameters provided.
+     *
+     * @param params an arbitrary number of objects with builder parameters
+     * @return a reference to this builder for method chaining
+     * @throws NullPointerException if a &lt;b&gt;null&lt;/b&gt; array is passed
+     */
+    public BasicConfigurationBuilder&lt;T&gt; configure(final BuilderParameters... params) {
+<span class="fc" id="L225">        final Map&lt;String, Object&gt; newParams = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (final BuilderParameters p : params) {</span>
+<span class="fc" id="L227">            newParams.putAll(p.getParameters());</span>
+<span class="fc" id="L228">            handleEventListenerProviders(p);</span>
+        }
+<span class="fc" id="L230">        return setParameters(newParams);</span>
+    }
+
+    /**
+     * Connects this builder with a {@code ReloadingController}. With this method support for reloading can be added to an
+     * arbitrary builder object. Event listeners are registered at the reloading controller and this builder with connect
+     * both objects:
+     * &lt;ul&gt;
+     * &lt;li&gt;When the reloading controller detects that a reload is required, the builder's {@link #resetResult()} method is
+     * called; so the managed result object is invalidated.&lt;/li&gt;
+     * &lt;li&gt;When a new result object has been created the controller's reloading state is reset, so that new changes can be
+     * detected again.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param controller the {@code ReloadingController} to connect to (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if the controller is &lt;b&gt;null&lt;/b&gt;
+     */
+    public final void connectToReloadingController(final ReloadingController controller) {
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (controller == null) {</span>
+<span class="fc" id="L249">            throw new IllegalArgumentException(&quot;ReloadingController must not be null!&quot;);</span>
+        }
+<span class="fc" id="L251">        ReloadingBuilderSupportListener.connect(this, controller);</span>
+<span class="fc" id="L252">    }</span>
+
+    /**
+     * Copies all {@code EventListener} objects registered at this builder to the specified target configuration builder.
+     * This method is intended to be used by derived classes which support inheritance of their properties to other builder
+     * objects.
+     *
+     * @param target the target configuration builder (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws NullPointerException if the target builder is &lt;b&gt;null&lt;/b&gt;
+     */
+    protected synchronized void copyEventListeners(final BasicConfigurationBuilder&lt;?&gt; target) {
+<span class="fc" id="L263">        copyEventListeners(target, eventListeners);</span>
+<span class="fc" id="L264">    }</span>
+
+    /**
+     * Copies all event listeners in the specified list to the specified target configuration builder. This method is
+     * intended to be used by derived classes which have to deal with managed configuration builders that need to be
+     * initialized with event listeners.
+     *
+     * @param target the target configuration builder (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param listeners the event listeners to be copied over
+     * @throws NullPointerException if the target builder is &lt;b&gt;null&lt;/b&gt;
+     */
+    protected void copyEventListeners(final BasicConfigurationBuilder&lt;?&gt; target, final EventListenerList listeners) {
+<span class="fc" id="L276">        target.eventListeners.addAll(listeners);</span>
+<span class="fc" id="L277">    }</span>
+
+    /**
+     * Creates a new, initialized result object. This method is called by {@code getConfiguration()} if no valid result
+     * object exists. This base implementation performs two steps:
+     * &lt;ul&gt;
+     * &lt;li&gt;{@code createResultInstance()} is called to create a new, uninitialized result object.&lt;/li&gt;
+     * &lt;li&gt;{@code initResultInstance()} is called to process all initialization parameters.&lt;/li&gt;
+     * &lt;/ul&gt;
+     * It also evaluates the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag, i.e. if initialization causes an exception and this flag is set,
+     * the exception is ignored, and the newly created, uninitialized configuration is returned. Note that this method is
+     * called in a synchronized block.
+     *
+     * @return the newly created result object
+     * @throws ConfigurationException if an error occurs
+     */
+    protected T createResult() throws ConfigurationException {
+<span class="fc" id="L294">        final T resObj = createResultInstance();</span>
+
+        try {
+<span class="fc" id="L297">            initResultInstance(resObj);</span>
+<span class="fc" id="L298">        } catch (final ConfigurationException cex) {</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">            if (!isAllowFailOnInit()) {</span>
+<span class="fc" id="L300">                throw cex;</span>
+            }
+<span class="fc" id="L302">        }</span>
+
+<span class="fc" id="L304">        return resObj;</span>
+    }
+
+    /**
+     * Creates a new {@code BeanDeclaration} which is used for creating new result objects dynamically. This implementation
+     * creates a specialized {@code BeanDeclaration} object that is initialized from the given map of initialization
+     * parameters. The {@code BeanDeclaration} must be initialized with the result class of this builder, otherwise
+     * exceptions will be thrown when the result object is created. Note: This method is invoked in a synchronized block.
+     *
+     * @param params a snapshot of the current initialization parameters
+     * @return the {@code BeanDeclaration} for creating result objects
+     * @throws ConfigurationException if an error occurs
+     */
+    protected BeanDeclaration createResultDeclaration(final Map&lt;String, Object&gt; params) throws ConfigurationException {
+<span class="fc" id="L318">        return new BeanDeclaration() {</span>
+            @Override
+            public String getBeanClassName() {
+<span class="fc" id="L321">                return getResultClass().getName();</span>
+            }
+
+            @Override
+            public String getBeanFactoryName() {
+<span class="fc" id="L326">                return null;</span>
+            }
+
+            @Override
+            public Object getBeanFactoryParameter() {
+<span class="nc" id="L331">                return null;</span>
+            }
+
+            @Override
+            public Map&lt;String, Object&gt; getBeanProperties() {
+                // the properties are equivalent to the parameters
+<span class="fc" id="L337">                return params;</span>
+            }
+
+            @Override
+            public Collection&lt;ConstructorArg&gt; getConstructorArgs() {
+                // no constructor arguments
+<span class="fc" id="L343">                return Collections.emptySet();</span>
+            }
+
+            @Override
+            public Map&lt;String, Object&gt; getNestedBeanDeclarations() {
+                // no nested beans
+<span class="fc" id="L349">                return Collections.emptyMap();</span>
+            }
+        };
+    }
+
+    /**
+     * Creates the new, uninitialized result object. This is the first step of the process of producing a result object for
+     * this builder. This implementation uses the {@link BeanHelper} class to create a new object based on the
+     * {@link BeanDeclaration} returned by {@link #getResultDeclaration()}. Note: This method is invoked in a synchronized
+     * block.
+     *
+     * @return the newly created, yet uninitialized result object
+     * @throws ConfigurationException if an exception occurs
+     */
+    protected T createResultInstance() throws ConfigurationException {
+<span class="fc" id="L364">        final Object bean = fetchBeanHelper().createBean(getResultDeclaration());</span>
+<span class="fc" id="L365">        checkResultInstance(bean);</span>
+<span class="fc" id="L366">        return getResultClass().cast(bean);</span>
+    }
+
+    /**
+     * Obtains the {@code BeanHelper} object to be used when dealing with bean declarations. This method checks whether this
+     * builder was configured with a specific {@code BeanHelper} instance. If so, this instance is used. Otherwise, the
+     * default {@code BeanHelper} is returned.
+     *
+     * @return the {@code BeanHelper} to be used
+     */
+    protected final BeanHelper fetchBeanHelper() {
+<span class="fc" id="L377">        final BeanHelper helper = BasicBuilderParameters.fetchBeanHelper(getParameters());</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        return helper != null ? helper : BeanHelper.INSTANCE;</span>
+    }
+
+    /**
+     * Returns an {@code EventSource} for the current result object. If there is no current result or if it does not extend
+     * {@code EventSource}, a dummy event source is returned.
+     *
+     * @return the {@code EventSource} for the current result object
+     */
+    private EventSource fetchEventSource() {
+<span class="fc" id="L388">        return ConfigurationUtils.asEventSource(result, true);</span>
+    }
+
+    /**
+     * Sends the specified builder event to all registered listeners.
+     *
+     * @param event the event to be fired
+     */
+    protected void fireBuilderEvent(final ConfigurationBuilderEvent event) {
+<span class="fc" id="L397">        eventListeners.fire(event);</span>
+<span class="fc" id="L398">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation creates the result configuration on first access. Later invocations return the same
+     * object until this builder is reset. The double-check idiom for lazy initialization is used (Bloch, Effective Java,
+     * item 71).
+     */
+    @Override
+    public T getConfiguration() throws ConfigurationException {
+<span class="fc" id="L407">        fireBuilderEvent(new ConfigurationBuilderEvent(this, ConfigurationBuilderEvent.CONFIGURATION_REQUEST));</span>
+
+<span class="fc" id="L409">        T resObj = result;</span>
+<span class="fc" id="L410">        boolean created = false;</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (resObj == null) {</span>
+<span class="fc" id="L412">            synchronized (this) {</span>
+<span class="fc" id="L413">                resObj = result;</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">                if (resObj == null) {</span>
+<span class="fc" id="L415">                    result = resObj = createResult();</span>
+<span class="fc" id="L416">                    created = true;</span>
+                }
+<span class="fc" id="L418">            }</span>
+        }
+
+<span class="fc bfc" id="L421" title="All 2 branches covered.">        if (created) {</span>
+<span class="fc" id="L422">            fireBuilderEvent(new ConfigurationBuilderResultCreatedEvent(this, ConfigurationBuilderResultCreatedEvent.RESULT_CREATED, resObj));</span>
+        }
+<span class="fc" id="L424">        return resObj;</span>
+    }
+
+    /**
+     * Gets a map with initialization parameters where all parameters starting with the reserved prefix have been
+     * filtered out.
+     *
+     * @return the filtered parameters map
+     */
+    private Map&lt;String, Object&gt; getFilteredParameters() {
+<span class="fc" id="L434">        final Map&lt;String, Object&gt; filteredMap = new HashMap&lt;&gt;(getParameters());</span>
+<span class="fc" id="L435">        filteredMap.keySet().removeIf(key -&gt; key.startsWith(BuilderParameters.RESERVED_PARAMETER_PREFIX));</span>
+<span class="fc" id="L436">        return filteredMap;</span>
+    }
+
+    /**
+     * Gets a (unmodifiable) map with the current initialization parameters set for this builder. The map is populated
+     * with the parameters set using the various configuration options.
+     *
+     * @return a map with the current set of initialization parameters
+     */
+    protected final synchronized Map&lt;String, Object&gt; getParameters() {
+<span class="pc bpc" id="L446" title="1 of 2 branches missed.">        if (parameters != null) {</span>
+<span class="fc" id="L447">            return parameters;</span>
+        }
+<span class="nc" id="L449">        return Collections.emptyMap();</span>
+    }
+
+    /**
+     * Gets the result class of this builder. The objects produced by this builder have the class returned here.
+     *
+     * @return the result class of this builder
+     */
+    public Class&lt;? extends T&gt; getResultClass() {
+<span class="fc" id="L458">        return resultClass;</span>
+    }
+
+    /**
+     * Gets the {@code BeanDeclaration} that is used to create and initialize result objects. The declaration is created
+     * on first access (by invoking {@link #createResultDeclaration(Map)}) based on the current initialization parameters.
+     *
+     * @return the {@code BeanDeclaration} for dynamically creating a result object
+     * @throws ConfigurationException if an error occurs
+     */
+    protected final synchronized BeanDeclaration getResultDeclaration() throws ConfigurationException {
+<span class="fc bfc" id="L469" title="All 2 branches covered.">        if (resultDeclaration == null) {</span>
+<span class="fc" id="L470">            resultDeclaration = createResultDeclaration(getFilteredParameters());</span>
+        }
+<span class="fc" id="L472">        return resultDeclaration;</span>
+    }
+
+    /**
+     * Checks whether the specified parameters object implements the {@code EventListenerProvider} interface. If so, the
+     * event listeners it provides are added to this builder.
+     *
+     * @param params the parameters object
+     */
+    private void handleEventListenerProviders(final BuilderParameters params) {
+<span class="fc bfc" id="L482" title="All 2 branches covered.">        if (params instanceof EventListenerProvider) {</span>
+<span class="fc" id="L483">            eventListeners.addAll(((EventListenerProvider) params).getListeners());</span>
+        }
+<span class="fc" id="L485">    }</span>
+
+    /**
+     * Performs special initialization of the result object. This method is called after parameters have been set on a newly
+     * created result instance. If supported by the result class, the {@code initialize()} method is now called.
+     *
+     * @param obj the newly created result object
+     */
+    private void handleInitializable(final T obj) {
+<span class="fc bfc" id="L494" title="All 2 branches covered.">        if (obj instanceof Initializable) {</span>
+<span class="fc" id="L495">            ((Initializable) obj).initialize();</span>
+        }
+<span class="fc" id="L497">    }</span>
+
+    /**
+     * Initializes a newly created result object. This is the second step of the process of producing a result object for
+     * this builder. This implementation uses the {@link BeanHelper} class to initialize the object's property based on the
+     * {@link BeanDeclaration} returned by {@link #getResultDeclaration()}. Note: This method is invoked in a synchronized
+     * block. This is required because internal state is accessed. Sub classes must not call this method without proper
+     * synchronization.
+     *
+     * @param obj the object to be initialized
+     * @throws ConfigurationException if an error occurs
+     */
+    protected void initResultInstance(final T obj) throws ConfigurationException {
+<span class="fc" id="L510">        fetchBeanHelper().initBean(obj, getResultDeclaration());</span>
+<span class="fc" id="L511">        registerEventListeners(obj);</span>
+<span class="fc" id="L512">        handleInitializable(obj);</span>
+<span class="fc" id="L513">    }</span>
+
+    /**
+     * Adds the specified event listener to this object. This method is called by {@code addEventListener()}, it does the
+     * actual listener registration. Because it is final it can be called by sub classes in the constructor if there is
+     * already the need to register an event listener.
+     *
+     * @param eventType the event type object
+     * @param listener the listener to be registered
+     * @param &lt;E&gt; the event type
+     */
+    protected final &lt;E extends Event&gt; void installEventListener(final EventType&lt;E&gt; eventType, final EventListener&lt;? super E&gt; listener) {
+<span class="fc" id="L525">        fetchEventSource().addEventListener(eventType, listener);</span>
+<span class="fc" id="L526">        eventListeners.addEventListener(eventType, listener);</span>
+<span class="fc" id="L527">    }</span>
+
+    /**
+     * Returns the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag. See the header comment for information about this flag.
+     *
+     * @return the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag
+     */
+    public boolean isAllowFailOnInit() {
+<span class="fc" id="L535">        return allowFailOnInit;</span>
+    }
+
+    /**
+     * Registers the available event listeners at the given object. This method is called for each result object created by
+     * the builder.
+     *
+     * @param obj the object to initialize
+     */
+    private void registerEventListeners(final T obj) {
+<span class="fc" id="L545">        final EventSource evSrc = ConfigurationUtils.asEventSource(obj, true);</span>
+<span class="fc" id="L546">        eventListeners.getRegistrations().forEach(regData -&gt; registerListener(evSrc, regData));</span>
+<span class="fc" id="L547">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation also takes care that the event listener is removed from the managed configuration
+     * object.
+     */
+    @Override
+    public &lt;E extends Event&gt; boolean removeEventListener(final EventType&lt;E&gt; eventType, final EventListener&lt;? super E&gt; listener) {
+<span class="fc" id="L555">        fetchEventSource().removeEventListener(eventType, listener);</span>
+<span class="fc" id="L556">        return eventListeners.removeEventListener(eventType, listener);</span>
+    }
+
+    /**
+     * Removes all available event listeners from the given result object. This method is called when the result of this
+     * builder is reset. Then the old managed configuration should no longer generate events.
+     *
+     * @param obj the affected result object
+     */
+    private void removeEventListeners(final T obj) {
+<span class="fc" id="L566">        final EventSource evSrc = ConfigurationUtils.asEventSource(obj, true);</span>
+<span class="fc" id="L567">        eventListeners.getRegistrations().forEach(regData -&gt; removeListener(evSrc, regData));</span>
+<span class="fc" id="L568">    }</span>
+
+    /**
+     * Resets this builder. This is a convenience method which combines calls to {@link #resetResult()} and
+     * {@link #resetParameters()}.
+     */
+    public synchronized void reset() {
+<span class="fc" id="L575">        resetParameters();</span>
+<span class="fc" id="L576">        resetResult();</span>
+<span class="fc" id="L577">    }</span>
+
+    /**
+     * Removes all initialization parameters of this builder. This method can be called if this builder is to be reused for
+     * creating result objects with a different configuration.
+     */
+    public void resetParameters() {
+<span class="fc" id="L584">        setParameters(null);</span>
+<span class="fc" id="L585">    }</span>
+
+    /**
+     * Clears an existing result object. An invocation of this method causes a new {@code ImmutableConfiguration} object to
+     * be created the next time {@link #getConfiguration()} is called.
+     */
+    public void resetResult() {
+        final T oldResult;
+<span class="fc" id="L593">        synchronized (this) {</span>
+<span class="fc" id="L594">            oldResult = result;</span>
+<span class="fc" id="L595">            result = null;</span>
+<span class="fc" id="L596">            resultDeclaration = null;</span>
+<span class="fc" id="L597">        }</span>
+
+<span class="fc bfc" id="L599" title="All 2 branches covered.">        if (oldResult != null) {</span>
+<span class="fc" id="L600">            removeEventListeners(oldResult);</span>
+        }
+<span class="fc" id="L602">        fireBuilderEvent(new ConfigurationBuilderEvent(this, ConfigurationBuilderEvent.RESET));</span>
+<span class="fc" id="L603">    }</span>
+
+    /**
+     * Sets the initialization parameters of this builder. Already existing parameters are replaced by the content of the
+     * given map.
+     *
+     * @param params the new initialization parameters of this builder; can be &lt;b&gt;null&lt;/b&gt;, then all initialization
+     *        parameters are removed
+     * @return a reference to this builder for method chaining
+     */
+    public synchronized BasicConfigurationBuilder&lt;T&gt; setParameters(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L614">        updateParameters(params);</span>
+<span class="fc" id="L615">        return this;</span>
+    }
+
+    /**
+     * Replaces the current map with parameters by a new one.
+     *
+     * @param newParams the map with new parameters (may be &lt;b&gt;null&lt;/b&gt;)
+     */
+    private void updateParameters(final Map&lt;String, Object&gt; newParams) {
+<span class="fc" id="L624">        final Map&lt;String, Object&gt; map = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L625" title="All 2 branches covered.">        if (newParams != null) {</span>
+<span class="fc" id="L626">            map.putAll(newParams);</span>
+        }
+<span class="fc" id="L628">        parameters = Collections.unmodifiableMap(map);</span>
+<span class="fc" id="L629">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

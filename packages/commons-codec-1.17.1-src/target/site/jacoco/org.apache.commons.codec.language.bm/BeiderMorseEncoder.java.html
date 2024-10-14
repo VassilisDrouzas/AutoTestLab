@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BeiderMorseEncoder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.language.bm</a> &gt; <span class="el_source">BeiderMorseEncoder.java</span></div><h1>BeiderMorseEncoder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.language.bm;
+
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.StringEncoder;
+
+/**
+ * Encodes strings into their Beider-Morse phonetic encoding.
+ * &lt;p&gt;
+ * Beider-Morse phonetic encodings are optimized for family names. However, they may be useful for a wide range of
+ * words.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This encoder is intentionally mutable to allow dynamic configuration through bean properties. As such, it is mutable,
+ * and may not be thread-safe. If you require a guaranteed thread-safe encoding then use {@link PhoneticEngine}
+ * directly.
+ * &lt;/p&gt;
+ * &lt;h2&gt;Encoding overview&lt;/h2&gt;
+ * &lt;p&gt;
+ * Beider-Morse phonetic encodings is a multi-step process. Firstly, a table of rules is consulted to guess what
+ * language the word comes from. For example, if it ends in &quot;{@code ault}&quot; then it infers that the word is French.
+ * Next, the word is translated into a phonetic representation using a language-specific phonetics table. Some runs of
+ * letters can be pronounced in multiple ways, and a single run of letters may be potentially broken up into phonemes at
+ * different places, so this stage results in a set of possible language-specific phonetic representations. Lastly, this
+ * language-specific phonetic representation is processed by a table of rules that re-writes it phonetically taking into
+ * account systematic pronunciation differences between languages, to move it towards a pan-indo-european phonetic
+ * representation. Again, sometimes there are multiple ways this could be done and sometimes things that can be
+ * pronounced in several ways in the source language have only one way to represent them in this average phonetic
+ * language, so the result is again a set of phonetic spellings.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Some names are treated as having multiple parts. This can be due to two things. Firstly, they may be hyphenated. In
+ * this case, each individual hyphenated word is encoded, and then these are combined end-to-end for the final encoding.
+ * Secondly, some names have standard prefixes, for example, &quot;{@code Mac/Mc}&quot; in Scottish (English) names. As
+ * sometimes it is ambiguous whether the prefix is intended or is an accident of the spelling, the word is encoded once
+ * with the prefix and once without it. The resulting encoding contains one and then the other result.
+ * &lt;/p&gt;
+ * &lt;h2&gt;Encoding format&lt;/h2&gt;
+ * &lt;p&gt;
+ * Individual phonetic spellings of an input word are represented in upper- and lower-case roman characters. Where there
+ * are multiple possible phonetic representations, these are joined with a pipe ({@code |}) character. If multiple
+ * hyphenated words where found, or if the word may contain a name prefix, each encoded word is placed in ellipses and
+ * these blocks are then joined with hyphens. For example, &quot;{@code d'ortley}&quot; has a possible prefix. The form
+ * without prefix encodes to &quot;{@code ortlaj|ortlej}&quot;, while the form with prefix encodes to &quot;
+ * {@code dortlaj|dortlej}&quot;. Thus, the full, combined encoding is &quot;{@code (ortlaj|ortlej)-(dortlaj|dortlej)}&quot;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The encoded forms are often quite a bit longer than the input strings. This is because a single input may have many
+ * potential phonetic interpretations. For example, &quot;{@code Renault}&quot; encodes to &quot;
+ * {@code rYnDlt|rYnalt|rYnult|rinDlt|rinalt|rinult}&quot;. The {@code APPROX} rules will tend to produce larger
+ * encodings as they consider a wider range of possible, approximate phonetic interpretations of the original word.
+ * Down-stream applications may wish to further process the encoding for indexing or lookup purposes, for example, by
+ * splitting on pipe ({@code |}) and indexing under each of these alternatives.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;b&gt;Note&lt;/b&gt;: this version of the Beider-Morse encoding is equivalent with v3.4 of the reference implementation.
+ * &lt;/p&gt;
+ * @see &lt;a href=&quot;https://stevemorse.org/phonetics/bmpm.htm&quot;&gt;Beider-Morse Phonetic Matching&lt;/a&gt;
+ * @see &lt;a href=&quot;https://stevemorse.org/phoneticinfo.htm&quot;&gt;Reference implementation&lt;/a&gt;
+ *
+ * &lt;p&gt;
+ * This class is Not ThreadSafe
+ * &lt;/p&gt;
+ * @since 1.6
+ */
+<span class="fc" id="L82">public class BeiderMorseEncoder implements StringEncoder {</span>
+    // Implementation note: This class is a spring-friendly facade to PhoneticEngine. It allows read/write configuration
+    // of an immutable PhoneticEngine instance that will be delegated to for the actual encoding.
+
+    // a cached object
+<span class="fc" id="L87">    private PhoneticEngine engine = new PhoneticEngine(NameType.GENERIC, RuleType.APPROX, true);</span>
+
+    @Override
+    public Object encode(final Object source) throws EncoderException {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (!(source instanceof String)) {</span>
+<span class="fc" id="L92">            throw new EncoderException(&quot;BeiderMorseEncoder encode parameter is not of type String&quot;);</span>
+        }
+<span class="fc" id="L94">        return encode((String) source);</span>
+    }
+
+    @Override
+    public String encode(final String source) throws EncoderException {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (source == null) {</span>
+<span class="fc" id="L100">            return null;</span>
+        }
+<span class="fc" id="L102">        return this.engine.encode(source);</span>
+    }
+
+    /**
+     * Gets the name type currently in operation.
+     *
+     * @return the NameType currently being used
+     */
+    public NameType getNameType() {
+<span class="fc" id="L111">        return this.engine.getNameType();</span>
+    }
+
+    /**
+     * Gets the rule type currently in operation.
+     *
+     * @return the RuleType currently being used
+     */
+    public RuleType getRuleType() {
+<span class="fc" id="L120">        return this.engine.getRuleType();</span>
+    }
+
+    /**
+     * Discovers if multiple possible encodings are concatenated.
+     *
+     * @return true if multiple encodings are concatenated, false if just the first one is returned
+     */
+    public boolean isConcat() {
+<span class="fc" id="L129">        return this.engine.isConcat();</span>
+    }
+
+    /**
+     * Sets how multiple possible phonetic encodings are combined.
+     *
+     * @param concat
+     *            true if multiple encodings are to be combined with a '|', false if just the first one is
+     *            to be considered
+     */
+    public void setConcat(final boolean concat) {
+<span class="fc" id="L140">        this.engine = new PhoneticEngine(this.engine.getNameType(),</span>
+<span class="fc" id="L141">                                         this.engine.getRuleType(),</span>
+                                         concat,
+<span class="fc" id="L143">                                         this.engine.getMaxPhonemes());</span>
+<span class="fc" id="L144">    }</span>
+
+    /**
+     * Sets the number of maximum of phonemes that shall be considered by the engine.
+     *
+     * @param maxPhonemes
+     *            the maximum number of phonemes returned by the engine
+     * @since 1.7
+     */
+    public void setMaxPhonemes(final int maxPhonemes) {
+<span class="fc" id="L154">        this.engine = new PhoneticEngine(this.engine.getNameType(),</span>
+<span class="fc" id="L155">                                         this.engine.getRuleType(),</span>
+<span class="fc" id="L156">                                         this.engine.isConcat(),</span>
+                                         maxPhonemes);
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Sets the type of name. Use {@link NameType#GENERIC} unless you specifically want phonetic encodings
+     * optimized for Ashkenazi or Sephardic Jewish family names.
+     *
+     * @param nameType
+     *            the NameType in use
+     */
+    public void setNameType(final NameType nameType) {
+<span class="fc" id="L168">        this.engine = new PhoneticEngine(nameType,</span>
+<span class="fc" id="L169">                                         this.engine.getRuleType(),</span>
+<span class="fc" id="L170">                                         this.engine.isConcat(),</span>
+<span class="fc" id="L171">                                         this.engine.getMaxPhonemes());</span>
+<span class="fc" id="L172">    }</span>
+
+    /**
+     * Sets the rule type to apply. This will widen or narrow the range of phonetic encodings considered.
+     *
+     * @param ruleType
+     *            {@link RuleType#APPROX} or {@link RuleType#EXACT} for approximate or exact phonetic matches
+     */
+    public void setRuleType(final RuleType ruleType) {
+<span class="fc" id="L181">        this.engine = new PhoneticEngine(this.engine.getNameType(),</span>
+                                         ruleType,
+<span class="fc" id="L183">                                         this.engine.isConcat(),</span>
+<span class="fc" id="L184">                                         this.engine.getMaxPhonemes());</span>
+<span class="fc" id="L185">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

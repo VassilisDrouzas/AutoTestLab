@@ -1,0 +1,527 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LRUMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">LRUMap.java</span></div><h1>LRUMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Map;
+
+import org.apache.commons.collections4.BoundedMap;
+
+/**
+ * A {@code Map} implementation with a fixed maximum size which removes
+ * the least recently used entry if an entry is added when full.
+ * &lt;p&gt;
+ * The least recently used algorithm works on the get and put operations only.
+ * Iteration of any kind, including setting the value by iteration, does not
+ * change the order. Queries such as containsKey and containsValue or access
+ * via views also do not change the order.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * A somewhat subtle ramification of the least recently used
+ * algorithm is that calls to {@link #get(Object)} stand a very good chance
+ * of modifying the map's iteration order and thus invalidating any
+ * iterators currently in use.  It is therefore suggested that iterations
+ * over an {@link LRUMap} instance access entry values only through a
+ * {@link org.apache.commons.collections4.MapIterator MapIterator} or {@link #entrySet()} iterator.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The map implements {@code OrderedMap} and entries may be queried using
+ * the bidirectional {@code OrderedMapIterator}. The order returned is
+ * least recently used to most recently used. Iterators from map views can
+ * also be cast to {@code OrderedIterator} if required.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * All the available iterators can be reset back to the start by casting to
+ * {@code ResettableIterator} and calling {@code reset()}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that LRUMap is not synchronized and is not thread-safe.&lt;/strong&gt;
+ * If you wish to use this map from multiple threads concurrently, you must use
+ * appropriate synchronization. The simplest approach is to wrap this map
+ * using {@link java.util.Collections#synchronizedMap(Map)}. This class may throw
+ * {@code NullPointerException}'s when accessed by concurrent threads.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.0 (previously in main package v1.0)
+ */
+public class LRUMap&lt;K, V&gt;
+        extends AbstractLinkedMap&lt;K, V&gt; implements BoundedMap&lt;K, V&gt;, Serializable, Cloneable {
+
+    /** Serialisation version */
+    private static final long serialVersionUID = -612114643488955218L;
+    /** Default maximum size */
+    protected static final int DEFAULT_MAX_SIZE = 100;
+
+    /** Maximum size */
+    private transient int maxSize;
+    /** Scan behavior */
+    private final boolean scanUntilRemovable;
+
+    /**
+     * Constructs a new empty map with a maximum size of 100.
+     */
+    public LRUMap() {
+<span class="fc" id="L83">        this(DEFAULT_MAX_SIZE, DEFAULT_LOAD_FACTOR, false);</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified maximum size.
+     *
+     * @param maxSize  the maximum size of the map
+     * @throws IllegalArgumentException if the maximum size is less than one
+     */
+    public LRUMap(final int maxSize) {
+<span class="fc" id="L93">        this(maxSize, DEFAULT_LOAD_FACTOR);</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified maximum size.
+     *
+     * @param maxSize  the maximum size of the map
+     * @param scanUntilRemovable  scan until a removable entry is found, default false
+     * @throws IllegalArgumentException if the maximum size is less than one
+     * @since 3.1
+     */
+    public LRUMap(final int maxSize, final boolean scanUntilRemovable) {
+<span class="fc" id="L105">        this(maxSize, DEFAULT_LOAD_FACTOR, scanUntilRemovable);</span>
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified max capacity and
+     * load factor.
+     *
+     * @param maxSize  the maximum size of the map
+     * @param loadFactor  the load factor
+     * @throws IllegalArgumentException if the maximum size is less than one
+     * @throws IllegalArgumentException if the load factor is less than zero
+     */
+    public LRUMap(final int maxSize, final float loadFactor) {
+<span class="fc" id="L118">        this(maxSize, loadFactor, false);</span>
+<span class="fc" id="L119">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified max capacity and load factor.
+     *
+     * @param maxSize  the maximum size of the map
+     * @param loadFactor  the load factor
+     * @param scanUntilRemovable  scan until a removable entry is found, default false
+     * @throws IllegalArgumentException if the maximum size is less than one
+     * @throws IllegalArgumentException if the load factor is less than zero
+     * @since 3.1
+     */
+    public LRUMap(final int maxSize, final float loadFactor, final boolean scanUntilRemovable) {
+<span class="fc" id="L132">        this(maxSize, maxSize, loadFactor, scanUntilRemovable);</span>
+<span class="fc" id="L133">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified maximum size.
+     *
+     * @param maxSize  the maximum size of the map
+     * @param initialSize  the initial size of the map
+     * @throws IllegalArgumentException if the maximum size is less than one
+     * @throws IllegalArgumentException if the initial size is negative or larger than the maximum size
+     * @since 4.1
+     */
+    public LRUMap(final int maxSize, final int initialSize) {
+<span class="nc" id="L145">        this(maxSize, initialSize, DEFAULT_LOAD_FACTOR);</span>
+<span class="nc" id="L146">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified max / initial capacity and
+     * load factor.
+     *
+     * @param maxSize  the maximum size of the map
+     * @param initialSize  the initial size of the map
+     * @param loadFactor  the load factor
+     * @throws IllegalArgumentException if the maximum size is less than one
+     * @throws IllegalArgumentException if the initial size is negative or larger than the maximum size
+     * @throws IllegalArgumentException if the load factor is less than zero
+     * @since 4.1
+     */
+    public LRUMap(final int maxSize, final int initialSize, final float loadFactor) {
+<span class="nc" id="L161">        this(maxSize, initialSize, loadFactor, false);</span>
+<span class="nc" id="L162">    }</span>
+
+    /**
+     * Constructs a new, empty map with the specified max / initial capacity and load factor.
+     *
+     * @param maxSize  the maximum size of the map
+     * @param initialSize  the initial size of the map
+     * @param loadFactor  the load factor
+     * @param scanUntilRemovable  scan until a removable entry is found, default false
+     * @throws IllegalArgumentException if the maximum size is less than one
+     * @throws IllegalArgumentException if the initial size is negative or larger than the maximum size
+     * @throws IllegalArgumentException if the load factor is less than zero
+     * @since 4.1
+     */
+    public LRUMap(final int maxSize,
+                  final int initialSize,
+                  final float loadFactor,
+                  final boolean scanUntilRemovable) {
+
+<span class="fc" id="L181">        super(initialSize, loadFactor);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (maxSize &lt; 1) {</span>
+<span class="fc" id="L183">            throw new IllegalArgumentException(&quot;LRUMap max size must be greater than 0&quot;);</span>
+        }
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (initialSize &gt; maxSize) {</span>
+<span class="fc" id="L186">            throw new IllegalArgumentException(&quot;LRUMap initial size must not be greater than max size&quot;);</span>
+        }
+<span class="fc" id="L188">        this.maxSize = maxSize;</span>
+<span class="fc" id="L189">        this.scanUntilRemovable = scanUntilRemovable;</span>
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * Constructor copying elements from another map.
+     * &lt;p&gt;
+     * The maximum size is set from the map's size.
+     *
+     * @param map  the map to copy
+     * @throws NullPointerException if the map is null
+     * @throws IllegalArgumentException if the map is empty
+     */
+    public LRUMap(final Map&lt;? extends K, ? extends V&gt; map) {
+<span class="nc" id="L202">        this(map, false);</span>
+<span class="nc" id="L203">    }</span>
+
+    /**
+     * Constructor copying elements from another map.
+     *
+     * &lt;p&gt;The maximum size is set from the map's size.&lt;/p&gt;
+     *
+     * @param map  the map to copy
+     * @param scanUntilRemovable  scan until a removable entry is found, default false
+     * @throws NullPointerException if the map is null
+     * @throws IllegalArgumentException if the map is empty
+     * @since 3.1
+     */
+    public LRUMap(final Map&lt;? extends K, ? extends V&gt; map, final boolean scanUntilRemovable) {
+<span class="nc" id="L217">        this(map.size(), DEFAULT_LOAD_FACTOR, scanUntilRemovable);</span>
+<span class="nc" id="L218">        putAll(map);</span>
+<span class="nc" id="L219">    }</span>
+
+    /**
+     * Adds a new key-value mapping into this map.
+     * &lt;p&gt;
+     * This implementation checks the LRU size and determines whether to
+     * discard an entry or not using {@link #removeLRU(AbstractLinkedMap.LinkEntry)}.
+     * &lt;p&gt;
+     * From Commons Collections 3.1 this method uses {@link #isFull()} rather
+     * than accessing {@code size} and {@code maxSize} directly.
+     * It also handles the scanUntilRemovable functionality.
+     *
+     * @param hashIndex  the index into the data array to store at
+     * @param hashCode  the hash code of the key to add
+     * @param key  the key to add
+     * @param value  the value to add
+     */
+    @Override
+    protected void addMapping(final int hashIndex, final int hashCode, final K key, final V value) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (isFull()) {</span>
+<span class="fc" id="L239">            LinkEntry&lt;K, V&gt; reuse = header.after;</span>
+<span class="fc" id="L240">            boolean removeLRUEntry = false;</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (scanUntilRemovable) {</span>
+<span class="pc bpc" id="L242" title="1 of 4 branches missed.">                while (reuse != header &amp;&amp; reuse != null) {</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">                    if (removeLRU(reuse)) {</span>
+<span class="fc" id="L244">                        removeLRUEntry = true;</span>
+<span class="fc" id="L245">                        break;</span>
+                    }
+<span class="fc" id="L247">                    reuse = reuse.after;</span>
+                }
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">                if (reuse == null) {</span>
+<span class="nc" id="L250">                    throw new IllegalStateException(</span>
+                        &quot;Entry.after=null, header.after=&quot; + header.after + &quot; header.before=&quot; + header.before +
+                        &quot; key=&quot; + key + &quot; value=&quot; + value + &quot; size=&quot; + size + &quot; maxSize=&quot; + maxSize +
+                        &quot; This should not occur if your keys are immutable and you used synchronization properly.&quot;);
+                }
+            } else {
+<span class="fc" id="L256">                removeLRUEntry = removeLRU(reuse);</span>
+            }
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            if (removeLRUEntry) {</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">                if (reuse == null) {</span>
+<span class="nc" id="L261">                    throw new IllegalStateException(</span>
+                        &quot;reuse=null, header.after=&quot; + header.after + &quot; header.before=&quot; + header.before +
+                        &quot; key=&quot; + key + &quot; value=&quot; + value + &quot; size=&quot; + size + &quot; maxSize=&quot; + maxSize +
+                        &quot; This should not occur if your keys are immutable and you used synchronization properly.&quot;);
+                }
+<span class="fc" id="L266">                reuseMapping(reuse, hashIndex, hashCode, key, value);</span>
+            } else {
+<span class="fc" id="L268">                super.addMapping(hashIndex, hashCode, key, value);</span>
+            }
+<span class="fc" id="L270">        } else {</span>
+<span class="fc" id="L271">            super.addMapping(hashIndex, hashCode, key, value);</span>
+        }
+<span class="fc" id="L273">    }</span>
+
+    /**
+     * Clones the map without cloning the keys or values.
+     *
+     * @return a shallow clone
+     */
+    @Override
+    public LRUMap&lt;K, V&gt; clone() {
+<span class="fc" id="L282">        return (LRUMap&lt;K, V&gt;) super.clone();</span>
+    }
+
+    /**
+     * Reads the data necessary for {@code put()} to work in the superclass.
+     *
+     * @param in  the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     */
+    @Override
+    protected void doReadObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L294">        maxSize = in.readInt();</span>
+<span class="fc" id="L295">        super.doReadObject(in);</span>
+<span class="fc" id="L296">    }</span>
+
+    /**
+     * Writes the data necessary for {@code put()} to work in deserialization.
+     *
+     * @param out  the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     */
+    @Override
+    protected void doWriteObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L306">        out.writeInt(maxSize);</span>
+<span class="fc" id="L307">        super.doWriteObject(out);</span>
+<span class="fc" id="L308">    }</span>
+
+    /**
+     * Gets the value mapped to the key specified.
+     * &lt;p&gt;
+     * This operation changes the position of the key in the map to the
+     * most recently used position (last).
+     *
+     * @param key  the key
+     * @return the mapped value, null if no match
+     */
+    @Override
+    public V get(final Object key) {
+<span class="fc" id="L321">        return get(key, true);</span>
+    }
+
+    /**
+     * Gets the value mapped to the key specified.
+     * &lt;p&gt;
+     * If {@code updateToMRU} is {@code true}, the position of the key in the map
+     * is changed to the most recently used position (last), otherwise the iteration
+     * order is not changed by this operation.
+     *
+     * @param key  the key
+     * @param updateToMRU  whether the key shall be updated to the
+     *   most recently used position
+     * @return the mapped value, null if no match
+     * @since 4.1
+     */
+    public V get(final Object key, final boolean updateToMRU) {
+<span class="fc" id="L338">        final LinkEntry&lt;K, V&gt; entry = getEntry(key);</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (entry == null) {</span>
+<span class="fc" id="L340">            return null;</span>
+        }
+<span class="fc bfc" id="L342" title="All 2 branches covered.">        if (updateToMRU) {</span>
+<span class="fc" id="L343">            moveToMRU(entry);</span>
+        }
+<span class="fc" id="L345">        return entry.getValue();</span>
+    }
+
+    /**
+     * Returns true if this map is full and no new mappings can be added.
+     *
+     * @return {@code true} if the map is full
+     */
+    @Override
+    public boolean isFull() {
+<span class="fc bfc" id="L355" title="All 2 branches covered.">        return size &gt;= maxSize;</span>
+    }
+
+    /**
+     * Whether this LRUMap will scan until a removable entry is found when the
+     * map is full.
+     *
+     * @return true if this map scans
+     * @since 3.1
+     */
+    public boolean isScanUntilRemovable() {
+<span class="nc" id="L366">        return scanUntilRemovable;</span>
+    }
+
+    /**
+     * Gets the maximum size of the map (the bound).
+     *
+     * @return the maximum number of elements the map can hold
+     */
+    @Override
+    public int maxSize() {
+<span class="fc" id="L376">        return maxSize;</span>
+    }
+
+    /**
+     * Moves an entry to the MRU position at the end of the list.
+     * &lt;p&gt;
+     * This implementation moves the updated entry to the end of the list.
+     *
+     * @param entry  the entry to update
+     */
+    protected void moveToMRU(final LinkEntry&lt;K, V&gt; entry) {
+<span class="fc bfc" id="L387" title="All 2 branches covered.">        if (entry.after != header) {</span>
+<span class="fc" id="L388">            modCount++;</span>
+            // remove
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">            if (entry.before == null) {</span>
+<span class="nc" id="L391">                throw new IllegalStateException(&quot;Entry.before is null.&quot; +</span>
+                    &quot; This should not occur if your keys are immutable, and you have used synchronization properly.&quot;);
+            }
+<span class="fc" id="L394">            entry.before.after = entry.after;</span>
+<span class="fc" id="L395">            entry.after.before = entry.before;</span>
+            // add first
+<span class="fc" id="L397">            entry.after = header;</span>
+<span class="fc" id="L398">            entry.before = header.before;</span>
+<span class="fc" id="L399">            header.before.after = entry;</span>
+<span class="fc" id="L400">            header.before = entry;</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        } else if (entry == header) {</span>
+<span class="nc" id="L402">            throw new IllegalStateException(&quot;Can't move header to MRU&quot; +</span>
+                    &quot; This should not occur if your keys are immutable, and you have used synchronization properly.&quot;);
+        }
+<span class="fc" id="L405">    }</span>
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     */
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L415">        in.defaultReadObject();</span>
+<span class="fc" id="L416">        doReadObject(in);</span>
+<span class="fc" id="L417">    }</span>
+
+    /**
+     * Subclass method to control removal of the least recently used entry from the map.
+     * &lt;p&gt;
+     * This method exists for subclasses to override. A subclass may wish to
+     * provide cleanup of resources when an entry is removed. For example:
+     * &lt;pre&gt;
+     * protected boolean removeLRU(LinkEntry entry) {
+     *   releaseResources(entry.getValue());  // release resources held by entry
+     *   return true;  // actually delete entry
+     * }
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * Alternatively, a subclass may choose to not remove the entry or selectively
+     * keep certain LRU entries. For example:
+     * &lt;pre&gt;
+     * protected boolean removeLRU(LinkEntry entry) {
+     *   if (entry.getKey().toString().startsWith(&quot;System.&quot;)) {
+     *     return false;  // entry not removed from LRUMap
+     *   } else {
+     *     return true;  // actually delete entry
+     *   }
+     * }
+     * &lt;/pre&gt;
+     * The effect of returning false is dependent on the scanUntilRemovable flag.
+     * If the flag is true, the next LRU entry will be passed to this method and so on
+     * until one returns false and is removed, or every entry in the map has been passed.
+     * If the scanUntilRemovable flag is false, the map will exceed the maximum size.
+     * &lt;p&gt;
+     * NOTE: Commons Collections 3.0 passed the wrong entry to this method.
+     * This is fixed in version 3.1 onwards.
+     *
+     * @param entry  the entry to be removed
+     * @return {@code true}
+     */
+    protected boolean removeLRU(final LinkEntry&lt;K, V&gt; entry) {
+<span class="fc" id="L454">        return true;</span>
+    }
+
+    /**
+     * Reuses an entry by removing it and moving it to a new place in the map.
+     * &lt;p&gt;
+     * This method uses {@link #removeEntry}, {@link #reuseEntry} and {@link #addEntry}.
+     *
+     * @param entry  the entry to reuse
+     * @param hashIndex  the index into the data array to store at
+     * @param hashCode  the hash code of the key to add
+     * @param key  the key to add
+     * @param value  the value to add
+     */
+    protected void reuseMapping(final LinkEntry&lt;K, V&gt; entry, final int hashIndex, final int hashCode,
+                                final K key, final V value) {
+        // find the entry before the entry specified in the hash table
+        // remember that the parameters (except the first) refer to the new entry,
+        // not the old one
+        try {
+<span class="fc" id="L474">            final int removeIndex = hashIndex(entry.hashCode, data.length);</span>
+<span class="fc" id="L475">            final HashEntry&lt;K, V&gt;[] tmp = data;  // may protect against some sync issues</span>
+<span class="fc" id="L476">            HashEntry&lt;K, V&gt; loop = tmp[removeIndex];</span>
+<span class="fc" id="L477">            HashEntry&lt;K, V&gt; previous = null;</span>
+<span class="pc bpc" id="L478" title="1 of 4 branches missed.">            while (loop != entry &amp;&amp; loop != null) {</span>
+<span class="fc" id="L479">                previous = loop;</span>
+<span class="fc" id="L480">                loop = loop.next;</span>
+            }
+<span class="pc bpc" id="L482" title="1 of 2 branches missed.">            if (loop == null) {</span>
+<span class="nc" id="L483">                throw new IllegalStateException(</span>
+                    &quot;Entry.next=null, data[removeIndex]=&quot; + data[removeIndex] + &quot; previous=&quot; + previous +
+                    &quot; key=&quot; + key + &quot; value=&quot; + value + &quot; size=&quot; + size + &quot; maxSize=&quot; + maxSize +
+                    &quot; This should not occur if your keys are immutable, and you have used synchronization properly.&quot;);
+            }
+
+            // reuse the entry
+<span class="fc" id="L490">            modCount++;</span>
+<span class="fc" id="L491">            removeEntry(entry, removeIndex, previous);</span>
+<span class="fc" id="L492">            reuseEntry(entry, hashIndex, hashCode, key, value);</span>
+<span class="fc" id="L493">            addEntry(entry, hashIndex);</span>
+<span class="nc" id="L494">        } catch (final NullPointerException ex) {</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">            throw new IllegalStateException(&quot;NPE, entry=&quot; + entry + &quot; entryIsHeader=&quot; + (entry == header) + &quot; key=&quot; + key + &quot; value=&quot; + value + &quot; size=&quot; + size</span>
+                    + &quot; maxSize=&quot; + maxSize + &quot; This should not occur if your keys are immutable, and you have used synchronization properly.&quot;);
+<span class="fc" id="L497">        }</span>
+<span class="fc" id="L498">    }</span>
+
+    /**
+     * Updates an existing key-value mapping.
+     * &lt;p&gt;
+     * This implementation moves the updated entry to the end of the list
+     * using {@link #moveToMRU(AbstractLinkedMap.LinkEntry)}.
+     *
+     * @param entry  the entry to update
+     * @param newValue  the new value to store
+     */
+    @Override
+    protected void updateEntry(final HashEntry&lt;K, V&gt; entry, final V newValue) {
+<span class="fc" id="L511">        moveToMRU((LinkEntry&lt;K, V&gt;) entry);  // handles modCount</span>
+<span class="fc" id="L512">        entry.setValue(newValue);</span>
+<span class="fc" id="L513">    }</span>
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out  the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     */
+    private void writeObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L522">        out.defaultWriteObject();</span>
+<span class="fc" id="L523">        doWriteObject(out);</span>
+<span class="fc" id="L524">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

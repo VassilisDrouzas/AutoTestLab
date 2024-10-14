@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Metaphone.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.language</a> &gt; <span class="el_source">Metaphone.java</span></div><h1>Metaphone.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.language;
+
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.StringEncoder;
+
+/**
+ * Encodes a string into a Metaphone value.
+ * &lt;p&gt;
+ * Initial Java implementation by &lt;CITE&gt;William B. Brogden. December, 1997&lt;/CITE&gt;.
+ * Permission given by &lt;CITE&gt;wbrogden&lt;/CITE&gt; for code to be used anywhere.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;CITE&gt;Hanging on the Metaphone&lt;/CITE&gt; by &lt;CITE&gt;Lawrence Philips&lt;/CITE&gt; in &lt;CITE&gt;Computer Language of Dec. 1990,
+ * p 39.&lt;/CITE&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Note, that this does not match the algorithm that ships with PHP, or the algorithm found in the Perl implementations:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;a href=&quot;https://search.cpan.org/~mschwern/Text-Metaphone-1.96/Metaphone.pm&quot;&gt;Text:Metaphone-1.96&lt;/a&gt;
+ *  (broken link 4/30/2013) &lt;/li&gt;
+ * &lt;li&gt;&lt;a href=&quot;https://metacpan.org/source/MSCHWERN/Text-Metaphone-1.96//Metaphone.pm&quot;&gt;Text:Metaphone-1.96&lt;/a&gt;
+ *  (link checked 4/30/2013) &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * They have had undocumented changes from the originally published algorithm.
+ * For more information, see &lt;a href=&quot;https://issues.apache.org/jira/browse/CODEC-57&quot;&gt;CODEC-57&lt;/a&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is conditionally thread-safe.
+ * The instance field for maximum code length is mutable {@link #setMaxCodeLen(int)}
+ * but is not volatile, and accesses are not synchronized.
+ * If an instance of the class is shared between threads, the caller needs to ensure that suitable synchronization
+ * is used to ensure safe publication of the value between threads, and must not invoke {@link #setMaxCodeLen(int)}
+ * after initial setup.
+ * &lt;/p&gt;
+ */
+<span class="fc" id="L55">public class Metaphone implements StringEncoder {</span>
+
+    /**
+     * Five values in the English language
+     */
+    private static final String VOWELS = &quot;AEIOU&quot;;
+
+    /**
+     * Variable used in Metaphone algorithm
+     */
+    private static final String FRONTV = &quot;EIY&quot;;
+
+    /**
+     * Variable used in Metaphone algorithm
+     */
+    private static final String VARSON = &quot;CSPTG&quot;;
+
+    /**
+     * The max code length for metaphone is 4
+     */
+<span class="fc" id="L75">    private int maxCodeLen = 4;</span>
+
+    /**
+     * Encodes an Object using the metaphone algorithm.  This method
+     * is provided in order to satisfy the requirements of the
+     * Encoder interface, and will throw an EncoderException if the
+     * supplied object is not of type {@link String}.
+     *
+     * @param obj Object to encode
+     * @return An object (or type {@link String}) containing the
+     *         metaphone code which corresponds to the String supplied.
+     * @throws EncoderException if the parameter supplied is not
+     *                          of type {@link String}
+     */
+    @Override
+    public Object encode(final Object obj) throws EncoderException {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (!(obj instanceof String)) {</span>
+<span class="fc" id="L92">            throw new EncoderException(&quot;Parameter supplied to Metaphone encode is not of type java.lang.String&quot;);</span>
+        }
+<span class="fc" id="L94">        return metaphone((String) obj);</span>
+    }
+
+    /**
+     * Encodes a String using the Metaphone algorithm.
+     *
+     * @param str String object to encode
+     * @return The metaphone code corresponding to the String supplied
+     */
+    @Override
+    public String encode(final String str) {
+<span class="fc" id="L105">        return metaphone(str);</span>
+    }
+
+    /**
+     * Returns the maxCodeLen.
+     * @return int
+     */
+<span class="fc" id="L112">    public int getMaxCodeLen() { return this.maxCodeLen; }</span>
+
+    private boolean isLastChar(final int wdsz, final int n) {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        return n + 1 == wdsz;</span>
+    }
+
+    /**
+     * Tests is the metaphones of two strings are identical.
+     *
+     * @param str1 First of two strings to compare
+     * @param str2 Second of two strings to compare
+     * @return {@code true} if the metaphones of these strings are identical,
+     *        {@code false} otherwise.
+     */
+    public boolean isMetaphoneEqual(final String str1, final String str2) {
+<span class="fc" id="L127">        return metaphone(str1).equals(metaphone(str2));</span>
+    }
+
+    private boolean isNextChar(final StringBuilder string, final int index, final char c) {
+<span class="fc" id="L131">        boolean matches = false;</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        if (index &gt;= 0 &amp;&amp; index &lt; string.length() - 1) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            matches = string.charAt(index + 1) == c;</span>
+        }
+<span class="fc" id="L135">        return matches;</span>
+    }
+
+    private boolean isPreviousChar(final StringBuilder string, final int index, final char c) {
+<span class="fc" id="L139">        boolean matches = false;</span>
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">        if (index &gt; 0 &amp;&amp; index &lt; string.length()) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            matches = string.charAt(index - 1) == c;</span>
+        }
+<span class="fc" id="L143">        return matches;</span>
+    }
+
+    private boolean isVowel(final StringBuilder string, final int index) {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        return VOWELS.indexOf(string.charAt(index)) &gt;= 0;</span>
+    }
+
+    /**
+     * Find the metaphone value of a String. This is similar to the
+     * soundex algorithm, but better at finding similar sounding words.
+     * All input is converted to upper case.
+     * Limitations: Input format is expected to be a single ASCII word
+     * with only characters in the A - Z range, no punctuation or numbers.
+     *
+     * @param txt String to find the metaphone code for
+     * @return A metaphone code corresponding to the String supplied
+     */
+    public String metaphone(final String txt) {
+<span class="fc" id="L161">        boolean hard = false;</span>
+        final int txtLength;
+<span class="fc bfc" id="L163" title="All 4 branches covered.">        if (txt == null || (txtLength = txt.length()) == 0) {</span>
+<span class="fc" id="L164">            return &quot;&quot;;</span>
+        }
+        // single character is itself
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (txtLength == 1) {</span>
+<span class="fc" id="L168">            return txt.toUpperCase(java.util.Locale.ENGLISH);</span>
+        }
+
+<span class="fc" id="L171">        final char[] inwd = txt.toUpperCase(java.util.Locale.ENGLISH).toCharArray();</span>
+
+<span class="fc" id="L173">        final StringBuilder local = new StringBuilder(40); // manipulate</span>
+<span class="fc" id="L174">        final StringBuilder code = new StringBuilder(10); // output</span>
+        // handle initial 2 characters exceptions
+<span class="fc bfc" id="L176" title="All 5 branches covered.">        switch (inwd[0]) {</span>
+        case 'K':
+        case 'G':
+        case 'P': /* looking for KN, etc */
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (inwd[1] == 'N') {</span>
+<span class="fc" id="L181">                local.append(inwd, 1, inwd.length - 1);</span>
+            } else {
+<span class="fc" id="L183">                local.append(inwd);</span>
+            }
+<span class="fc" id="L185">            break;</span>
+        case 'A': /* looking for AE */
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (inwd[1] == 'E') {</span>
+<span class="fc" id="L188">                local.append(inwd, 1, inwd.length - 1);</span>
+            } else {
+<span class="fc" id="L190">                local.append(inwd);</span>
+            }
+<span class="fc" id="L192">            break;</span>
+        case 'W': /* looking for WR or WH */
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (inwd[1] == 'R') { // WR -&gt; R</span>
+<span class="fc" id="L195">                local.append(inwd, 1, inwd.length - 1);</span>
+<span class="fc" id="L196">                break;</span>
+            }
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (inwd[1] == 'H') {</span>
+<span class="fc" id="L199">                local.append(inwd, 1, inwd.length - 1);</span>
+<span class="fc" id="L200">                local.setCharAt(0, 'W'); // WH -&gt; W</span>
+            } else {
+<span class="fc" id="L202">                local.append(inwd);</span>
+            }
+<span class="fc" id="L204">            break;</span>
+        case 'X': /* initial X becomes S */
+<span class="fc" id="L206">            inwd[0] = 'S';</span>
+<span class="fc" id="L207">            local.append(inwd);</span>
+<span class="fc" id="L208">            break;</span>
+        default:
+<span class="fc" id="L210">            local.append(inwd);</span>
+        } // now local has working string with initials fixed
+
+<span class="fc" id="L213">        final int wdsz = local.length();</span>
+<span class="fc" id="L214">        int n = 0;</span>
+
+<span class="fc bfc" id="L216" title="All 4 branches covered.">        while (code.length() &lt; getMaxCodeLen() &amp;&amp; n &lt; wdsz) { // max code size of 4 works well</span>
+<span class="fc" id="L217">            final char symb = local.charAt(n);</span>
+            // remove duplicate letters except C
+<span class="fc bfc" id="L219" title="All 4 branches covered.">            if (symb != 'C' &amp;&amp; isPreviousChar(local, n, symb)) {</span>
+            } else { // not dup
+<span class="fc bfc" id="L221" title="All 17 branches covered.">                switch (symb) {</span>
+                case 'A':
+                case 'E':
+                case 'I':
+                case 'O':
+                case 'U':
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                    if (n == 0) {</span>
+<span class="fc" id="L228">                        code.append(symb);</span>
+                    }
+                    break; // only use vowel if leading char
+                case 'B':
+<span class="pc bpc" id="L232" title="1 of 4 branches missed.">                    if (isPreviousChar(local, n, 'M') &amp;&amp; isLastChar(wdsz, n)) { // B is silent if word ends in MB</span>
+<span class="fc" id="L233">                        break;</span>
+                    }
+<span class="fc" id="L235">                    code.append(symb);</span>
+<span class="fc" id="L236">                    break;</span>
+                case 'C': // lots of C special cases
+                    /* discard if SCI, SCE or SCY */
+<span class="pc bpc" id="L239" title="1 of 6 branches missed.">                    if (isPreviousChar(local, n, 'S') &amp;&amp; !isLastChar(wdsz, n) &amp;&amp; FRONTV.indexOf(local.charAt(n + 1)) &gt;= 0) {</span>
+<span class="fc" id="L240">                        break;</span>
+                    }
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                    if (regionMatch(local, n, &quot;CIA&quot;)) { // &quot;CIA&quot; -&gt; X</span>
+<span class="fc" id="L243">                        code.append('X');</span>
+<span class="fc" id="L244">                        break;</span>
+                    }
+<span class="pc bpc" id="L246" title="1 of 4 branches missed.">                    if (!isLastChar(wdsz, n) &amp;&amp; FRONTV.indexOf(local.charAt(n + 1)) &gt;= 0) {</span>
+<span class="fc" id="L247">                        code.append('S');</span>
+<span class="fc" id="L248">                        break; // CI,CE,CY -&gt; S</span>
+                    }
+<span class="pc bpc" id="L250" title="1 of 4 branches missed.">                    if (isPreviousChar(local, n, 'S') &amp;&amp; isNextChar(local, n, 'H')) { // SCH-&gt;sk</span>
+<span class="fc" id="L251">                        code.append('K');</span>
+<span class="fc" id="L252">                        break;</span>
+                    }
+<span class="pc bpc" id="L254" title="2 of 8 branches missed.">                    if (!isNextChar(local, n, 'H') || (n == 0 &amp;&amp; wdsz &gt;= 3 &amp;&amp; isVowel(local, 2))) { // CH consonant -&gt; K consonant</span>
+<span class="fc" id="L255">                        code.append('K');</span>
+                    } else {
+<span class="fc" id="L257">                        code.append('X'); // CHvowel -&gt; X</span>
+                    }
+<span class="fc" id="L259">                    break;</span>
+                case 'D':
+<span class="pc bpc" id="L261" title="1 of 6 branches missed.">                    if (!isLastChar(wdsz, n + 1) &amp;&amp; isNextChar(local, n, 'G') &amp;&amp; FRONTV.indexOf(local.charAt(n + 2)) &gt;= 0) { // DGE DGI DGY -&gt; J</span>
+<span class="fc" id="L262">                        code.append('J');</span>
+<span class="fc" id="L263">                        n += 2;</span>
+                    } else {
+<span class="fc" id="L265">                        code.append('T');</span>
+                    }
+<span class="fc" id="L267">                    break;</span>
+                case 'G': // GH silent at end or before consonant
+<span class="fc bfc" id="L269" title="All 4 branches covered.">                    if (isLastChar(wdsz, n + 1) &amp;&amp; isNextChar(local, n, 'H')) {</span>
+<span class="fc" id="L270">                        break;</span>
+                    }
+<span class="fc bfc" id="L272" title="All 6 branches covered.">                    if (!isLastChar(wdsz, n + 1) &amp;&amp; isNextChar(local, n, 'H') &amp;&amp; !isVowel(local, n + 2)) {</span>
+<span class="fc" id="L273">                        break;</span>
+                    }
+<span class="pc bpc" id="L275" title="1 of 6 branches missed.">                    if (n &gt; 0 &amp;&amp; (regionMatch(local, n, &quot;GN&quot;) || regionMatch(local, n, &quot;GNED&quot;))) {</span>
+<span class="nc" id="L276">                        break; // silent G</span>
+                    }
+                    // NOTE: Given that duplicated chars are removed, I don't see how this can ever be true
+<span class="fc" id="L279">                    hard = isPreviousChar(local, n, 'G');</span>
+<span class="pc bpc" id="L280" title="2 of 6 branches missed.">                    if (!isLastChar(wdsz, n) &amp;&amp; FRONTV.indexOf(local.charAt(n + 1)) &gt;= 0 &amp;&amp; !hard) {</span>
+<span class="fc" id="L281">                        code.append('J');</span>
+                    } else {
+<span class="fc" id="L283">                        code.append('K');</span>
+                    }
+<span class="fc" id="L285">                    break;</span>
+                case 'H':
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                    if (isLastChar(wdsz, n)) {</span>
+<span class="fc" id="L288">                        break; // terminal H</span>
+                    }
+<span class="fc bfc" id="L290" title="All 4 branches covered.">                    if (n &gt; 0 &amp;&amp; VARSON.indexOf(local.charAt(n - 1)) &gt;= 0) {</span>
+<span class="fc" id="L291">                        break;</span>
+                    }
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                    if (isVowel(local, n + 1)) {</span>
+<span class="fc" id="L294">                        code.append('H'); // Hvowel</span>
+                    }
+                    break;
+                case 'F':
+                case 'J':
+                case 'L':
+                case 'M':
+                case 'N':
+                case 'R':
+<span class="fc" id="L303">                    code.append(symb);</span>
+<span class="fc" id="L304">                    break;</span>
+                case 'K':
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                    if (n &gt; 0) { // not initial</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                        if (!isPreviousChar(local, n, 'C')) {</span>
+<span class="fc" id="L308">                            code.append(symb);</span>
+                        }
+                    } else {
+<span class="fc" id="L311">                        code.append(symb); // initial K</span>
+                    }
+<span class="fc" id="L313">                    break;</span>
+                case 'P':
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                    if (isNextChar(local, n, 'H')) {</span>
+                        // PH -&gt; F
+<span class="fc" id="L317">                        code.append('F');</span>
+                    } else {
+<span class="fc" id="L319">                        code.append(symb);</span>
+                    }
+<span class="fc" id="L321">                    break;</span>
+                case 'Q':
+<span class="fc" id="L323">                    code.append('K');</span>
+<span class="fc" id="L324">                    break;</span>
+                case 'S':
+<span class="fc bfc" id="L326" title="All 6 branches covered.">                    if (regionMatch(local, n, &quot;SH&quot;) || regionMatch(local, n, &quot;SIO&quot;) || regionMatch(local, n, &quot;SIA&quot;)) {</span>
+<span class="fc" id="L327">                        code.append('X');</span>
+                    } else {
+<span class="fc" id="L329">                        code.append('S');</span>
+                    }
+<span class="fc" id="L331">                    break;</span>
+                case 'T':
+<span class="fc bfc" id="L333" title="All 4 branches covered.">                    if (regionMatch(local, n, &quot;TIA&quot;) || regionMatch(local, n, &quot;TIO&quot;)) {</span>
+<span class="fc" id="L334">                        code.append('X');</span>
+<span class="fc" id="L335">                        break;</span>
+                    }
+<span class="fc bfc" id="L337" title="All 2 branches covered.">                    if (regionMatch(local, n, &quot;TCH&quot;)) {</span>
+                        // Silent if in &quot;TCH&quot;
+<span class="fc" id="L339">                        break;</span>
+                    }
+                    // substitute numeral 0 for TH (resembles theta after all)
+<span class="fc bfc" id="L342" title="All 2 branches covered.">                    if (regionMatch(local, n, &quot;TH&quot;)) {</span>
+<span class="fc" id="L343">                        code.append('0');</span>
+                    } else {
+<span class="fc" id="L345">                        code.append('T');</span>
+                    }
+<span class="fc" id="L347">                    break;</span>
+                case 'V':
+<span class="fc" id="L349">                    code.append('F');</span>
+<span class="fc" id="L350">                    break;</span>
+                case 'W':
+                case 'Y': // silent if not followed by vowel
+<span class="fc bfc" id="L353" title="All 4 branches covered.">                    if (!isLastChar(wdsz, n) &amp;&amp; isVowel(local, n + 1)) {</span>
+<span class="fc" id="L354">                        code.append(symb);</span>
+                    }
+                    break;
+                case 'X':
+<span class="fc" id="L358">                    code.append('K');</span>
+<span class="fc" id="L359">                    code.append('S');</span>
+<span class="fc" id="L360">                    break;</span>
+                case 'Z':
+<span class="fc" id="L362">                    code.append('S');</span>
+<span class="fc" id="L363">                    break;</span>
+                default:
+                    // do nothing
+                    break;
+                } // end switch
+            } // end else from symb != 'C'
+<span class="fc" id="L369">            n++;</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">            if (code.length() &gt; getMaxCodeLen()) {</span>
+<span class="fc" id="L371">                code.setLength(getMaxCodeLen());</span>
+            }
+<span class="fc" id="L373">        }</span>
+<span class="fc" id="L374">        return code.toString();</span>
+    }
+
+    private boolean regionMatch(final StringBuilder string, final int index, final String test) {
+<span class="fc" id="L378">        boolean matches = false;</span>
+<span class="pc bpc" id="L379" title="1 of 4 branches missed.">        if (index &gt;= 0 &amp;&amp; index + test.length() - 1 &lt; string.length()) {</span>
+<span class="fc" id="L380">            final String substring = string.substring(index, index + test.length());</span>
+<span class="fc" id="L381">            matches = substring.equals(test);</span>
+        }
+<span class="fc" id="L383">        return matches;</span>
+    }
+
+    /**
+     * Sets the maxCodeLen.
+     * @param maxCodeLen The maxCodeLen to set
+     */
+<span class="fc" id="L390">    public void setMaxCodeLen(final int maxCodeLen) { this.maxCodeLen = maxCodeLen; }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

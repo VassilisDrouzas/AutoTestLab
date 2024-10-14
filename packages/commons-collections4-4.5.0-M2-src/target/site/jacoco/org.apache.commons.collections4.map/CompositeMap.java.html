@@ -1,0 +1,567 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompositeMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">CompositeMap.java</span></div><h1>CompositeMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.Serializable;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.collection.CompositeCollection;
+import org.apache.commons.collections4.set.CompositeSet;
+
+/**
+ * Decorates a map of other maps to provide a single unified view.
+ * &lt;p&gt;
+ * Changes made to this map will actually be made on the decorated map.
+ * Add and remove operations require the use of a pluggable strategy. If no
+ * strategy is provided then add and remove are unsupported.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that CompositeMap is not synchronized and is not thread-safe.&lt;/strong&gt;
+ * If you wish to use this map from multiple threads concurrently, you must use
+ * appropriate synchronization. The simplest approach is to wrap this map
+ * using {@link java.util.Collections#synchronizedMap(Map)}. This class may throw
+ * exceptions when accessed by concurrent threads without synchronization.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.0
+ */
+public class CompositeMap&lt;K, V&gt; extends AbstractIterableMap&lt;K, V&gt; implements Serializable {
+
+    /**
+     * This interface allows definition for all of the indeterminate
+     * mutators in a CompositeMap, as well as providing a hook for
+     * callbacks on key collisions.
+     *
+     * @param &lt;K&gt; the type of the keys in the map
+     * @param &lt;V&gt; the type of the values in the map
+     */
+    public interface MapMutator&lt;K, V&gt; extends Serializable {
+        /**
+         * Called when the CompositeMap.put() method is invoked.
+         *
+         * @param map  the CompositeMap which is being modified
+         * @param composited  array of Maps in the CompositeMap being modified
+         * @param key  key with which the specified value is to be associated.
+         * @param value  value to be associated with the specified key.
+         * @return previous value associated with specified key, or {@code null}
+         *         if there was no mapping for key.  A {@code null} return can
+         *         also indicate that the map previously associated {@code null}
+         *         with the specified key, if the implementation supports
+         *         {@code null} values.
+         *
+         * @throws UnsupportedOperationException if not defined
+         * @throws ClassCastException if the class of the specified key or value
+         *            prevents it from being stored in this map.
+         * @throws IllegalArgumentException if some aspect of this key or value
+         *            prevents it from being stored in this map.
+         * @throws NullPointerException this map does not permit {@code null}
+         *            keys or values, and the specified key or value is
+         *            {@code null}.
+         */
+        V put(CompositeMap&lt;K, V&gt; map, Map&lt;K, V&gt;[] composited, K key, V value);
+
+        /**
+         * Called when the CompositeMap.putAll() method is invoked.
+         *
+         * @param map  the CompositeMap which is being modified
+         * @param composited  array of Maps in the CompositeMap being modified
+         * @param mapToAdd  Mappings to be stored in this CompositeMap
+         *
+         * @throws UnsupportedOperationException if not defined
+         * @throws ClassCastException if the class of the specified key or value
+         *            prevents it from being stored in this map.
+         * @throws IllegalArgumentException if some aspect of this key or value
+         *            prevents it from being stored in this map.
+         * @throws NullPointerException this map does not permit {@code null}
+         *            keys or values, and the specified key or value is
+         *            {@code null}.
+         */
+        void putAll(CompositeMap&lt;K, V&gt; map, Map&lt;K, V&gt;[] composited,
+                Map&lt;? extends K, ? extends V&gt; mapToAdd);
+
+        /**
+         * Called when adding a new Composited Map results in a
+         * key collision.
+         *
+         * @param composite  the CompositeMap with the collision
+         * @param existing  the Map already in the composite which contains the
+         *        offending key
+         * @param added  the Map being added
+         * @param intersect  the intersection of the keysets of the existing and added maps
+         */
+        void resolveCollision(CompositeMap&lt;K, V&gt; composite, Map&lt;K, V&gt; existing,
+                Map&lt;K, V&gt; added, Collection&lt;K&gt; intersect);
+    }
+
+<span class="fc" id="L116">    private static final Map[] EMPTY_MAP_ARRAY = {};</span>
+
+    /** Serialization version */
+    private static final long serialVersionUID = -6096931280583808322L;
+
+    /** Array of all maps in the composite */
+    private Map&lt;K, V&gt;[] composite;
+
+    /** Handle mutation operations */
+    private MapMutator&lt;K, V&gt; mutator;
+
+    /**
+     * Create a new, empty, CompositeMap.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public CompositeMap() {
+<span class="fc" id="L132">        this(new Map[] {}, null);</span>
+<span class="fc" id="L133">    }</span>
+
+    /**
+     * Create a new CompositeMap which composites all of the Map instances in the
+     * argument. It copies the argument array, it does not use it directly.
+     *
+     * @param composite  the Maps to be composited
+     * @throws IllegalArgumentException if there is a key collision
+     */
+    public CompositeMap(final Map&lt;K, V&gt;... composite) {
+<span class="nc" id="L143">        this(composite, null);</span>
+<span class="nc" id="L144">    }</span>
+
+    /**
+     * Create a new CompositeMap with two composited Map instances.
+     *
+     * @param one  the first Map to be composited
+     * @param two  the second Map to be composited
+     * @throws IllegalArgumentException if there is a key collision
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public CompositeMap(final Map&lt;K, V&gt; one, final Map&lt;K, V&gt; two) {
+<span class="fc" id="L155">        this(new Map[] { one, two }, null);</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Create a new CompositeMap with two composited Map instances.
+     *
+     * @param one  the first Map to be composited
+     * @param two  the second Map to be composited
+     * @param mutator  MapMutator to be used for mutation operations
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public CompositeMap(final Map&lt;K, V&gt; one, final Map&lt;K, V&gt; two, final MapMutator&lt;K, V&gt; mutator) {
+<span class="fc" id="L167">        this(new Map[] { one, two }, mutator);</span>
+<span class="fc" id="L168">    }</span>
+
+    /**
+     * Create a new CompositeMap which composites all of the Map instances in the
+     * argument. It copies the argument array, it does not use it directly.
+     *
+     * @param composite  Maps to be composited
+     * @param mutator  MapMutator to be used for mutation operations
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L178">    public CompositeMap(final Map&lt;K, V&gt;[] composite, final MapMutator&lt;K, V&gt; mutator) {</span>
+<span class="fc" id="L179">        this.mutator = mutator;</span>
+<span class="fc" id="L180">        this.composite = EMPTY_MAP_ARRAY;</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (int i = composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L182">            this.addComposited(composite[i]);</span>
+        }
+<span class="fc" id="L184">    }</span>
+
+    /**
+     * Add an additional Map to the composite.
+     *
+     * @param map  the Map to be added to the composite
+     * @throws IllegalArgumentException if there is a key collision and there is no
+     *         MapMutator set to handle it.
+     */
+    public synchronized void addComposited(final Map&lt;K, V&gt; map) throws IllegalArgumentException {
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (map != null) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            for (int i = composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L196">                final Collection&lt;K&gt; intersect = CollectionUtils.intersection(this.composite[i].keySet(), map.keySet());</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                if (!intersect.isEmpty()) {</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                    if (this.mutator == null) {</span>
+<span class="fc" id="L199">                        throw new IllegalArgumentException(&quot;Key collision adding Map to CompositeMap&quot;);</span>
+                    }
+<span class="fc" id="L201">                    this.mutator.resolveCollision(this, this.composite[i], map, intersect);</span>
+                }
+            }
+<span class="fc" id="L204">            final Map&lt;K, V&gt;[] temp = Arrays.copyOf(this.composite, this.composite.length + 1);</span>
+<span class="fc" id="L205">            temp[temp.length - 1] = map;</span>
+<span class="fc" id="L206">            this.composite = temp;</span>
+        }
+<span class="fc" id="L208">    }</span>
+
+    /**
+     * Calls {@code clear()} on all composited Maps.
+     *
+     * @throws UnsupportedOperationException if any of the composited Maps do not support clear()
+     */
+    @Override
+    public void clear() {
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L218">            this.composite[i].clear();</span>
+        }
+<span class="fc" id="L220">    }</span>
+
+    /**
+     * Returns {@code true} if this map contains a mapping for the specified
+     * key.  More formally, returns {@code true} if and only if
+     * this map contains at a mapping for a key {@code k} such that
+     * {@code (key==null ? k==null : key.equals(k))}.  (There can be
+     * at most one such mapping.)
+     *
+     * @param key  key whose presence in this map is to be tested.
+     * @return {@code true} if this map contains a mapping for the specified
+     *         key.
+     *
+     * @throws ClassCastException if the key is of an inappropriate type for
+     *         this map (optional).
+     * @throws NullPointerException if the key is {@code null} and this map
+     *            does not permit {@code null} keys (optional).
+     */
+    @Override
+    public boolean containsKey(final Object key) {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (this.composite[i].containsKey(key)) {</span>
+<span class="fc" id="L242">                return true;</span>
+            }
+        }
+<span class="fc" id="L245">        return false;</span>
+    }
+
+    /**
+     * Returns {@code true} if this map maps one or more keys to the
+     * specified value.  More formally, returns {@code true} if and only if
+     * this map contains at least one mapping to a value {@code v} such that
+     * {@code (value==null ? v==null : value.equals(v))}.  This operation
+     * will probably require time linear in the map size for most
+     * implementations of the {@code Map} interface.
+     *
+     * @param value value whose presence in this map is to be tested.
+     * @return {@code true} if this map maps one or more keys to the
+     *         specified value.
+     * @throws ClassCastException if the value is of an inappropriate type for
+     *         this map (optional).
+     * @throws NullPointerException if the value is {@code null} and this map
+     *            does not permit {@code null} values (optional).
+     */
+    @Override
+    public boolean containsValue(final Object value) {
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            if (this.composite[i].containsValue(value)) {</span>
+<span class="fc" id="L268">                return true;</span>
+            }
+        }
+<span class="fc" id="L271">        return false;</span>
+    }
+
+    /**
+     * Returns a set view of the mappings contained in this map.  Each element
+     * in the returned set is a {@code Map.Entry}.  The set is backed by the
+     * map, so changes to the map are reflected in the set, and vice-versa.
+     * If the map is modified while an iteration over the set is in progress,
+     * the results of the iteration are undefined.  The set supports element
+     * removal, which removes the corresponding mapping from the map, via the
+     * {@code Iterator.remove}, {@code Set.remove}, {@code removeAll},
+     * {@code retainAll} and {@code clear} operations.  It does not support
+     * the {@code add} or {@code addAll} operations.
+     * &lt;p&gt;
+     * This implementation returns a {@code CompositeSet} which
+     * composites the entry sets from all of the composited maps.
+     *
+     * @see CompositeSet
+     * @return a set view of the mappings contained in this map.
+     */
+    @Override
+    public Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc" id="L293">        final CompositeSet&lt;Map.Entry&lt;K, V&gt;&gt; entries = new CompositeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        for (int i = composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L295">            entries.addComposited(composite[i].entrySet());</span>
+        }
+<span class="fc" id="L297">        return entries;</span>
+    }
+
+    /**
+     * Checks if this Map equals another as per the Map specification.
+     *
+     * @param obj  the object to compare to
+     * @return true if the maps are equal
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (obj instanceof Map) {</span>
+<span class="fc" id="L309">            final Map&lt;?, ?&gt; map = (Map&lt;?, ?&gt;) obj;</span>
+<span class="fc" id="L310">            return this.entrySet().equals(map.entrySet());</span>
+        }
+<span class="fc" id="L312">        return false;</span>
+    }
+
+    /**
+     * Returns the value to which this map maps the specified key.  Returns
+     * {@code null} if the map contains no mapping for this key.  A return
+     * value of {@code null} does not &lt;i&gt;necessarily&lt;/i&gt; indicate that the
+     * map contains no mapping for the key; it's also possible that the map
+     * explicitly maps the key to {@code null}.  The {@code containsKey}
+     * operation may be used to distinguish these two cases.
+     *
+     * &lt;p&gt;More formally, if this map contains a mapping from a key
+     * {@code k} to a value {@code v} such that &lt;code&gt;(key==null ? k==null :
+     * key.equals(k))&lt;/code&gt;, then this method returns {@code v}; otherwise
+     * it returns {@code null}.  (There can be at most one such mapping.)
+     *
+     * @param key key whose associated value is to be returned.
+     * @return the value to which this map maps the specified key, or
+     *         {@code null} if the map contains no mapping for this key.
+     *
+     * @throws ClassCastException if the key is of an inappropriate type for
+     *         this map (optional).
+     * @throws NullPointerException key is {@code null} and this map does
+     *         not permit {@code null} keys (optional).
+     *
+     * @see #containsKey(Object)
+     */
+    @Override
+    public V get(final Object key) {
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">            if (this.composite[i].containsKey(key)) {</span>
+<span class="fc" id="L343">                return this.composite[i].get(key);</span>
+            }
+        }
+<span class="fc" id="L346">        return null;</span>
+    }
+
+    /**
+     * Gets a hash code for the Map as per the Map specification.
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L355">        int code = 0;</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        for (final Map.Entry&lt;K, V&gt; entry : entrySet()) {</span>
+<span class="fc" id="L357">            code += entry.hashCode();</span>
+<span class="fc" id="L358">        }</span>
+<span class="fc" id="L359">        return code;</span>
+    }
+
+    /**
+     * Returns {@code true} if this map contains no key-value mappings.
+     *
+     * @return {@code true} if this map contains no key-value mappings.
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">            if (!this.composite[i].isEmpty()) {</span>
+<span class="fc" id="L371">                return false;</span>
+            }
+        }
+<span class="fc" id="L374">        return true;</span>
+    }
+
+    /**
+     * Returns a set view of the keys contained in this map.  The set is
+     * backed by the map, so changes to the map are reflected in the set, and
+     * vice-versa.  If the map is modified while an iteration over the set is
+     * in progress, the results of the iteration are undefined.  The set
+     * supports element removal, which removes the corresponding mapping from
+     * the map, via the {@code Iterator.remove}, {@code Set.remove},
+     * {@code removeAll} {@code retainAll}, and {@code clear} operations.
+     * It does not support the add or {@code addAll} operations.
+     * &lt;p&gt;
+     * This implementation returns a {@code CompositeSet} which
+     * composites the key sets from all of the composited maps.
+     *
+     * @return a set view of the keys contained in this map.
+     */
+    @Override
+    public Set&lt;K&gt; keySet() {
+<span class="fc" id="L394">        final CompositeSet&lt;K&gt; keys = new CompositeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L396">            keys.addComposited(this.composite[i].keySet());</span>
+        }
+<span class="fc" id="L398">        return keys;</span>
+    }
+
+    /**
+     * Associates the specified value with the specified key in this map
+     * (optional operation).  If the map previously contained a mapping for
+     * this key, the old value is replaced by the specified value.  (A map
+     * {@code m} is said to contain a mapping for a key {@code k} if and only
+     * if {@link #containsKey(Object) m.containsKey(k)} would return
+     * {@code true}.))
+     *
+     * @param key key with which the specified value is to be associated.
+     * @param value value to be associated with the specified key.
+     * @return previous value associated with specified key, or {@code null}
+     *         if there was no mapping for key.  A {@code null} return can
+     *         also indicate that the map previously associated {@code null}
+     *         with the specified key, if the implementation supports
+     *         {@code null} values.
+     *
+     * @throws UnsupportedOperationException if no MapMutator has been specified
+     * @throws ClassCastException if the class of the specified key or value
+     *            prevents it from being stored in this map.
+     * @throws IllegalArgumentException if some aspect of this key or value
+     *            prevents it from being stored in this map.
+     * @throws NullPointerException this map does not permit {@code null}
+     *            keys or values, and the specified key or value is
+     *            {@code null}.
+     */
+    @Override
+    public V put(final K key, final V value) {
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">        if (this.mutator == null) {</span>
+<span class="nc" id="L429">            throw new UnsupportedOperationException(&quot;No mutator specified&quot;);</span>
+        }
+<span class="fc" id="L431">        return this.mutator.put(this, this.composite, key, value);</span>
+    }
+
+    /**
+     * Copies all of the mappings from the specified map to this map
+     * (optional operation).  The effect of this call is equivalent to that
+     * of calling {@link #put(Object,Object) put(k, v)} on this map once
+     * for each mapping from key {@code k} to value {@code v} in the
+     * specified map.  The behavior of this operation is unspecified if the
+     * specified map is modified while the operation is in progress.
+     *
+     * @param map Mappings to be stored in this map.
+     *
+     * @throws UnsupportedOperationException if the {@code putAll} method is
+     *         not supported by this map.
+     *
+     * @throws ClassCastException if the class of a key or value in the
+     *         specified map prevents it from being stored in this map.
+     *
+     * @throws IllegalArgumentException some aspect of a key or value in the
+     *         specified map prevents it from being stored in this map.
+     * @throws NullPointerException the specified map is {@code null}, or if
+     *         this map does not permit {@code null} keys or values, and the
+     *         specified map contains {@code null} keys or values.
+     */
+    @Override
+    public void putAll(final Map&lt;? extends K, ? extends V&gt; map) {
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">        if (this.mutator == null) {</span>
+<span class="nc" id="L459">            throw new UnsupportedOperationException(&quot;No mutator specified&quot;);</span>
+        }
+<span class="fc" id="L461">        this.mutator.putAll(this, this.composite, map);</span>
+<span class="fc" id="L462">    }</span>
+
+    /**
+     * Removes the mapping for this key from this map if it is present
+     * (optional operation).   More formally, if this map contains a mapping
+     * from key {@code k} to value {@code v} such that
+     * {@code (key==null ?  k==null : key.equals(k))}, that mapping
+     * is removed.  (The map can contain at most one such mapping.)
+     *
+     * &lt;p&gt;Returns the value to which the map previously associated the key, or
+     * {@code null} if the map contained no mapping for this key.  (A
+     * {@code null} return can also indicate that the map previously
+     * associated {@code null} with the specified key if the implementation
+     * supports {@code null} values.)  The map will not contain a mapping for
+     * the specified  key once the call returns.
+     *
+     * @param key key whose mapping is to be removed from the map.
+     * @return previous value associated with specified key, or {@code null}
+     *         if there was no mapping for key.
+     *
+     * @throws ClassCastException if the key is of an inappropriate type for
+     *         the composited map (optional).
+     * @throws NullPointerException if the key is {@code null} and the composited map
+     *            does not permit {@code null} keys (optional).
+     * @throws UnsupportedOperationException if the {@code remove} method is
+     *         not supported by the composited map containing the key
+     */
+    @Override
+    public V remove(final Object key) {
+<span class="fc bfc" id="L491" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">            if (this.composite[i].containsKey(key)) {</span>
+<span class="fc" id="L493">                return this.composite[i].remove(key);</span>
+            }
+        }
+<span class="fc" id="L496">        return null;</span>
+    }
+
+    /**
+     * Remove a Map from the composite.
+     *
+     * @param map  the Map to be removed from the composite
+     * @return The removed Map or {@code null} if map is not in the composite
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public synchronized Map&lt;K, V&gt; removeComposited(final Map&lt;K, V&gt; map) {
+<span class="fc" id="L507">        final int size = this.composite.length;</span>
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">        for (int i = 0; i &lt; size; ++i) {</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">            if (this.composite[i].equals(map)) {</span>
+<span class="fc" id="L510">                final Map&lt;K, V&gt;[] temp = new Map[size - 1];</span>
+<span class="fc" id="L511">                System.arraycopy(this.composite, 0, temp, 0, i);</span>
+<span class="fc" id="L512">                System.arraycopy(this.composite, i + 1, temp, i, size - i - 1);</span>
+<span class="fc" id="L513">                this.composite = temp;</span>
+<span class="fc" id="L514">                return map;</span>
+            }
+        }
+<span class="nc" id="L517">        return null;</span>
+    }
+
+    /**
+     * Specify the MapMutator to be used by mutation operations.
+     *
+     * @param mutator  the MapMutator to be used for mutation delegation
+     */
+    public void setMutator(final MapMutator&lt;K, V&gt; mutator) {
+<span class="fc" id="L526">        this.mutator = mutator;</span>
+<span class="fc" id="L527">    }</span>
+
+    /**
+     * Returns the number of key-value mappings in this map.  If the
+     * map contains more than {@code Integer.MAX_VALUE} elements, returns
+     * {@code Integer.MAX_VALUE}.
+     *
+     * @return the number of key-value mappings in this map.
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L538">        int size = 0;</span>
+<span class="fc bfc" id="L539" title="All 2 branches covered.">        for (int i = this.composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L540">            size += this.composite[i].size();</span>
+        }
+<span class="fc" id="L542">        return size;</span>
+    }
+
+    /**
+     * Returns a collection view of the values contained in this map.  The
+     * collection is backed by the map, so changes to the map are reflected in
+     * the collection, and vice-versa.  If the map is modified while an
+     * iteration over the collection is in progress, the results of the
+     * iteration are undefined.  The collection supports element removal,
+     * which removes the corresponding mapping from the map, via the
+     * {@code Iterator.remove}, {@code Collection.remove},
+     * {@code removeAll}, {@code retainAll} and {@code clear} operations.
+     * It does not support the add or {@code addAll} operations.
+     *
+     * @return a collection view of the values contained in this map.
+     */
+    @Override
+    public Collection&lt;V&gt; values() {
+<span class="fc" id="L560">        final CompositeCollection&lt;V&gt; values = new CompositeCollection&lt;&gt;();</span>
+<span class="fc bfc" id="L561" title="All 2 branches covered.">        for (int i = composite.length - 1; i &gt;= 0; --i) {</span>
+<span class="fc" id="L562">            values.addComposited(composite[i].values());</span>
+        }
+<span class="fc" id="L564">        return values;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,536 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PassiveExpiringMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">PassiveExpiringMap.java</span></div><h1>PassiveExpiringMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Decorates a {@code Map} to evict expired entries once their expiration
+ * time has been reached.
+ * &lt;p&gt;
+ * When putting a key-value pair in the map this decorator uses a
+ * {@link ExpirationPolicy} to determine how long the entry should remain alive
+ * as defined by an expiration time value.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When accessing the mapped value for a key, its expiration time is checked,
+ * and if it is a negative value or if it is greater than the current time, the
+ * mapped value is returned. Otherwise, the key is removed from the decorated
+ * map, and {@code null} is returned.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When invoking methods that involve accessing the entire map contents (i.e
+ * {@link #containsValue(Object)}, {@link #entrySet()}, etc.) this decorator
+ * removes all expired entries prior to actually completing the invocation.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that {@link PassiveExpiringMap} is not synchronized and is not
+ * thread-safe.&lt;/strong&gt; If you wish to use this map from multiple threads
+ * concurrently, you must use appropriate synchronization. The simplest approach
+ * is to wrap this map using {@link java.util.Collections#synchronizedMap(Map)}.
+ * This class may throw exceptions when accessed by concurrent threads without
+ * synchronization.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 4.0
+ */
+public class PassiveExpiringMap&lt;K, V&gt;
+    extends AbstractMapDecorator&lt;K, V&gt;
+    implements Serializable {
+
+    /**
+     * A {@link org.apache.commons.collections4.map.PassiveExpiringMap.ExpirationPolicy ExpirationPolicy}
+     * that returns an expiration time that is a
+     * constant about of time in the future from the current time.
+     *
+     * @param &lt;K&gt; the type of the keys in the map
+     * @param &lt;V&gt; the type of the values in the map
+     * @since 4.0
+     */
+    public static class ConstantTimeToLiveExpirationPolicy&lt;K, V&gt;
+        implements ExpirationPolicy&lt;K, V&gt; {
+
+        /** Serialization version */
+        private static final long serialVersionUID = 1L;
+
+        /** The constant time-to-live value measured in milliseconds. */
+        private final long timeToLiveMillis;
+
+        /**
+         * Default constructor. Constructs a policy using a negative
+         * time-to-live value that results in entries never expiring.
+         */
+        public ConstantTimeToLiveExpirationPolicy() {
+<span class="nc" id="L90">            this(-1L);</span>
+<span class="nc" id="L91">        }</span>
+
+        /**
+         * Constructs a policy with the given time-to-live constant measured in
+         * milliseconds. A negative time-to-live value indicates entries never
+         * expire. A zero time-to-live value indicates entries expire (nearly)
+         * immediately.
+         *
+         * @param timeToLiveMillis the constant amount of time (in milliseconds)
+         *        an entry is available before it expires. A negative value
+         *        results in entries that NEVER expire. A zero value results in
+         *        entries that ALWAYS expire.
+         */
+<span class="fc" id="L104">        public ConstantTimeToLiveExpirationPolicy(final long timeToLiveMillis) {</span>
+<span class="fc" id="L105">            this.timeToLiveMillis = timeToLiveMillis;</span>
+<span class="fc" id="L106">        }</span>
+
+        /**
+         * Constructs a policy with the given time-to-live constant measured in
+         * the given time unit of measure.
+         *
+         * @param timeToLive the constant amount of time an entry is available
+         *        before it expires. A negative value results in entries that
+         *        NEVER expire. A zero value results in entries that ALWAYS
+         *        expire.
+         * @param timeUnit the unit of time for the {@code timeToLive}
+         *        parameter, must not be null.
+         * @throws NullPointerException if the time unit is null.
+         */
+        public ConstantTimeToLiveExpirationPolicy(final long timeToLive,
+                                                  final TimeUnit timeUnit) {
+<span class="fc" id="L122">            this(validateAndConvertToMillis(timeToLive, timeUnit));</span>
+<span class="fc" id="L123">        }</span>
+
+        /**
+         * Determine the expiration time for the given key-value entry.
+         *
+         * @param key the key for the entry (ignored).
+         * @param value the value for the entry (ignored).
+         * @return if {@link #timeToLiveMillis} &amp;ge; 0, an expiration time of
+         *         {@link #timeToLiveMillis} +
+         *         {@link System#currentTimeMillis()} is returned. Otherwise, -1
+         *         is returned indicating the entry never expires.
+         */
+        @Override
+        public long expirationTime(final K key, final V value) {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (timeToLiveMillis &gt;= 0L) {</span>
+                // avoid numerical overflow
+<span class="fc" id="L139">                final long nowMillis = System.currentTimeMillis();</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                if (nowMillis &gt; Long.MAX_VALUE - timeToLiveMillis) {</span>
+                    // expiration would be greater than Long.MAX_VALUE
+                    // never expire
+<span class="nc" id="L143">                    return -1;</span>
+                }
+
+                // timeToLiveMillis in the future
+<span class="fc" id="L147">                return nowMillis + timeToLiveMillis;</span>
+            }
+
+            // never expire
+<span class="fc" id="L151">            return -1L;</span>
+        }
+    }
+
+    /**
+     * A policy to determine the expiration time for key-value entries.
+     *
+     * @param &lt;K&gt; the key object type.
+     * @param &lt;V&gt; the value object type
+     * @since 4.0
+     */
+    @FunctionalInterface
+    public interface ExpirationPolicy&lt;K, V&gt;
+        extends Serializable {
+
+        /**
+         * Determine the expiration time for the given key-value entry.
+         *
+         * @param key the key for the entry.
+         * @param value the value for the entry.
+         * @return the expiration time value measured in milliseconds. A
+         *         negative return value indicates the entry never expires.
+         */
+        long expirationTime(K key, V value);
+    }
+
+    /** Serialization version */
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * First validate the input parameters. If the parameters are valid, convert
+     * the given time measured in the given units to the same time measured in
+     * milliseconds.
+     *
+     * @param timeToLive the constant amount of time an entry is available
+     *        before it expires. A negative value results in entries that NEVER
+     *        expire. A zero value results in entries that ALWAYS expire.
+     * @param timeUnit the unit of time for the {@code timeToLive}
+     *        parameter, must not be null.
+     * @throws NullPointerException if the time unit is null.
+     */
+    private static long validateAndConvertToMillis(final long timeToLive,
+                                                   final TimeUnit timeUnit) {
+<span class="fc" id="L194">        Objects.requireNonNull(timeUnit, &quot;timeUnit&quot;);</span>
+<span class="fc" id="L195">        return TimeUnit.MILLISECONDS.convert(timeToLive, timeUnit);</span>
+    }
+
+    /** Map used to manage expiration times for the actual map entries. */
+<span class="fc" id="L199">    private final Map&lt;Object, Long&gt; expirationMap = new HashMap&lt;&gt;();</span>
+
+    /** The policy used to determine time-to-live values for map entries. */
+    private final ExpirationPolicy&lt;K, V&gt; expiringPolicy;
+
+    /**
+     * Default constructor. Constructs a map decorator that results in entries
+     * NEVER expiring.
+     */
+    public PassiveExpiringMap() {
+<span class="fc" id="L209">        this(-1L);</span>
+<span class="fc" id="L210">    }</span>
+
+    /**
+     * Constructs a map decorator using the given expiration policy to determine
+     * expiration times.
+     *
+     * @param expiringPolicy the policy used to determine expiration times of
+     *        entries as they are added.
+     * @throws NullPointerException if expiringPolicy is null
+     */
+    public PassiveExpiringMap(final ExpirationPolicy&lt;K, V&gt; expiringPolicy) {
+<span class="fc" id="L221">        this(expiringPolicy, new HashMap&lt;&gt;());</span>
+<span class="fc" id="L222">    }</span>
+
+    /**
+     * Constructs a map decorator that decorates the given map and uses the given
+     * expiration policy to determine expiration times. If there are any
+     * elements already in the map being decorated, they will NEVER expire
+     * unless they are replaced.
+     *
+     * @param expiringPolicy the policy used to determine expiration times of
+     *        entries as they are added.
+     * @param map the map to decorate, must not be null.
+     * @throws NullPointerException if the map or expiringPolicy is null.
+     */
+    public PassiveExpiringMap(final ExpirationPolicy&lt;K, V&gt; expiringPolicy,
+                              final Map&lt;K, V&gt; map) {
+<span class="fc" id="L237">        super(map);</span>
+<span class="fc" id="L238">        this.expiringPolicy = Objects.requireNonNull(expiringPolicy, &quot;expiringPolicy&quot;);</span>
+<span class="fc" id="L239">    }</span>
+
+    /**
+     * Constructs a map decorator that decorates the given map using the given
+     * time-to-live value measured in milliseconds to create and use a
+     * {@link ConstantTimeToLiveExpirationPolicy} expiration policy.
+     *
+     * @param timeToLiveMillis the constant amount of time (in milliseconds) an
+     *        entry is available before it expires. A negative value results in
+     *        entries that NEVER expire. A zero value results in entries that
+     *        ALWAYS expire.
+     */
+    public PassiveExpiringMap(final long timeToLiveMillis) {
+<span class="fc" id="L252">        this(new ConstantTimeToLiveExpirationPolicy&lt;&gt;(timeToLiveMillis),</span>
+                new HashMap&lt;&gt;());
+<span class="fc" id="L254">    }</span>
+
+    /**
+     * Constructs a map decorator using the given time-to-live value measured in
+     * milliseconds to create and use a
+     * {@link ConstantTimeToLiveExpirationPolicy} expiration policy. If there
+     * are any elements already in the map being decorated, they will NEVER
+     * expire unless they are replaced.
+     *
+     * @param timeToLiveMillis the constant amount of time (in milliseconds) an
+     *        entry is available before it expires. A negative value results in
+     *        entries that NEVER expire. A zero value results in entries that
+     *        ALWAYS expire.
+     * @param map the map to decorate, must not be null.
+     * @throws NullPointerException if the map is null.
+     */
+    public PassiveExpiringMap(final long timeToLiveMillis, final Map&lt;K, V&gt; map) {
+<span class="nc" id="L271">        this(new ConstantTimeToLiveExpirationPolicy&lt;&gt;(timeToLiveMillis),</span>
+             map);
+<span class="nc" id="L273">    }</span>
+
+    /**
+     * Constructs a map decorator using the given time-to-live value measured in
+     * the given time units of measure to create and use a
+     * {@link ConstantTimeToLiveExpirationPolicy} expiration policy.
+     *
+     * @param timeToLive the constant amount of time an entry is available
+     *        before it expires. A negative value results in entries that NEVER
+     *        expire. A zero value results in entries that ALWAYS expire.
+     * @param timeUnit the unit of time for the {@code timeToLive}
+     *        parameter, must not be null.
+     * @throws NullPointerException if the time unit is null.
+     */
+    public PassiveExpiringMap(final long timeToLive, final TimeUnit timeUnit) {
+<span class="nc" id="L288">        this(validateAndConvertToMillis(timeToLive, timeUnit));</span>
+<span class="nc" id="L289">    }</span>
+
+    /**
+     * Constructs a map decorator that decorates the given map using the given
+     * time-to-live value measured in the given time units of measure to create
+     * {@link ConstantTimeToLiveExpirationPolicy} expiration policy. This policy
+     * is used to determine expiration times. If there are any elements already
+     * in the map being decorated, they will NEVER expire unless they are
+     * replaced.
+     *
+     * @param timeToLive the constant amount of time an entry is available
+     *        before it expires. A negative value results in entries that NEVER
+     *        expire. A zero value results in entries that ALWAYS expire.
+     * @param timeUnit the unit of time for the {@code timeToLive}
+     *        parameter, must not be null.
+     * @param map the map to decorate, must not be null.
+     * @throws NullPointerException if the map or time unit is null.
+     */
+    public PassiveExpiringMap(final long timeToLive, final TimeUnit timeUnit, final Map&lt;K, V&gt; map) {
+<span class="nc" id="L308">        this(validateAndConvertToMillis(timeToLive, timeUnit), map);</span>
+<span class="nc" id="L309">    }</span>
+
+    /**
+     * Constructs a map decorator that decorates the given map and results in
+     * entries NEVER expiring. If there are any elements already in the map
+     * being decorated, they also will NEVER expire.
+     *
+     * @param map the map to decorate, must not be null.
+     * @throws NullPointerException if the map is null.
+     */
+    public PassiveExpiringMap(final Map&lt;K, V&gt; map) {
+<span class="nc" id="L320">        this(-1L, map);</span>
+<span class="nc" id="L321">    }</span>
+
+    /**
+     * Normal {@link Map#clear()} behavior with the addition of clearing all
+     * expiration entries as well.
+     */
+    @Override
+    public void clear() {
+<span class="fc" id="L329">        super.clear();</span>
+<span class="fc" id="L330">        expirationMap.clear();</span>
+<span class="fc" id="L331">    }</span>
+
+    /**
+     * All expired entries are removed from the map prior to determining the
+     * contains result.
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean containsKey(final Object key) {
+<span class="fc" id="L340">        removeIfExpired(key, now());</span>
+<span class="fc" id="L341">        return super.containsKey(key);</span>
+    }
+
+    /**
+     * All expired entries are removed from the map prior to determining the
+     * contains result.
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean containsValue(final Object value) {
+<span class="fc" id="L351">        removeAllExpired(now());</span>
+<span class="fc" id="L352">        return super.containsValue(value);</span>
+    }
+
+    /**
+     * All expired entries are removed from the map prior to returning the entry set.
+     * {@inheritDoc}
+     */
+    @Override
+    public Set&lt;Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc" id="L361">        removeAllExpired(now());</span>
+<span class="fc" id="L362">        return super.entrySet();</span>
+    }
+
+    /**
+     * All expired entries are removed from the map prior to returning the entry value.
+     * {@inheritDoc}
+     */
+    @Override
+    public V get(final Object key) {
+<span class="fc" id="L371">        removeIfExpired(key, now());</span>
+<span class="fc" id="L372">        return super.get(key);</span>
+    }
+
+    /**
+     * All expired entries are removed from the map prior to determining if it is empty.
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L381">        removeAllExpired(now());</span>
+<span class="fc" id="L382">        return super.isEmpty();</span>
+    }
+
+    /**
+     * Determines if the given expiration time is less than {@code now}.
+     *
+     * @param now the time in milliseconds used to compare against the
+     *        expiration time.
+     * @param expirationTimeObject the expiration time value retrieved from
+     *        {@link #expirationMap}, can be null.
+     * @return {@code true} if {@code expirationTimeObject} is &amp;ge; 0
+     *         and {@code expirationTimeObject} &amp;lt; {@code now}.
+     *         {@code false} otherwise.
+     */
+    private boolean isExpired(final long now, final Long expirationTimeObject) {
+<span class="fc bfc" id="L397" title="All 2 branches covered.">        if (expirationTimeObject != null) {</span>
+<span class="fc" id="L398">            final long expirationTime = expirationTimeObject.longValue();</span>
+<span class="fc bfc" id="L399" title="All 4 branches covered.">            return expirationTime &gt;= 0 &amp;&amp; now &gt;= expirationTime;</span>
+        }
+<span class="fc" id="L401">        return false;</span>
+    }
+
+    /**
+     * All expired entries are removed from the map prior to returning the key set.
+     * {@inheritDoc}
+     */
+    @Override
+    public Set&lt;K&gt; keySet() {
+<span class="fc" id="L410">        removeAllExpired(now());</span>
+<span class="fc" id="L411">        return super.keySet();</span>
+    }
+
+    /**
+     * The current time in milliseconds.
+     */
+    private long now() {
+<span class="fc" id="L418">        return System.currentTimeMillis();</span>
+    }
+
+    /**
+    * Add the given key-value pair to this map as well as recording the entry's expiration time based on
+    * the current time in milliseconds and this map's {@link #expiringPolicy}.
+    * &lt;p&gt;
+    * {@inheritDoc}
+    */
+    @Override
+    public V put(final K key, final V value) {
+        // remove the previous record
+<span class="fc" id="L430">        removeIfExpired(key, now());</span>
+
+        // record expiration time of new entry
+<span class="fc" id="L433">        final long expirationTime = expiringPolicy.expirationTime(key, value);</span>
+<span class="fc" id="L434">        expirationMap.put(key, Long.valueOf(expirationTime));</span>
+
+<span class="fc" id="L436">        return super.put(key, value);</span>
+    }
+
+    @Override
+    public void putAll(final Map&lt;? extends K, ? extends V&gt; mapToCopy) {
+<span class="fc bfc" id="L441" title="All 2 branches covered.">        for (final Map.Entry&lt;? extends K, ? extends V&gt; entry : mapToCopy.entrySet()) {</span>
+<span class="fc" id="L442">            put(entry.getKey(), entry.getValue());</span>
+<span class="fc" id="L443">        }</span>
+<span class="fc" id="L444">    }</span>
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    // (1) should only fail if input stream is incorrect
+    private void readObject(final ObjectInputStream in)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L457">        in.defaultReadObject();</span>
+<span class="fc" id="L458">        map = (Map&lt;K, V&gt;) in.readObject(); // (1)</span>
+<span class="fc" id="L459">    }</span>
+
+    /**
+     * Normal {@link Map#remove(Object)} behavior with the addition of removing
+     * any expiration entry as well.
+     * {@inheritDoc}
+     */
+    @Override
+    public V remove(final Object key) {
+<span class="fc" id="L468">        expirationMap.remove(key);</span>
+<span class="fc" id="L469">        return super.remove(key);</span>
+    }
+
+    /**
+     * Removes all entries in the map whose expiration time is less than
+     * {@code now}. The exceptions are entries with negative expiration
+     * times; those entries are never removed.
+     *
+     * @see #isExpired(long, Long)
+     */
+    private void removeAllExpired(final long nowMillis) {
+<span class="fc" id="L480">        final Iterator&lt;Map.Entry&lt;Object, Long&gt;&gt; iter = expirationMap.entrySet().iterator();</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        while (iter.hasNext()) {</span>
+<span class="fc" id="L482">            final Map.Entry&lt;Object, Long&gt; expirationEntry = iter.next();</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">            if (isExpired(nowMillis, expirationEntry.getValue())) {</span>
+                // remove entry from collection
+<span class="fc" id="L485">                super.remove(expirationEntry.getKey());</span>
+                // remove entry from expiration map
+<span class="fc" id="L487">                iter.remove();</span>
+            }
+<span class="fc" id="L489">        }</span>
+<span class="fc" id="L490">    }</span>
+
+    /**
+     * Removes the entry with the given key if the entry's expiration time is
+     * less than {@code now}. If the entry has a negative expiration time,
+     * the entry is never removed.
+     */
+    private void removeIfExpired(final Object key, final long nowMillis) {
+<span class="fc" id="L498">        final Long expirationTimeObject = expirationMap.get(key);</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">        if (isExpired(nowMillis, expirationTimeObject)) {</span>
+<span class="fc" id="L500">            remove(key);</span>
+        }
+<span class="fc" id="L502">    }</span>
+
+    /**
+     * All expired entries are removed from the map prior to returning the size.
+     * {@inheritDoc}
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L510">        removeAllExpired(now());</span>
+<span class="fc" id="L511">        return super.size();</span>
+    }
+
+    /**
+     * All expired entries are removed from the map prior to returning the value collection.
+     * {@inheritDoc}
+     */
+    @Override
+    public Collection&lt;V&gt; values() {
+<span class="fc" id="L520">        removeAllExpired(now());</span>
+<span class="fc" id="L521">        return super.values();</span>
+    }
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     */
+    private void writeObject(final ObjectOutputStream out)
+        throws IOException {
+<span class="fc" id="L532">        out.defaultWriteObject();</span>
+<span class="fc" id="L533">        out.writeObject(map);</span>
+<span class="fc" id="L534">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

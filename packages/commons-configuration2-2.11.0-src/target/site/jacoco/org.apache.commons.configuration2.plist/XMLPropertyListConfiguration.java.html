@@ -1,0 +1,705 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XMLPropertyListConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.plist</a> &gt; <span class="el_source">XMLPropertyListConfiguration.java</span></div><h1>XMLPropertyListConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2.plist;
+
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.configuration2.BaseHierarchicalConfiguration;
+import org.apache.commons.configuration2.FileBasedConfiguration;
+import org.apache.commons.configuration2.HierarchicalConfiguration;
+import org.apache.commons.configuration2.ImmutableConfiguration;
+import org.apache.commons.configuration2.MapConfiguration;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.io.FileLocator;
+import org.apache.commons.configuration2.io.FileLocatorAware;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.InMemoryNodeModel;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.xml.sax.Attributes;
+import org.xml.sax.EntityResolver;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+
+/**
+ * Property list file (plist) in XML FORMAT as used by macOS X (http://www.apple.com/DTDs/PropertyList-1.0.dtd). This
+ * configuration doesn't support the binary FORMAT used in OS X 10.4.
+ *
+ * &lt;p&gt;
+ * Example:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;?xml version=&quot;1.0&quot;?&amp;gt;
+ * &amp;lt;!DOCTYPE plist SYSTEM &quot;file://localhost/System/Library/DTDs/PropertyList.dtd&quot;&amp;gt;
+ * &amp;lt;plist version=&quot;1.0&quot;&amp;gt;
+ *     &amp;lt;dict&amp;gt;
+ *         &amp;lt;key&amp;gt;string&amp;lt;/key&amp;gt;
+ *         &amp;lt;string&amp;gt;value1&amp;lt;/string&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;integer&amp;lt;/key&amp;gt;
+ *         &amp;lt;integer&amp;gt;12345&amp;lt;/integer&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;real&amp;lt;/key&amp;gt;
+ *         &amp;lt;real&amp;gt;-123.45E-1&amp;lt;/real&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;boolean&amp;lt;/key&amp;gt;
+ *         &amp;lt;true/&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;date&amp;lt;/key&amp;gt;
+ *         &amp;lt;date&amp;gt;2005-01-01T12:00:00Z&amp;lt;/date&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;data&amp;lt;/key&amp;gt;
+ *         &amp;lt;data&amp;gt;RHJhY28gRG9ybWllbnMgTnVucXVhbSBUaXRpbGxhbmR1cw==&amp;lt;/data&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;array&amp;lt;/key&amp;gt;
+ *         &amp;lt;array&amp;gt;
+ *             &amp;lt;string&amp;gt;value1&amp;lt;/string&amp;gt;
+ *             &amp;lt;string&amp;gt;value2&amp;lt;/string&amp;gt;
+ *             &amp;lt;string&amp;gt;value3&amp;lt;/string&amp;gt;
+ *         &amp;lt;/array&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;dictionnary&amp;lt;/key&amp;gt;
+ *         &amp;lt;dict&amp;gt;
+ *             &amp;lt;key&amp;gt;key1&amp;lt;/key&amp;gt;
+ *             &amp;lt;string&amp;gt;value1&amp;lt;/string&amp;gt;
+ *             &amp;lt;key&amp;gt;key2&amp;lt;/key&amp;gt;
+ *             &amp;lt;string&amp;gt;value2&amp;lt;/string&amp;gt;
+ *             &amp;lt;key&amp;gt;key3&amp;lt;/key&amp;gt;
+ *             &amp;lt;string&amp;gt;value3&amp;lt;/string&amp;gt;
+ *         &amp;lt;/dict&amp;gt;
+ *
+ *         &amp;lt;key&amp;gt;nested&amp;lt;/key&amp;gt;
+ *         &amp;lt;dict&amp;gt;
+ *             &amp;lt;key&amp;gt;node1&amp;lt;/key&amp;gt;
+ *             &amp;lt;dict&amp;gt;
+ *                 &amp;lt;key&amp;gt;node2&amp;lt;/key&amp;gt;
+ *                 &amp;lt;dict&amp;gt;
+ *                     &amp;lt;key&amp;gt;node3&amp;lt;/key&amp;gt;
+ *                     &amp;lt;string&amp;gt;value&amp;lt;/string&amp;gt;
+ *                 &amp;lt;/dict&amp;gt;
+ *             &amp;lt;/dict&amp;gt;
+ *         &amp;lt;/dict&amp;gt;
+ *
+ *     &amp;lt;/dict&amp;gt;
+ * &amp;lt;/plist&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * @since 1.2
+ */
+public class XMLPropertyListConfiguration extends BaseHierarchicalConfiguration implements FileBasedConfiguration, FileLocatorAware {
+    /**
+     * Container for array elements. &lt;b&gt;Do not use this class !&lt;/b&gt; It is used internally by XMLPropertyConfiguration to
+     * parse the configuration file, it may be removed at any moment in the future.
+     */
+<span class="fc" id="L136">    private static final class ArrayNodeBuilder extends PListNodeBuilder {</span>
+        /** The list of values in the array. */
+<span class="fc" id="L138">        private final List&lt;Object&gt; list = new ArrayList&lt;&gt;();</span>
+
+        /**
+         * Add an object to the array.
+         *
+         * @param value the value to be added
+         */
+        @Override
+        public void addValue(final Object value) {
+<span class="fc" id="L147">            list.add(value);</span>
+<span class="fc" id="L148">        }</span>
+
+        /**
+         * Return the list of values in the array.
+         *
+         * @return the {@link List} of values
+         */
+        @Override
+        protected Object getNodeValue() {
+<span class="fc" id="L157">            return list;</span>
+        }
+    }
+
+    /**
+     * A specialized builder class with addXXX methods to parse the typed data passed by the SAX handler. It is used for
+     * creating the nodes of the configuration.
+     */
+<span class="fc" id="L165">    private static class PListNodeBuilder {</span>
+        /**
+         * The MacOS FORMAT of dates in plist files. Note: Because {@code SimpleDateFormat} is not thread-safe, each access has
+         * to be synchronized.
+         */
+<span class="fc" id="L170">        private static final DateFormat FORMAT = new SimpleDateFormat(&quot;yyyy-MM-dd'T'HH:mm:ss'Z'&quot;);</span>
+        static {
+<span class="fc" id="L172">            FORMAT.setTimeZone(TimeZone.getTimeZone(&quot;UTC&quot;));</span>
+        }
+
+        /**
+         * The GNUstep FORMAT of dates in plist files. Note: Because {@code SimpleDateFormat} is not thread-safe, each access
+         * has to be synchronized.
+         */
+<span class="fc" id="L179">        private static final DateFormat GNUSTEP_FORMAT = new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss Z&quot;);</span>
+
+        /** A collection with child builders of this builder. */
+<span class="fc" id="L182">        private final Collection&lt;PListNodeBuilder&gt; childBuilders = new LinkedList&lt;&gt;();</span>
+
+        /** The name of the represented node. */
+        private String name;
+
+        /** The current value of the represented node. */
+        private Object value;
+
+        /**
+         * Adds the given child builder to this builder.
+         *
+         * @param child the child builder to be added
+         */
+        public void addChild(final PListNodeBuilder child) {
+<span class="fc" id="L196">            childBuilders.add(child);</span>
+<span class="fc" id="L197">        }</span>
+
+        /**
+         * Parse the specified string as a byte array in base 64 FORMAT and add it to the values of the node.
+         *
+         * @param value the value to be added
+         */
+        public void addDataValue(final String value) {
+<span class="fc" id="L205">            addValue(Base64.decodeBase64(value.getBytes(DATA_ENCODING)));</span>
+<span class="fc" id="L206">        }</span>
+
+        /**
+         * Parse the specified string as a date and add it to the values of the node.
+         *
+         * @param value the value to be added
+         * @throws IllegalArgumentException if the date string cannot be parsed
+         */
+        public void addDateValue(final String value) {
+            try {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                if (value.indexOf(' ') != -1) {</span>
+                    // parse the date using the GNUstep FORMAT
+<span class="fc" id="L218">                    synchronized (GNUSTEP_FORMAT) {</span>
+<span class="fc" id="L219">                        addValue(GNUSTEP_FORMAT.parse(value));</span>
+<span class="fc" id="L220">                    }</span>
+                } else {
+                    // parse the date using the MacOS X FORMAT
+<span class="fc" id="L223">                    synchronized (FORMAT) {</span>
+<span class="fc" id="L224">                        addValue(FORMAT.parse(value));</span>
+<span class="fc" id="L225">                    }</span>
+                }
+<span class="fc" id="L227">            } catch (final ParseException e) {</span>
+<span class="fc" id="L228">                throw new IllegalArgumentException(String.format(&quot;'%s' cannot be parsed to a date!&quot;, value), e);</span>
+<span class="fc" id="L229">            }</span>
+<span class="fc" id="L230">        }</span>
+
+        /**
+         * Add a boolean value 'false' to the values of the node.
+         */
+        public void addFalseValue() {
+<span class="fc" id="L236">            addValue(Boolean.FALSE);</span>
+<span class="fc" id="L237">        }</span>
+
+        /**
+         * Parse the specified string as an Interger and add it to the values of the node.
+         *
+         * @param value the value to be added
+         */
+        public void addIntegerValue(final String value) {
+<span class="fc" id="L245">            addValue(new BigInteger(value));</span>
+<span class="fc" id="L246">        }</span>
+
+        /**
+         * Add a sublist to the values of the node.
+         *
+         * @param node the node whose value will be added to the current node value
+         */
+        public void addList(final ArrayNodeBuilder node) {
+<span class="fc" id="L254">            addValue(node.getNodeValue());</span>
+<span class="fc" id="L255">        }</span>
+
+        /**
+         * Parse the specified string as a Double and add it to the values of the node.
+         *
+         * @param value the value to be added
+         */
+        public void addRealValue(final String value) {
+<span class="fc" id="L263">            addValue(new BigDecimal(value));</span>
+<span class="fc" id="L264">        }</span>
+
+        /**
+         * Add a boolean value 'true' to the values of the node.
+         */
+        public void addTrueValue() {
+<span class="fc" id="L270">            addValue(Boolean.TRUE);</span>
+<span class="fc" id="L271">        }</span>
+
+        /**
+         * Update the value of the node. If the existing value is null, it's replaced with the new value. If the existing value
+         * is a list, the specified value is appended to the list. If the existing value is not null, a list with the two values
+         * is built.
+         *
+         * @param v the value to be added
+         */
+        public void addValue(final Object v) {
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">            if (value == null) {</span>
+<span class="fc" id="L282">                value = v;</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">            } else if (value instanceof Collection) {</span>
+                // This is safe because we create the collections ourselves
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L286">                final Collection&lt;Object&gt; collection = (Collection&lt;Object&gt;) value;</span>
+<span class="nc" id="L287">                collection.add(v);</span>
+<span class="nc" id="L288">            } else {</span>
+<span class="nc" id="L289">                final List&lt;Object&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L290">                list.add(value);</span>
+<span class="nc" id="L291">                list.add(v);</span>
+<span class="nc" id="L292">                value = list;</span>
+            }
+<span class="fc" id="L294">        }</span>
+
+        /**
+         * Creates the configuration node defined by this builder.
+         *
+         * @return the newly created configuration node
+         */
+        public ImmutableNode createNode() {
+<span class="fc" id="L302">            final ImmutableNode.Builder nodeBuilder = new ImmutableNode.Builder(childBuilders.size());</span>
+<span class="fc" id="L303">            childBuilders.forEach(child -&gt; nodeBuilder.addChild(child.createNode()));</span>
+<span class="fc" id="L304">            return nodeBuilder.name(name).value(getNodeValue()).create();</span>
+        }
+
+        /**
+         * Gets the final value for the node to be created. This method is called when the represented configuration node is
+         * actually created.
+         *
+         * @return the value of the resulting configuration node
+         */
+        protected Object getNodeValue() {
+<span class="fc" id="L314">            return value;</span>
+        }
+
+        /**
+         * Sets the name of the represented node.
+         *
+         * @param nodeName the node name
+         */
+        public void setName(final String nodeName) {
+<span class="fc" id="L323">            name = nodeName;</span>
+<span class="fc" id="L324">        }</span>
+    }
+
+    /**
+     * SAX Handler to build the configuration nodes while the document is being parsed.
+     */
+<span class="fc" id="L330">    private final class XMLPropertyListHandler extends DefaultHandler {</span>
+        /** The buffer containing the text node being read */
+<span class="fc" id="L332">        private final StringBuilder buffer = new StringBuilder();</span>
+
+        /** The stack of configuration nodes */
+<span class="fc" id="L335">        private final List&lt;PListNodeBuilder&gt; stack = new ArrayList&lt;&gt;();</span>
+
+        /** The builder for the resulting node. */
+        private final PListNodeBuilder resultBuilder;
+
+<span class="fc" id="L340">        public XMLPropertyListHandler() {</span>
+<span class="fc" id="L341">            resultBuilder = new PListNodeBuilder();</span>
+<span class="fc" id="L342">            push(resultBuilder);</span>
+<span class="fc" id="L343">        }</span>
+
+        @Override
+        public void characters(final char[] ch, final int start, final int length) throws SAXException {
+<span class="fc" id="L347">            buffer.append(ch, start, length);</span>
+<span class="fc" id="L348">        }</span>
+
+        @Override
+        public void endElement(final String uri, final String localName, final String qName) throws SAXException {
+<span class="fc bfc" id="L352" title="All 2 branches covered.">            if (&quot;key&quot;.equals(qName)) {</span>
+                // create a new node, link it to its parent and push it on the stack
+<span class="fc" id="L354">                final PListNodeBuilder node = new PListNodeBuilder();</span>
+<span class="fc" id="L355">                node.setName(buffer.toString());</span>
+<span class="fc" id="L356">                peekNE().addChild(node);</span>
+<span class="fc" id="L357">                push(node);</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            } else if (&quot;dict&quot;.equals(qName)) {</span>
+                // remove the root of the XMLPropertyListConfiguration previously pushed on the stack
+<span class="fc" id="L360">                final PListNodeBuilder builder = pop();</span>
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">                assert builder != null : &quot;Stack was empty!&quot;;</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                if (peek() instanceof ArrayNodeBuilder) {</span>
+                    // create the configuration
+<span class="fc" id="L364">                    final XMLPropertyListConfiguration config = new XMLPropertyListConfiguration(builder.createNode());</span>
+
+                    // add it to the ArrayNodeBuilder
+<span class="fc" id="L367">                    final ArrayNodeBuilder node = (ArrayNodeBuilder) peekNE();</span>
+<span class="fc" id="L368">                    node.addValue(config);</span>
+                }
+<span class="fc" id="L370">            } else {</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">                if (&quot;string&quot;.equals(qName)) {</span>
+<span class="fc" id="L372">                    peekNE().addValue(buffer.toString());</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">                } else if (&quot;integer&quot;.equals(qName)) {</span>
+<span class="fc" id="L374">                    peekNE().addIntegerValue(buffer.toString());</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">                } else if (&quot;real&quot;.equals(qName)) {</span>
+<span class="fc" id="L376">                    peekNE().addRealValue(buffer.toString());</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">                } else if (&quot;true&quot;.equals(qName)) {</span>
+<span class="fc" id="L378">                    peekNE().addTrueValue();</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">                } else if (&quot;false&quot;.equals(qName)) {</span>
+<span class="fc" id="L380">                    peekNE().addFalseValue();</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">                } else if (&quot;data&quot;.equals(qName)) {</span>
+<span class="fc" id="L382">                    peekNE().addDataValue(buffer.toString());</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">                } else if (&quot;date&quot;.equals(qName)) {</span>
+                    try {
+<span class="fc" id="L385">                        peekNE().addDateValue(buffer.toString());</span>
+<span class="fc" id="L386">                    } catch (final IllegalArgumentException iex) {</span>
+<span class="fc" id="L387">                        getLogger().warn(&quot;Ignoring invalid date property &quot; + buffer);</span>
+<span class="fc" id="L388">                    }</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">                } else if (&quot;array&quot;.equals(qName)) {</span>
+<span class="fc" id="L390">                    final ArrayNodeBuilder array = (ArrayNodeBuilder) pop();</span>
+<span class="fc" id="L391">                    peekNE().addList(array);</span>
+                }
+
+                // remove the plist node on the stack once the value has been parsed,
+                // array nodes remains on the stack for the next values in the list
+<span class="fc bfc" id="L396" title="All 2 branches covered.">                if (!(peek() instanceof ArrayNodeBuilder)) {</span>
+<span class="fc" id="L397">                    pop();</span>
+                }
+            }
+
+<span class="fc" id="L401">            buffer.setLength(0);</span>
+<span class="fc" id="L402">        }</span>
+
+        /**
+         * Gets the builder for the result node.
+         *
+         * @return the result node builder
+         */
+        public PListNodeBuilder getResultBuilder() {
+<span class="fc" id="L410">            return resultBuilder;</span>
+        }
+
+        /**
+         * Return the node on the top of the stack.
+         */
+        private PListNodeBuilder peek() {
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            if (!stack.isEmpty()) {</span>
+<span class="fc" id="L418">                return stack.get(stack.size() - 1);</span>
+            }
+<span class="fc" id="L420">            return null;</span>
+        }
+
+        /**
+         * Returns the node on top of the non-empty stack. Throws an exception if the stack is empty.
+         *
+         * @return the top node of the stack
+         * @throws ConfigurationRuntimeException if the stack is empty
+         */
+        private PListNodeBuilder peekNE() {
+<span class="fc" id="L430">            final PListNodeBuilder result = peek();</span>
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">            if (result == null) {</span>
+<span class="nc" id="L432">                throw new ConfigurationRuntimeException(&quot;Access to empty stack!&quot;);</span>
+            }
+<span class="fc" id="L434">            return result;</span>
+        }
+
+        /**
+         * Remove and return the node on the top of the stack.
+         */
+        private PListNodeBuilder pop() {
+<span class="fc bfc" id="L441" title="All 2 branches covered.">            if (!stack.isEmpty()) {</span>
+<span class="fc" id="L442">                return stack.remove(stack.size() - 1);</span>
+            }
+<span class="fc" id="L444">            return null;</span>
+        }
+
+        /**
+         * Put a node on the top of the stack.
+         */
+        private void push(final PListNodeBuilder node) {
+<span class="fc" id="L451">            stack.add(node);</span>
+<span class="fc" id="L452">        }</span>
+
+        @Override
+        public void startElement(final String uri, final String localName, final String qName, final Attributes attributes) throws SAXException {
+<span class="fc bfc" id="L456" title="All 2 branches covered.">            if (&quot;array&quot;.equals(qName)) {</span>
+<span class="fc" id="L457">                push(new ArrayNodeBuilder());</span>
+<span class="fc bfc" id="L458" title="All 4 branches covered.">            } else if (&quot;dict&quot;.equals(qName) &amp;&amp; peek() instanceof ArrayNodeBuilder) {</span>
+                // push the new root builder on the stack
+<span class="fc" id="L460">                push(new PListNodeBuilder());</span>
+            }
+<span class="fc" id="L462">        }</span>
+    }
+
+    /** Size of the indentation for the generated file. */
+    private static final int INDENT_SIZE = 4;
+
+    /** Constant for the encoding for binary data. */
+<span class="fc" id="L469">    private static final Charset DATA_ENCODING = StandardCharsets.UTF_8;</span>
+
+    /**
+     * Transform a map of arbitrary types into a map with string keys and object values. All keys of the source map which
+     * are not of type String are dropped.
+     *
+     * @param src the map to be converted
+     * @return the resulting map
+     */
+    private static Map&lt;String, Object&gt; transformMap(final Map&lt;?, ?&gt; src) {
+<span class="nc" id="L479">        final Map&lt;String, Object&gt; dest = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">        for (final Map.Entry&lt;?, ?&gt; e : src.entrySet()) {</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">            if (e.getKey() instanceof String) {</span>
+<span class="nc" id="L482">                dest.put((String) e.getKey(), e.getValue());</span>
+            }
+<span class="nc" id="L484">        }</span>
+<span class="nc" id="L485">        return dest;</span>
+    }
+
+    /** Temporarily stores the current file location. */
+    private FileLocator locator;
+
+    /**
+     * Creates an empty XMLPropertyListConfiguration object which can be used to synthesize a new plist file by adding
+     * values and then saving().
+     */
+<span class="fc" id="L495">    public XMLPropertyListConfiguration() {</span>
+<span class="fc" id="L496">    }</span>
+
+    /**
+     * Creates a new instance of {@code XMLPropertyListConfiguration} and copies the content of the specified configuration
+     * into this object.
+     *
+     * @param configuration the configuration to copy
+     * @since 1.4
+     */
+    public XMLPropertyListConfiguration(final HierarchicalConfiguration&lt;ImmutableNode&gt; configuration) {
+<span class="fc" id="L506">        super(configuration);</span>
+<span class="fc" id="L507">    }</span>
+
+    /**
+     * Creates a new instance of {@code XMLPropertyConfiguration} with the given root node.
+     *
+     * @param root the root node
+     */
+    XMLPropertyListConfiguration(final ImmutableNode root) {
+<span class="fc" id="L515">        super(new InMemoryNodeModel(root));</span>
+<span class="fc" id="L516">    }</span>
+
+    @Override
+    protected void addPropertyInternal(final String key, final Object value) {
+<span class="fc bfc" id="L520" title="All 4 branches covered.">        if (value instanceof byte[] || value instanceof List) {</span>
+<span class="fc" id="L521">            addPropertyDirect(key, value);</span>
+<span class="fc bfc" id="L522" title="All 2 branches covered.">        } else if (value instanceof Object[]) {</span>
+<span class="fc" id="L523">            addPropertyDirect(key, Arrays.asList((Object[]) value));</span>
+        } else {
+<span class="fc" id="L525">            super.addPropertyInternal(key, value);</span>
+        }
+<span class="fc" id="L527">    }</span>
+
+    /**
+     * Stores the current file locator. This method is called before I/O operations.
+     *
+     * @param locator the current {@code FileLocator}
+     */
+    @Override
+    public void initFileLocator(final FileLocator locator) {
+<span class="fc" id="L536">        this.locator = locator;</span>
+<span class="fc" id="L537">    }</span>
+
+    /**
+     * Append a node to the writer, indented according to a specific level.
+     */
+    private void printNode(final PrintWriter out, final int indentLevel, final ImmutableNode node) {
+<span class="fc" id="L543">        final String padding = StringUtils.repeat(&quot; &quot;, indentLevel * INDENT_SIZE);</span>
+
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        if (node.getNodeName() != null) {</span>
+<span class="fc" id="L546">            out.println(padding + &quot;&lt;key&gt;&quot; + StringEscapeUtils.escapeXml10(node.getNodeName()) + &quot;&lt;/key&gt;&quot;);</span>
+        }
+
+<span class="fc" id="L549">        final List&lt;ImmutableNode&gt; children = node.getChildren();</span>
+<span class="fc bfc" id="L550" title="All 2 branches covered.">        if (!children.isEmpty()) {</span>
+<span class="fc" id="L551">            out.println(padding + &quot;&lt;dict&gt;&quot;);</span>
+
+<span class="fc" id="L553">            final Iterator&lt;ImmutableNode&gt; it = children.iterator();</span>
+<span class="fc bfc" id="L554" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc" id="L555">                final ImmutableNode child = it.next();</span>
+<span class="fc" id="L556">                printNode(out, indentLevel + 1, child);</span>
+
+<span class="fc bfc" id="L558" title="All 2 branches covered.">                if (it.hasNext()) {</span>
+<span class="fc" id="L559">                    out.println();</span>
+                }
+<span class="fc" id="L561">            }</span>
+
+<span class="fc" id="L563">            out.println(padding + &quot;&lt;/dict&gt;&quot;);</span>
+<span class="fc bfc" id="L564" title="All 2 branches covered.">        } else if (node.getValue() == null) {</span>
+<span class="fc" id="L565">            out.println(padding + &quot;&lt;dict/&gt;&quot;);</span>
+        } else {
+<span class="fc" id="L567">            final Object value = node.getValue();</span>
+<span class="fc" id="L568">            printValue(out, indentLevel, value);</span>
+        }
+<span class="fc" id="L570">    }</span>
+
+    /**
+     * Append a value to the writer, indented according to a specific level.
+     */
+    private void printValue(final PrintWriter out, final int indentLevel, final Object value) {
+<span class="fc" id="L576">        final String padding = StringUtils.repeat(&quot; &quot;, indentLevel * INDENT_SIZE);</span>
+
+<span class="fc bfc" id="L578" title="All 2 branches covered.">        if (value instanceof Date) {</span>
+<span class="fc" id="L579">            synchronized (PListNodeBuilder.FORMAT) {</span>
+<span class="fc" id="L580">                out.println(padding + &quot;&lt;date&gt;&quot; + PListNodeBuilder.FORMAT.format((Date) value) + &quot;&lt;/date&gt;&quot;);</span>
+<span class="fc" id="L581">            }</span>
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">        } else if (value instanceof Calendar) {</span>
+<span class="nc" id="L583">            printValue(out, indentLevel, ((Calendar) value).getTime());</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">        } else if (value instanceof Number) {</span>
+<span class="pc bpc" id="L585" title="2 of 6 branches missed.">            if (value instanceof Double || value instanceof Float || value instanceof BigDecimal) {</span>
+<span class="fc" id="L586">                out.println(padding + &quot;&lt;real&gt;&quot; + value.toString() + &quot;&lt;/real&gt;&quot;);</span>
+            } else {
+<span class="fc" id="L588">                out.println(padding + &quot;&lt;integer&gt;&quot; + value.toString() + &quot;&lt;/integer&gt;&quot;);</span>
+            }
+<span class="fc bfc" id="L590" title="All 2 branches covered.">        } else if (value instanceof Boolean) {</span>
+<span class="fc bfc" id="L591" title="All 2 branches covered.">            if (((Boolean) value).booleanValue()) {</span>
+<span class="fc" id="L592">                out.println(padding + &quot;&lt;true/&gt;&quot;);</span>
+            } else {
+<span class="fc" id="L594">                out.println(padding + &quot;&lt;false/&gt;&quot;);</span>
+            }
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        } else if (value instanceof List) {</span>
+<span class="fc" id="L597">            out.println(padding + &quot;&lt;array&gt;&quot;);</span>
+<span class="fc" id="L598">            ((List&lt;?&gt;) value).forEach(o -&gt; printValue(out, indentLevel + 1, o));</span>
+<span class="fc" id="L599">            out.println(padding + &quot;&lt;/array&gt;&quot;);</span>
+<span class="fc bfc" id="L600" title="All 2 branches covered.">        } else if (value instanceof HierarchicalConfiguration) {</span>
+            // This is safe because we have created this configuration
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L603">            final HierarchicalConfiguration&lt;ImmutableNode&gt; config = (HierarchicalConfiguration&lt;ImmutableNode&gt;) value;</span>
+<span class="fc" id="L604">            printNode(out, indentLevel, config.getNodeModel().getNodeHandler().getRootNode());</span>
+<span class="pc bpc" id="L605" title="1 of 2 branches missed.">        } else if (value instanceof ImmutableConfiguration) {</span>
+            // display a flat Configuration as a dictionary
+<span class="nc" id="L607">            out.println(padding + &quot;&lt;dict&gt;&quot;);</span>
+
+<span class="nc" id="L609">            final ImmutableConfiguration config = (ImmutableConfiguration) value;</span>
+<span class="nc" id="L610">            final Iterator&lt;String&gt; it = config.getKeys();</span>
+<span class="nc bnc" id="L611" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+                // create a node for each property
+<span class="nc" id="L613">                final String key = it.next();</span>
+<span class="nc" id="L614">                final ImmutableNode node = new ImmutableNode.Builder().name(key).value(config.getProperty(key)).create();</span>
+
+                // print the node
+<span class="nc" id="L617">                printNode(out, indentLevel + 1, node);</span>
+
+<span class="nc bnc" id="L619" title="All 2 branches missed.">                if (it.hasNext()) {</span>
+<span class="nc" id="L620">                    out.println();</span>
+                }
+<span class="nc" id="L622">            }</span>
+<span class="nc" id="L623">            out.println(padding + &quot;&lt;/dict&gt;&quot;);</span>
+<span class="pc bpc" id="L624" title="1 of 2 branches missed.">        } else if (value instanceof Map) {</span>
+            // display a Map as a dictionary
+<span class="nc" id="L626">            final Map&lt;String, Object&gt; map = transformMap((Map&lt;?, ?&gt;) value);</span>
+<span class="nc" id="L627">            printValue(out, indentLevel, new MapConfiguration(map));</span>
+<span class="pc bfc" id="L628" title="All 2 branches covered.">        } else if (value instanceof byte[]) {</span>
+<span class="fc" id="L629">            final String base64 = new String(Base64.encodeBase64((byte[]) value), DATA_ENCODING);</span>
+<span class="fc" id="L630">            out.println(padding + &quot;&lt;data&gt;&quot; + StringEscapeUtils.escapeXml10(base64) + &quot;&lt;/data&gt;&quot;);</span>
+<span class="pc bpc" id="L631" title="1 of 2 branches missed.">        } else if (value != null) {</span>
+<span class="fc" id="L632">            out.println(padding + &quot;&lt;string&gt;&quot; + StringEscapeUtils.escapeXml10(String.valueOf(value)) + &quot;&lt;/string&gt;&quot;);</span>
+        } else {
+<span class="nc" id="L634">            out.println(padding + &quot;&lt;string/&gt;&quot;);</span>
+        }
+<span class="fc" id="L636">    }</span>
+
+    @Override
+    public void read(final Reader in) throws ConfigurationException {
+        // set up the DTD validation
+<span class="fc" id="L641">        final EntityResolver resolver = (publicId, systemId) -&gt; new InputSource(getClass().getClassLoader().getResourceAsStream(&quot;PropertyList-1.0.dtd&quot;));</span>
+
+        // parse the file
+<span class="fc" id="L644">        final XMLPropertyListHandler handler = new XMLPropertyListHandler();</span>
+        try {
+<span class="fc" id="L646">            final SAXParserFactory factory = SAXParserFactory.newInstance();</span>
+<span class="fc" id="L647">            factory.setValidating(true);</span>
+
+<span class="fc" id="L649">            final SAXParser parser = factory.newSAXParser();</span>
+<span class="fc" id="L650">            parser.getXMLReader().setEntityResolver(resolver);</span>
+<span class="fc" id="L651">            parser.getXMLReader().setContentHandler(handler);</span>
+<span class="fc" id="L652">            parser.getXMLReader().parse(new InputSource(in));</span>
+
+<span class="fc" id="L654">            getNodeModel().mergeRoot(handler.getResultBuilder().createNode(), null, null, null, this);</span>
+<span class="nc" id="L655">        } catch (final Exception e) {</span>
+<span class="nc" id="L656">            throw new ConfigurationException(&quot;Unable to parse the configuration file&quot;, e);</span>
+<span class="fc" id="L657">        }</span>
+<span class="fc" id="L658">    }</span>
+
+    private void setPropertyDirect(final String key, final Object value) {
+<span class="fc" id="L661">        setDetailEvents(false);</span>
+        try {
+<span class="fc" id="L663">            clearProperty(key);</span>
+<span class="fc" id="L664">            addPropertyDirect(key, value);</span>
+        } finally {
+<span class="fc" id="L666">            setDetailEvents(true);</span>
+        }
+<span class="fc" id="L668">    }</span>
+
+    @Override
+    protected void setPropertyInternal(final String key, final Object value) {
+        // special case for byte arrays, they must be stored as is in the configuration
+<span class="fc bfc" id="L673" title="All 4 branches covered.">        if (value instanceof byte[] || value instanceof List) {</span>
+<span class="fc" id="L674">            setPropertyDirect(key, value);</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">        } else if (value instanceof Object[]) {</span>
+<span class="fc" id="L676">            setPropertyDirect(key, Arrays.asList((Object[]) value));</span>
+        } else {
+<span class="fc" id="L678">            super.setPropertyInternal(key, value);</span>
+        }
+<span class="fc" id="L680">    }</span>
+
+    @Override
+    public void write(final Writer out) throws ConfigurationException {
+<span class="fc bfc" id="L684" title="All 2 branches covered.">        if (locator == null) {</span>
+<span class="fc" id="L685">            throw new ConfigurationException(</span>
+                &quot;Save operation not properly &quot; + &quot;initialized! Do not call write(Writer) directly,&quot; + &quot; but use a FileHandler to save a configuration.&quot;);
+        }
+<span class="fc" id="L688">        final PrintWriter writer = new PrintWriter(out);</span>
+
+<span class="fc bfc" id="L690" title="All 2 branches covered.">        if (locator.getEncoding() != null) {</span>
+<span class="fc" id="L691">            writer.println(&quot;&lt;?xml version=\&quot;1.0\&quot; encoding=\&quot;&quot; + locator.getEncoding() + &quot;\&quot;?&gt;&quot;);</span>
+        } else {
+<span class="fc" id="L693">            writer.println(&quot;&lt;?xml version=\&quot;1.0\&quot;?&gt;&quot;);</span>
+        }
+
+<span class="fc" id="L696">        writer.println(&quot;&lt;!DOCTYPE plist SYSTEM \&quot;file://localhost/System/Library/DTDs/PropertyList.dtd\&quot;&gt;&quot;);</span>
+<span class="fc" id="L697">        writer.println(&quot;&lt;plist version=\&quot;1.0\&quot;&gt;&quot;);</span>
+
+<span class="fc" id="L699">        printNode(writer, 1, getNodeModel().getNodeHandler().getRootNode());</span>
+
+<span class="fc" id="L701">        writer.println(&quot;&lt;/plist&gt;&quot;);</span>
+<span class="fc" id="L702">        writer.flush();</span>
+<span class="fc" id="L703">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

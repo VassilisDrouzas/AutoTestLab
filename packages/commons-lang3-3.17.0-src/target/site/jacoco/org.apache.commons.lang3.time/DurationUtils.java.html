@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DurationUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.time</a> &gt; <span class="el_source">DurationUtils.java</span></div><h1>DurationUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.time;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.Temporal;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang3.LongRange;
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.function.FailableBiConsumer;
+import org.apache.commons.lang3.function.FailableConsumer;
+import org.apache.commons.lang3.function.FailableRunnable;
+import org.apache.commons.lang3.math.NumberUtils;
+
+/**
+ * Utilities for {@link Duration}.
+ *
+ * @since 3.12.0
+ */
+public class DurationUtils {
+
+    /**
+     * An Integer Range that accepts Longs.
+     */
+<span class="fc" id="L44">    static final LongRange LONG_TO_INT_RANGE = LongRange.of(NumberUtils.LONG_INT_MIN_VALUE, NumberUtils.LONG_INT_MAX_VALUE);</span>
+
+    /**
+     * Accepts the function with the duration as a long milliseconds and int nanoseconds.
+     *
+     * @param &lt;T&gt; The function exception.
+     * @param consumer Accepting function.
+     * @param duration The duration to pick apart.
+     * @throws T See the function signature.
+     * @see StopWatch
+     */
+    @SuppressWarnings(&quot;boxing&quot;) // boxing unavoidable
+    public static &lt;T extends Throwable&gt; void accept(final FailableBiConsumer&lt;Long, Integer, T&gt; consumer, final Duration duration)
+            throws T {
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">        if (consumer != null &amp;&amp; duration != null) {</span>
+<span class="fc" id="L59">            consumer.accept(duration.toMillis(), getNanosOfMilli(duration));</span>
+        }
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * Gets the nanosecond part of a Duration converted to milliseconds.
+     * &lt;p&gt;
+     * Handy when calling an API that takes a long of milliseconds and an int of nanoseconds. For example,
+     * {@link Object#wait(long, int)} and {@link Thread#sleep(long, int)}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Note that is this different from {@link Duration#getNano()} because a duration are seconds and nanoseconds.
+     * &lt;/p&gt;
+     *
+     * @param duration The duration to query.
+     * @return nanoseconds between 0 and 999,999.
+     * @deprecated Use {@link #getNanosOfMilli(Duration)}.
+     */
+    @Deprecated
+    public static int getNanosOfMiili(final Duration duration) {
+<span class="fc" id="L79">        return getNanosOfMilli(duration);</span>
+    }
+
+    /**
+     * Gets the nanosecond part of a Duration converted to milliseconds.
+     * &lt;p&gt;
+     * Handy when calling an API that takes a long of milliseconds and an int of nanoseconds. For example,
+     * {@link Object#wait(long, int)} and {@link Thread#sleep(long, int)}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Note that is this different from {@link Duration#getNano()} because a duration are seconds and nanoseconds.
+     * &lt;/p&gt;
+     *
+     * @param duration The duration to query.
+     * @return nanoseconds between 0 and 999,999.
+     * @since 3.13.0
+     */
+    public static int getNanosOfMilli(final Duration duration) {
+<span class="fc" id="L97">        return zeroIfNull(duration).getNano() % 1_000_000;</span>
+    }
+
+    /**
+     * Tests whether the given Duration is positive (&amp;gt;0).
+     *
+     * @param duration the value to test
+     * @return whether the given Duration is positive (&amp;gt;0).
+     */
+    public static boolean isPositive(final Duration duration) {
+<span class="fc bfc" id="L107" title="All 4 branches covered.">        return !duration.isNegative() &amp;&amp; !duration.isZero();</span>
+    }
+
+    private static &lt;E extends Throwable&gt; Instant now(final FailableConsumer&lt;Instant, E&gt; nowConsumer) throws E {
+<span class="fc" id="L111">        final Instant start = Instant.now();</span>
+<span class="fc" id="L112">        nowConsumer.accept(start);</span>
+<span class="fc" id="L113">        return start;</span>
+    }
+
+    /**
+     * Runs the lambda and returns the duration of its execution.
+     *
+     * @param &lt;E&gt; The type of exception throw by the lambda.
+     * @param consumer What to execute.
+     * @return The Duration of execution.
+     * @throws E thrown by the lambda.
+     * @see StopWatch
+     * @since 3.13.0
+     */
+    public static &lt;E extends Throwable&gt; Duration of(final FailableConsumer&lt;Instant, E&gt; consumer) throws E {
+<span class="fc" id="L127">        return since(now(consumer::accept));</span>
+    }
+
+    /**
+     * Runs the lambda and returns the duration of its execution.
+     *
+     * @param &lt;E&gt; The type of exception throw by the lambda.
+     * @param runnable What to execute.
+     * @return The Duration of execution.
+     * @throws E thrown by the lambda.
+     * @see StopWatch
+     * @since 3.13.0
+     */
+    public static &lt;E extends Throwable&gt; Duration of(final FailableRunnable&lt;E&gt; runnable) throws E {
+<span class="fc" id="L141">        return of(start -&gt; runnable.run());</span>
+    }
+
+    /**
+     * Computes the Duration between a start instant and now.
+     *
+     * @param startInclusive the start instant, inclusive, not null.
+     * @return a {@link Duration}, not null.
+     * @since 3.13.0
+     */
+    public static Duration since(final Temporal startInclusive) {
+<span class="fc" id="L152">        return Duration.between(startInclusive, Instant.now());</span>
+    }
+
+    /**
+     * Converts a {@link TimeUnit} to a {@link ChronoUnit}.
+     *
+     * @param timeUnit A non-null TimeUnit.
+     * @return The corresponding ChronoUnit.
+     */
+    static ChronoUnit toChronoUnit(final TimeUnit timeUnit) {
+        // TODO when using Java &gt;= 9: Use TimeUnit.toChronoUnit().
+<span class="pc bpc" id="L163" title="1 of 8 branches missed.">        switch (Objects.requireNonNull(timeUnit)) {</span>
+        case NANOSECONDS:
+<span class="fc" id="L165">            return ChronoUnit.NANOS;</span>
+        case MICROSECONDS:
+<span class="fc" id="L167">            return ChronoUnit.MICROS;</span>
+        case MILLISECONDS:
+<span class="fc" id="L169">            return ChronoUnit.MILLIS;</span>
+        case SECONDS:
+<span class="fc" id="L171">            return ChronoUnit.SECONDS;</span>
+        case MINUTES:
+<span class="fc" id="L173">            return ChronoUnit.MINUTES;</span>
+        case HOURS:
+<span class="fc" id="L175">            return ChronoUnit.HOURS;</span>
+        case DAYS:
+<span class="fc" id="L177">            return ChronoUnit.DAYS;</span>
+        default:
+<span class="nc" id="L179">            throw new IllegalArgumentException(timeUnit.toString());</span>
+        }
+    }
+
+    /**
+     * Converts an amount and TimeUnit into a Duration.
+     *
+     * @param amount   the amount of the duration, measured in terms of the unit, positive or negative
+     * @param timeUnit the unit that the duration is measured in, must have an exact duration, not null
+     * @return a Duration.
+     */
+    public static Duration toDuration(final long amount, final TimeUnit timeUnit) {
+<span class="fc" id="L191">        return Duration.of(amount, toChronoUnit(timeUnit));</span>
+    }
+
+    /**
+     * Converts a Duration to milliseconds bound to an int (instead of a long).
+     * &lt;p&gt;
+     * Handy for low-level APIs that take millisecond timeouts in ints rather than longs.
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;If the duration milliseconds are greater than {@link Integer#MAX_VALUE}, then return
+     * {@link Integer#MAX_VALUE}.&lt;/li&gt;
+     * &lt;li&gt;If the duration milliseconds are lesser than {@link Integer#MIN_VALUE}, then return
+     * {@link Integer#MIN_VALUE}.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param duration The duration to convert, not null.
+     * @return int milliseconds.
+     */
+    public static int toMillisInt(final Duration duration) {
+<span class="fc" id="L210">        Objects.requireNonNull(duration, &quot;duration&quot;);</span>
+        // intValue() does not do a narrowing conversion here
+<span class="fc" id="L212">        return LONG_TO_INT_RANGE.fit(Long.valueOf(duration.toMillis())).intValue();</span>
+    }
+
+    /**
+     * Returns the given non-null value or {@link Duration#ZERO} if null.
+     *
+     * @param duration The duration to test.
+     * @return The given duration or {@link Duration#ZERO}.
+     */
+    public static Duration zeroIfNull(final Duration duration) {
+<span class="fc" id="L222">        return ObjectUtils.defaultIfNull(duration, Duration.ZERO);</span>
+    }
+
+    /**
+     * Make private in 4.0.
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="nc" id="L231">    public DurationUtils() {</span>
+        // empty
+<span class="nc" id="L233">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

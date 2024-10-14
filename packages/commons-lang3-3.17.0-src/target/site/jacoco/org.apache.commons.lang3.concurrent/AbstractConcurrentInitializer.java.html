@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractConcurrentInitializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.concurrent</a> &gt; <span class="el_source">AbstractConcurrentInitializer.java</span></div><h1>AbstractConcurrentInitializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.concurrent;
+
+import java.util.Objects;
+
+import org.apache.commons.lang3.builder.AbstractSupplier;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.lang3.function.FailableConsumer;
+import org.apache.commons.lang3.function.FailableSupplier;
+
+/**
+ * Abstracts and defines operations for {@link ConcurrentInitializer} implementations.
+ *
+ * @param &lt;T&gt; the type of the object managed by this initializer class.
+ * @param &lt;E&gt; The exception type thrown by {@link #initialize()}.
+ * @since 3.14.0
+ */
+public abstract class AbstractConcurrentInitializer&lt;T, E extends Exception&gt; implements ConcurrentInitializer&lt;T&gt; {
+
+    /**
+     * Builds a new instance for subclasses.
+     *
+     * @param &lt;T&gt; the type of the object managed by the initializer class.
+     * @param &lt;I&gt; the type of the initializer class.
+     * @param &lt;B&gt; the type of builder.
+     * @param &lt;E&gt; The exception type thrown by {@link #initialize()}.
+     */
+    public abstract static class AbstractBuilder&lt;I extends AbstractConcurrentInitializer&lt;T, E&gt;, T, B extends AbstractBuilder&lt;I, T, B, E&gt;, E extends Exception&gt;
+            extends AbstractSupplier&lt;I, B, E&gt; {
+
+        /**
+         * Closer consumer called by {@link #close()}.
+         */
+<span class="fc" id="L50">        private FailableConsumer&lt;T, ? extends Exception&gt; closer = FailableConsumer.nop();</span>
+
+        /**
+         * Initializer supplier called by {@link #initialize()}.
+         */
+<span class="fc" id="L55">        private FailableSupplier&lt;T, ? extends Exception&gt; initializer = FailableSupplier.nul();</span>
+
+        /**
+         * Constructs a new instance.
+         */
+<span class="fc" id="L60">        public AbstractBuilder() {</span>
+            // empty
+<span class="fc" id="L62">        }</span>
+
+        /**
+         * Gets the closer consumer called by {@link #close()}.
+         *
+         * @return the closer consumer called by {@link #close()}.
+         */
+        public FailableConsumer&lt;T, ? extends Exception&gt; getCloser() {
+<span class="fc" id="L70">            return closer;</span>
+        }
+
+        /**
+         * Gets the initializer supplier called by {@link #initialize()}.
+         *
+         * @return the initializer supplier called by {@link #initialize()}.
+         */
+        public FailableSupplier&lt;T, ? extends Exception&gt; getInitializer() {
+<span class="fc" id="L79">            return initializer;</span>
+        }
+
+        /**
+         * Sets the closer consumer called by {@link #close()}.
+         *
+         * @param closer the consumer called by {@link #close()}.
+         * @return {@code this} instance.
+         */
+        public B setCloser(final FailableConsumer&lt;T, ? extends Exception&gt; closer) {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            this.closer = closer != null ? closer : FailableConsumer.nop();</span>
+<span class="fc" id="L90">            return asThis();</span>
+        }
+
+        /**
+         * Sets the initializer supplier called by {@link #initialize()}.
+         *
+         * @param initializer the supplier called by {@link #initialize()}.
+         * @return {@code this} instance.
+         */
+        public B setInitializer(final FailableSupplier&lt;T, ? extends Exception&gt; initializer) {
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            this.initializer = initializer != null ? initializer : FailableSupplier.nul();</span>
+<span class="fc" id="L101">            return asThis();</span>
+        }
+
+    }
+
+    /**
+     * Closer consumer called by {@link #close()}.
+     */
+    private final FailableConsumer&lt;? super T, ? extends Exception&gt; closer;
+
+    /**
+     * Initializer supplier called by {@link #initialize()}.
+     */
+    private final FailableSupplier&lt;? extends T, ? extends Exception&gt; initializer;
+
+    /**
+     * Constructs a new instance.
+     */
+    public AbstractConcurrentInitializer() {
+<span class="fc" id="L120">        this(FailableSupplier.nul(), FailableConsumer.nop());</span>
+<span class="fc" id="L121">    }</span>
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param initializer the initializer supplier called by {@link #initialize()}.
+     * @param closer the closer consumer called by {@link #close()}.
+     */
+<span class="fc" id="L129">    AbstractConcurrentInitializer(final FailableSupplier&lt;? extends T, ? extends Exception&gt; initializer, final FailableConsumer&lt;? super T, ? extends Exception&gt; closer) {</span>
+<span class="fc" id="L130">        this.closer = Objects.requireNonNull(closer, &quot;closer&quot;);</span>
+<span class="fc" id="L131">        this.initializer = Objects.requireNonNull(initializer, &quot;initializer&quot;);</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Calls the closer with the manager object.
+     *
+     * @throws ConcurrentException Thrown by the closer.
+     * @since 3.14.0
+     */
+    public void close() throws ConcurrentException {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (isInitialized()) {</span>
+            try {
+<span class="fc" id="L143">                closer.accept(get());</span>
+<span class="fc" id="L144">            } catch (final Exception e) {</span>
+                // This intentionally does not duplicate the logic in initialize
+                // or care about the generic type E.
+                //
+                // initialize may run inside a Future and it does not make sense
+                // to wrap an exception stored inside a Future. However close()
+                // always runs on the current thread so it always wraps in a
+                // ConcurrentException
+<span class="fc" id="L152">                throw new ConcurrentException(ExceptionUtils.throwUnchecked(e));</span>
+<span class="fc" id="L153">            }</span>
+        }
+<span class="fc" id="L155">    }</span>
+
+    /**
+     * Gets an Exception with a type of E as defined by a concrete subclass of this class.
+     *
+     * @param e The actual exception that was thrown
+     * @return a new exception with the actual type of E, that wraps e.
+     */
+    protected abstract E getTypedException(Exception e);
+
+    /**
+     * Creates and initializes the object managed by this {@code
+     * ConcurrentInitializer}. This method is called by {@link #get()} when the object is accessed for the first time. An implementation can focus on the
+     * creation of the object. No synchronization is needed, as this is already handled by {@code get()}.
+     * &lt;p&gt;
+     * Subclasses and clients that do not provide an initializer are expected to implement this method.
+     * &lt;/p&gt;
+     *
+     * @return the managed data object
+     * @throws E if an error occurs during object creation
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected T initialize() throws E {
+        try {
+<span class="fc" id="L179">            return initializer.get();</span>
+<span class="fc" id="L180">        } catch (final Exception e) {</span>
+            // Do this first so we don't pass a RuntimeException or Error into an exception constructor
+<span class="fc" id="L182">            ExceptionUtils.throwUnchecked(e);</span>
+
+            // Depending on the subclass of AbstractConcurrentInitializer E can be Exception or ConcurrentException
+            // if E is Exception the if statement below will always be true, and the new Exception object created
+            // in getTypedException will never be thrown. If E is ConcurrentException and the if statement is false
+            // we throw the ConcurrentException returned from getTypedException, which wraps the original exception.
+<span class="fc" id="L188">            final E typedException = getTypedException(e);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (typedException.getClass().isAssignableFrom(e.getClass())) {</span>
+<span class="fc" id="L190">                throw (E) e;</span>
+            }
+<span class="fc" id="L192">            throw typedException;</span>
+        }
+    }
+
+    /**
+     * Returns true if initialization has been completed. If initialization threw an exception this will return false, but it will return true if a subsequent
+     * call to initialize completes successfully. If the implementation of ConcurrentInitializer can initialize multiple objects, this will only return true if
+     * all objects have been initialized.
+     *
+     * @return true if all initialization is complete, otherwise false
+     */
+    protected abstract boolean isInitialized();
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

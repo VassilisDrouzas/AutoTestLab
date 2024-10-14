@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SharedPoolDataSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.datasources</a> &gt; <span class="el_source">SharedPoolDataSource.java</span></div><h1>SharedPoolDataSource.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.datasources;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.sql.Connection;
+import java.sql.SQLException;
+
+import javax.naming.NamingException;
+import javax.naming.Reference;
+import javax.naming.StringRefAddr;
+import javax.sql.ConnectionPoolDataSource;
+
+import org.apache.commons.pool2.KeyedObjectPool;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
+
+/**
+ * &lt;p&gt;
+ * A pooling {@code DataSource} appropriate for deployment within J2EE environment. There are many configuration
+ * options, most of which are defined in the parent class. All users (based on user name) share a single maximum number
+ * of Connections in this data source.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * User passwords can be changed without re-initializing the data source. When a
+ * {@code getConnection(user name, password)} request is processed with a password that is different from those
+ * used to create connections in the pool associated with {@code user name}, an attempt is made to create a new
+ * connection using the supplied password and if this succeeds, idle connections created using the old password are
+ * destroyed and new connections are created using the new password.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class SharedPoolDataSource extends InstanceKeyDataSource {
+
+    private static final long serialVersionUID = -1458539734480586454L;
+
+    // Pool properties
+<span class="fc" id="L55">    private int maxTotal = GenericKeyedObjectPoolConfig.DEFAULT_MAX_TOTAL;</span>
+
+    private transient KeyedObjectPool&lt;UserPassKey, PooledConnectionAndInfo&gt; pool;
+    private transient KeyedCPDSConnectionFactory factory;
+
+    /**
+     * Default no-argument constructor for Serialization
+     */
+<span class="fc" id="L63">    public SharedPoolDataSource() {</span>
+        // empty.
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Closes pool being maintained by this data source.
+     */
+    @Override
+    public void close() throws SQLException {
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (pool != null) {</span>
+<span class="fc" id="L73">            pool.close();</span>
+        }
+<span class="fc" id="L75">        InstanceKeyDataSourceFactory.removeInstance(getInstanceKey());</span>
+<span class="fc" id="L76">    }</span>
+
+    @Override
+    protected PooledConnectionManager getConnectionManager(final UserPassKey userPassKey) {
+<span class="fc" id="L80">        return factory;</span>
+    }
+
+    /**
+     * Gets {@link GenericKeyedObjectPool#getMaxTotal()} for this pool.
+     *
+     * @return {@link GenericKeyedObjectPool#getMaxTotal()} for this pool.
+     */
+    public int getMaxTotal() {
+<span class="fc" id="L89">        return this.maxTotal;</span>
+    }
+
+    // ----------------------------------------------------------------------
+    // Instrumentation Methods
+
+    /**
+     * Gets the number of active connections in the pool.
+     *
+     * @return The number of active connections in the pool.
+     */
+    public int getNumActive() {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        return pool == null ? 0 : pool.getNumActive();</span>
+    }
+
+    /**
+     * Gets the number of idle connections in the pool.
+     *
+     * @return The number of idle connections in the pool.
+     */
+    public int getNumIdle() {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        return pool == null ? 0 : pool.getNumIdle();</span>
+    }
+
+    @Override
+    protected PooledConnectionAndInfo getPooledConnectionAndInfo(final String userName, final String userPassword)
+            throws SQLException {
+
+<span class="fc" id="L117">        synchronized (this) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (pool == null) {</span>
+                try {
+<span class="fc" id="L120">                    registerPool(userName, userPassword);</span>
+<span class="nc" id="L121">                } catch (final NamingException e) {</span>
+<span class="nc" id="L122">                    throw new SQLException(&quot;registerPool failed&quot;, e);</span>
+<span class="fc" id="L123">                }</span>
+            }
+<span class="fc" id="L125">        }</span>
+
+        try {
+<span class="fc" id="L128">            return pool.borrowObject(new UserPassKey(userName, userPassword));</span>
+<span class="fc" id="L129">        } catch (final Exception e) {</span>
+<span class="fc" id="L130">            throw new SQLException(&quot;Could not retrieve connection info from pool&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Creates a new {@link Reference} to a {@link SharedPoolDataSource}.
+     */
+    @Override
+    public Reference getReference() throws NamingException {
+<span class="fc" id="L139">        final Reference ref = new Reference(getClass().getName(), SharedPoolDataSourceFactory.class.getName(), null);</span>
+<span class="fc" id="L140">        ref.add(new StringRefAddr(&quot;instanceKey&quot;, getInstanceKey()));</span>
+<span class="fc" id="L141">        return ref;</span>
+    }
+
+    /**
+     * Supports Serialization interface.
+     *
+     * @param in
+     *            a {@link java.io.ObjectInputStream} value
+     * @throws IOException
+     *             if an error occurs
+     * @throws ClassNotFoundException
+     *             if an error occurs
+     */
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+        try {
+<span class="nc" id="L156">            in.defaultReadObject();</span>
+<span class="nc" id="L157">            final SharedPoolDataSource oldDS = (SharedPoolDataSource) new SharedPoolDataSourceFactory().getObjectInstance(getReference(), null, null, null);</span>
+<span class="nc" id="L158">            this.pool = oldDS.pool;</span>
+<span class="nc" id="L159">        } catch (final NamingException e) {</span>
+<span class="nc" id="L160">            throw new IOException(&quot;NamingException: &quot; + e);</span>
+<span class="nc" id="L161">        }</span>
+<span class="nc" id="L162">    }</span>
+
+    private void registerPool(final String userName, final String password) throws NamingException, SQLException {
+
+<span class="fc" id="L166">        final ConnectionPoolDataSource cpds = testCPDS(userName, password);</span>
+
+        // Create an object pool to contain our PooledConnections
+<span class="fc" id="L169">        factory = new KeyedCPDSConnectionFactory(cpds, getValidationQuery(), getValidationQueryTimeoutDuration(), isRollbackAfterValidation());</span>
+<span class="fc" id="L170">        factory.setMaxConn(getMaxConnDuration());</span>
+
+<span class="fc" id="L172">        final GenericKeyedObjectPoolConfig&lt;PooledConnectionAndInfo&gt; config = new GenericKeyedObjectPoolConfig&lt;&gt;();</span>
+<span class="fc" id="L173">        config.setBlockWhenExhausted(getDefaultBlockWhenExhausted());</span>
+<span class="fc" id="L174">        config.setEvictionPolicyClassName(getDefaultEvictionPolicyClassName());</span>
+<span class="fc" id="L175">        config.setLifo(getDefaultLifo());</span>
+<span class="fc" id="L176">        config.setMaxIdlePerKey(getDefaultMaxIdle());</span>
+<span class="fc" id="L177">        config.setMaxTotal(getMaxTotal());</span>
+<span class="fc" id="L178">        config.setMaxTotalPerKey(getDefaultMaxTotal());</span>
+<span class="fc" id="L179">        config.setMaxWait(getDefaultMaxWait());</span>
+<span class="fc" id="L180">        config.setMinEvictableIdleDuration(getDefaultMinEvictableIdleDuration());</span>
+<span class="fc" id="L181">        config.setMinIdlePerKey(getDefaultMinIdle());</span>
+<span class="fc" id="L182">        config.setNumTestsPerEvictionRun(getDefaultNumTestsPerEvictionRun());</span>
+<span class="fc" id="L183">        config.setSoftMinEvictableIdleDuration(getDefaultSoftMinEvictableIdleDuration());</span>
+<span class="fc" id="L184">        config.setTestOnCreate(getDefaultTestOnCreate());</span>
+<span class="fc" id="L185">        config.setTestOnBorrow(getDefaultTestOnBorrow());</span>
+<span class="fc" id="L186">        config.setTestOnReturn(getDefaultTestOnReturn());</span>
+<span class="fc" id="L187">        config.setTestWhileIdle(getDefaultTestWhileIdle());</span>
+<span class="fc" id="L188">        config.setTimeBetweenEvictionRuns(getDefaultDurationBetweenEvictionRuns());</span>
+
+<span class="fc" id="L190">        final KeyedObjectPool&lt;UserPassKey, PooledConnectionAndInfo&gt; tmpPool = new GenericKeyedObjectPool&lt;&gt;(factory, config);</span>
+<span class="fc" id="L191">        factory.setPool(tmpPool);</span>
+<span class="fc" id="L192">        pool = tmpPool;</span>
+<span class="fc" id="L193">    }</span>
+
+    /**
+     * Sets {@link GenericKeyedObjectPool#getMaxTotal()} for this pool.
+     *
+     * @param maxTotal
+     *            {@link GenericKeyedObjectPool#getMaxTotal()} for this pool.
+     */
+    public void setMaxTotal(final int maxTotal) {
+<span class="fc" id="L202">        assertInitializationAllowed();</span>
+<span class="fc" id="L203">        this.maxTotal = maxTotal;</span>
+<span class="fc" id="L204">    }</span>
+
+    @Override
+    protected void setupDefaults(final Connection connection, final String userName) throws SQLException {
+<span class="fc" id="L208">        final Boolean defaultAutoCommit = isDefaultAutoCommit();</span>
+<span class="fc bfc" id="L209" title="All 4 branches covered.">        if (defaultAutoCommit != null &amp;&amp; connection.getAutoCommit() != defaultAutoCommit) {</span>
+<span class="fc" id="L210">            connection.setAutoCommit(defaultAutoCommit);</span>
+        }
+
+<span class="fc" id="L213">        final int defaultTransactionIsolation = getDefaultTransactionIsolation();</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (defaultTransactionIsolation != UNKNOWN_TRANSACTIONISOLATION) {</span>
+<span class="fc" id="L215">            connection.setTransactionIsolation(defaultTransactionIsolation);</span>
+        }
+
+<span class="fc" id="L218">        final Boolean defaultReadOnly = isDefaultReadOnly();</span>
+<span class="pc bpc" id="L219" title="3 of 4 branches missed.">        if (defaultReadOnly != null &amp;&amp; connection.isReadOnly() != defaultReadOnly) {</span>
+<span class="nc" id="L220">            connection.setReadOnly(defaultReadOnly);</span>
+        }
+<span class="fc" id="L222">    }</span>
+
+    @Override
+    protected void toStringFields(final StringBuilder builder) {
+<span class="nc" id="L226">        super.toStringFields(builder);</span>
+<span class="nc" id="L227">        builder.append(&quot;, maxTotal=&quot;);</span>
+<span class="nc" id="L228">        builder.append(maxTotal);</span>
+<span class="nc" id="L229">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SetOperations.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">SetOperations.java</span></div><h1>SetOperations.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.function.LongBinaryOperator;
+
+/**
+ * Implementations of set operations on BitMapExtractors.
+ *
+ * @since 4.5
+ */
+public final class SetOperations {
+
+    /**
+     * Calculates the cardinality of the logical {@code AND} of the bit maps for the two filters.
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor
+     * @return the cardinality of the {@code AND} of the filters.
+     */
+    public static int andCardinality(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L35">        return cardinality(first, second, (x, y) -&gt; x &amp; y);</span>
+    }
+
+    /**
+     * Calculates the cardinality of a BitMapExtractor. By necessity this method will visit each bit map
+     * created by the bitMapExtractor.
+     * @param bitMapExtractor the extractor to calculate the cardinality for.
+     * @return the cardinality of the bit maps produced by the bitMapExtractor.
+     */
+    public static int cardinality(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L45">        final int[] cardinality = new int[1];</span>
+<span class="fc" id="L46">        bitMapExtractor.processBitMaps(l -&gt; {</span>
+<span class="fc" id="L47">            cardinality[0] += Long.bitCount(l);</span>
+<span class="fc" id="L48">            return true;</span>
+        });
+<span class="fc" id="L50">        return cardinality[0];</span>
+    }
+
+    /**
+     * Calculates the cardinality of the result of a LongBinaryOperator using the
+     * {@code BitMapExtractor.makePredicate} method.
+     * @param first the first BitMapExtractor
+     * @param second the second BitMapExtractor
+     * @param op a long binary operation on where x = {@code first} and y = {@code second} bitmap extractors.
+     * @return the calculated cardinality.
+     */
+    private static int cardinality(final BitMapExtractor first, final BitMapExtractor second, final LongBinaryOperator op) {
+<span class="fc" id="L62">        final int[] cardinality = new int[1];</span>
+
+<span class="fc" id="L64">        first.processBitMapPairs(second, (x, y) -&gt; {</span>
+<span class="fc" id="L65">            cardinality[0] += Long.bitCount(op.applyAsLong(x, y));</span>
+<span class="fc" id="L66">            return true;</span>
+        });
+<span class="fc" id="L68">        return cardinality[0];</span>
+    }
+
+    /**
+     * Calculates the Cosine distance between two BitMapExtractor.
+     *
+     * &lt;p&gt;Cosine distance is defined as {@code 1 - Cosine similarity}&lt;/p&gt;
+     *
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor.
+     * @return the jaccard distance.
+     */
+    public static double cosineDistance(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L81">        return 1.0 - cosineSimilarity(first, second);</span>
+    }
+
+    /**
+     * Calculates the Cosine similarity between two BitMapExtractors.
+     * &lt;p&gt; Also known as Orchini similarity and the Tucker coefficient of congruence or
+     * Ochiai similarity.&lt;/p&gt;
+     *
+     * &lt;p&gt;If either extractor is empty the result is 0 (zero)&lt;/p&gt;
+     *
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor.
+     * @return the Cosine similarity.
+     */
+    public static double cosineSimilarity(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L96">        final int numerator = andCardinality(first, second);</span>
+        // Given that the cardinality is an int then the product as a double will not
+        // overflow, we can use one sqrt:
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        return numerator == 0 ? 0 : numerator / Math.sqrt(cardinality(first) * cardinality(second));</span>
+    }
+
+    /**
+     * Calculates the Cosine similarity between two Bloom filters.
+     * &lt;p&gt; Also known as Orchini similarity and the Tucker coefficient of congruence or
+     * Ochiai similarity.&lt;/p&gt;
+     *
+     * &lt;p&gt;If either filter is empty (no enabled bits) the result is 0 (zero)&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a version of cosineSimilarity optimized for Bloom filters.&lt;/p&gt;
+     *
+     * @param first the first Bloom filter.
+     * @param second the second Bloom filter.
+     * @return the Cosine similarity.
+     */
+    public static double cosineSimilarity(final BloomFilter first, final BloomFilter second) {
+<span class="fc" id="L116">        final int numerator = andCardinality(first, second);</span>
+        // Given that the cardinality is an int then the product as a double will not
+        // overflow, we can use one sqrt:
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        return numerator == 0 ? 0 : numerator / Math.sqrt(first.cardinality() * second.cardinality());</span>
+    }
+
+    /**
+     * Calculates the Hamming distance between two BitMapExtractors.
+     *
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor.
+     * @return the Hamming distance.
+     */
+    public static int hammingDistance(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L130">        return xorCardinality(first, second);</span>
+    }
+
+    /**
+     * Calculates the Jaccard distance between two BitMapExtractor.
+     *
+     * &lt;p&gt;Jaccard distance is defined as {@code 1 - Jaccard similarity}&lt;/p&gt;
+     *
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor.
+     * @return the Jaccard distance.
+     */
+    public static double jaccardDistance(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L143">        return 1.0 - jaccardSimilarity(first, second);</span>
+    }
+
+    /**
+     * Calculates the Jaccard similarity between two BitMapExtractor.
+     *
+     * &lt;p&gt;Also known as Jaccard index, Intersection over Union, and Jaccard similarity coefficient&lt;/p&gt;
+     *
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor.
+     * @return the Jaccard similarity.
+     */
+    public static double jaccardSimilarity(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L156">        final int[] cardinality = new int[2];</span>
+<span class="fc" id="L157">        first.processBitMapPairs(second, (x, y) -&gt; {</span>
+<span class="fc" id="L158">            cardinality[0] += Long.bitCount(x &amp; y);</span>
+<span class="fc" id="L159">            cardinality[1] += Long.bitCount(x | y);</span>
+<span class="fc" id="L160">            return true;</span>
+        });
+<span class="fc" id="L162">        final int intersection = cardinality[0];</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        return intersection == 0 ? 0 : intersection / (double) cardinality[1];</span>
+    }
+
+    /**
+     * Calculates the cardinality of the logical {@code OR} of the bit maps for the two filters.
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor
+     * @return the cardinality of the {@code OR} of the filters.
+     */
+    public static int orCardinality(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L173">        return cardinality(first, second, (x, y) -&gt; x | y);</span>
+    }
+
+    /**
+     * Calculates the cardinality of the logical {@code XOR} of the bit maps for the two filters.
+     * @param first the first BitMapExtractor.
+     * @param second the second BitMapExtractor
+     * @return the cardinality of the {@code XOR} of the filters.
+     */
+    public static int xorCardinality(final BitMapExtractor first, final BitMapExtractor second) {
+<span class="fc" id="L183">        return cardinality(first, second, (x, y) -&gt; x ^ y);</span>
+    }
+
+    /**
+     * Do not instantiate.
+     */
+    private SetOperations() {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

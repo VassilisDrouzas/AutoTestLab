@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">ConfigurationUtils.java</span></div><h1>ConfigurationUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Iterator;
+
+import org.apache.commons.configuration2.event.ConfigurationErrorEvent;
+import org.apache.commons.configuration2.event.Event;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.event.EventSource;
+import org.apache.commons.configuration2.event.EventType;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.sync.NoOpSynchronizer;
+import org.apache.commons.configuration2.sync.Synchronizer;
+import org.apache.commons.configuration2.tree.ExpressionEngine;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+/**
+ * Miscellaneous utility methods for configurations.
+ *
+ * @see ConfigurationConverter Utility methods to convert configurations.
+ */
+public final class ConfigurationUtils {
+    /** Constant for the name of the clone() method. */
+    private static final String METHOD_CLONE = &quot;clone&quot;;
+
+    /**
+     * An array with interfaces to be implemented by a proxy for an immutable configuration.
+     */
+<span class="fc" id="L52">    private static final Class&lt;?&gt;[] IMMUTABLE_CONFIG_IFCS = {ImmutableConfiguration.class};</span>
+
+    /**
+     * An array with interfaces to be implemented by a proxy for an immutable hierarchical configuration.
+     */
+<span class="fc" id="L57">    private static final Class&lt;?&gt;[] IMMUTABLE_HIERARCHICAL_CONFIG_IFCS = {ImmutableHierarchicalConfiguration.class};</span>
+    /**
+     * A dummy event source that is returned by {@code asEventSource()} if a mock object has to be returned. It provides
+     * empty dummy implementations for all interface methods.
+     */
+<span class="fc" id="L62">    private static final EventSource DUMMY_EVENT_SOURCE = new EventSource() {</span>
+
+        @Override
+        public &lt;T extends Event&gt; void addEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+            // empty
+<span class="fc" id="L67">        }</span>
+
+        @Override
+        public &lt;T extends Event&gt; boolean removeEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="fc" id="L71">            return false;</span>
+        }
+    };
+
+    /** The logger. */
+<span class="fc" id="L76">    private static final Log LOG = LogFactory.getLog(ConfigurationUtils.class);</span>
+
+    /**
+     * &lt;p&gt;
+     * Append all properties from the source configuration to the target configuration. Properties in the source
+     * configuration are appended to the properties with the same key in the target configuration.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * &lt;em&gt;Note:&lt;/em&gt; This method is not able to handle some specifics of configurations derived from
+     * {@code AbstractConfiguration} (e.g. list delimiters). For a full support of all of these features the {@code copy()}
+     * method of {@code AbstractConfiguration} should be used. In a future release this method might become deprecated.
+     * &lt;/p&gt;
+     *
+     * @param source the source configuration
+     * @param target the target configuration
+     * @since 1.1
+     */
+    public static void append(final Configuration source, final Configuration target) {
+<span class="fc" id="L94">        append((ImmutableConfiguration) source, target);</span>
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Append all properties from the source configuration to the target configuration. Properties in the source
+     * configuration are appended to the properties with the same key in the target configuration.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * &lt;em&gt;Note:&lt;/em&gt; This method is not able to handle some specifics of configurations derived from
+     * {@code AbstractConfiguration} (e.g. list delimiters). For a full support of all of these features the {@code copy()}
+     * method of {@code AbstractConfiguration} should be used. In a future release this method might become deprecated.
+     * &lt;/p&gt;
+     *
+     * @param source the source configuration
+     * @param target the target configuration
+     * @since 2.2
+     */
+    public static void append(final ImmutableConfiguration source, final Configuration target) {
+<span class="fc" id="L113">        source.getKeys().forEachRemaining(key -&gt; target.addProperty(key, source.getProperty(key)));</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Casts the specified object to an {@code EventSource} if possible. The boolean argument determines the method's
+     * behavior if the object does not implement the {@code EventSource} event: if set to &lt;b&gt;false&lt;/b&gt;, a
+     * {@code ConfigurationRuntimeException} is thrown; if set to &lt;b&gt;true&lt;/b&gt;, a dummy {@code EventSource} is returned; on
+     * this object all methods can be called, but they do not have any effect.
+     *
+     * @param obj the object to be cast as {@code EventSource}
+     * @param mockIfUnsupported a flag whether a mock object should be returned if necessary
+     * @return an {@code EventSource}
+     * @throws ConfigurationRuntimeException if the object cannot be cast to {@code EventSource} and the mock flag is
+     *         &lt;b&gt;false&lt;/b&gt;
+     * @since 2.0
+     */
+    public static EventSource asEventSource(final Object obj, final boolean mockIfUnsupported) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (obj instanceof EventSource) {</span>
+<span class="fc" id="L131">            return (EventSource) obj;</span>
+        }
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (!mockIfUnsupported) {</span>
+<span class="fc" id="L135">            throw new ConfigurationRuntimeException(&quot;Cannot cast to EventSource: &quot; + obj);</span>
+        }
+<span class="fc" id="L137">        return DUMMY_EVENT_SOURCE;</span>
+    }
+
+    /**
+     * An internally used helper method for cloning objects. This implementation is not very sophisticated nor efficient.
+     * Maybe it can be replaced by an implementation from Commons Lang later. The method checks whether the passed in object
+     * implements the {@code Cloneable} interface. If this is the case, the {@code clone()} method is invoked by reflection.
+     * Errors that occur during the cloning process are re-thrown as runtime exceptions.
+     *
+     * @param obj the object to be cloned
+     * @return the cloned object
+     * @throws CloneNotSupportedException if the object cannot be cloned
+     */
+    static Object clone(final Object obj) throws CloneNotSupportedException {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (obj instanceof Cloneable) {</span>
+            try {
+<span class="fc" id="L153">                final Method m = obj.getClass().getMethod(METHOD_CLONE);</span>
+<span class="fc" id="L154">                return m.invoke(obj);</span>
+<span class="nc" id="L155">            } catch (final NoSuchMethodException nmex) {</span>
+<span class="nc" id="L156">                throw new CloneNotSupportedException(&quot;No clone() method found for class&quot; + obj.getClass().getName());</span>
+<span class="fc" id="L157">            } catch (final IllegalAccessException | InvocationTargetException itex) {</span>
+<span class="fc" id="L158">                throw new ConfigurationRuntimeException(itex);</span>
+            }
+        }
+<span class="fc" id="L161">        throw new CloneNotSupportedException(obj.getClass().getName() + &quot; does not implement Cloneable&quot;);</span>
+    }
+
+    /**
+     * Clones the given configuration object if this is possible. If the passed in configuration object implements the
+     * {@code Cloneable} interface, its {@code clone()} method will be invoked. Otherwise an exception will be thrown.
+     *
+     * @param config the configuration object to be cloned (can be &lt;b&gt;null&lt;/b&gt;)
+     * @return the cloned configuration (&lt;b&gt;null&lt;/b&gt; if the argument was &lt;b&gt;null&lt;/b&gt;, too)
+     * @throws ConfigurationRuntimeException if cloning is not supported for this object
+     * @since 1.3
+     */
+    public static Configuration cloneConfiguration(final Configuration config) throws ConfigurationRuntimeException {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (config == null) {</span>
+<span class="fc" id="L175">            return null;</span>
+        }
+        try {
+<span class="fc" id="L178">            return (Configuration) clone(config);</span>
+<span class="fc" id="L179">        } catch (final CloneNotSupportedException cnex) {</span>
+<span class="fc" id="L180">            throw new ConfigurationRuntimeException(cnex);</span>
+        }
+    }
+
+    /**
+     * Returns a clone of the passed in object if cloning is supported or the object itself if not. This method checks
+     * whether the passed in object implements the {@code Cloneable} interface. If this is the case, the {@code clone()}
+     * method is invoked. Otherwise, the object is directly returned. Errors that might occur during reflection calls are
+     * caught and also cause this method to return the original object.
+     *
+     * @param obj the object to be cloned
+     * @return the result of the cloning attempt
+     * @since 2.0
+     */
+    public static Object cloneIfPossible(final Object obj) {
+        try {
+<span class="fc" id="L196">            return clone(obj);</span>
+<span class="fc" id="L197">        } catch (final Exception ex) {</span>
+<span class="fc" id="L198">            return obj;</span>
+        }
+    }
+
+    /**
+     * Creates a clone of the specified {@code Synchronizer}. This method can be called by {@code clone()} implementations
+     * in configuration classes that also need to copy the {@code Synchronizer} object. This method can handle some
+     * well-known {@code Synchronizer} implementations directly. For other classes, it uses the following algorithm:
+     * &lt;ul&gt;
+     * &lt;li&gt;If the class of the {@code Synchronizer} has a standard constructor, a new instance is created using
+     * reflection.&lt;/li&gt;
+     * &lt;li&gt;If this is not possible, it is tried whether the object can be cloned.&lt;/li&gt;
+     * &lt;/ul&gt;
+     * If all attempts fail, a {@code ConfigurationRuntimeException} is thrown.
+     *
+     * @param sync the {@code Synchronizer} object to be cloned
+     * @return the clone of this {@code Synchronizer}
+     * @throws ConfigurationRuntimeException if no clone can be created
+     * @throws IllegalArgumentException if &lt;b&gt;null&lt;/b&gt; is passed in
+     */
+    public static Synchronizer cloneSynchronizer(final Synchronizer sync) {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (sync == null) {</span>
+<span class="fc" id="L220">            throw new IllegalArgumentException(&quot;Synchronizer must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (NoOpSynchronizer.INSTANCE == sync) {</span>
+<span class="fc" id="L223">            return sync;</span>
+        }
+
+        try {
+<span class="fc" id="L227">            return sync.getClass().getConstructor().newInstance();</span>
+<span class="fc" id="L228">        } catch (final Exception ex) {</span>
+<span class="fc" id="L229">            LOG.info(&quot;Cannot create new instance of &quot; + sync.getClass());</span>
+        }
+
+        try {
+<span class="fc" id="L233">            return (Synchronizer) clone(sync);</span>
+<span class="fc" id="L234">        } catch (final CloneNotSupportedException cnex) {</span>
+<span class="fc" id="L235">            throw new ConfigurationRuntimeException(&quot;Cannot clone Synchronizer &quot; + sync);</span>
+        }
+    }
+
+    /**
+     * Converts the passed in configuration to a hierarchical one. If the configuration is already hierarchical, it is
+     * directly returned. Otherwise all properties are copied into a new hierarchical configuration.
+     *
+     * @param conf the configuration to convert
+     * @return the new hierarchical configuration (the result is &lt;b&gt;null&lt;/b&gt; if and only if the passed in configuration is
+     *         &lt;b&gt;null&lt;/b&gt;)
+     * @since 1.3
+     */
+    public static HierarchicalConfiguration&lt;?&gt; convertToHierarchical(final Configuration conf) {
+<span class="fc" id="L249">        return convertToHierarchical(conf, null);</span>
+    }
+
+    /**
+     * Converts the passed in {@code Configuration} object to a hierarchical one using the specified
+     * {@code ExpressionEngine}. This conversion works by adding the keys found in the configuration to a newly created
+     * hierarchical configuration. When adding new keys to a hierarchical configuration the keys are interpreted by its
+     * {@code ExpressionEngine}. If they contain special characters (e.g. brackets) that are treated in a special way by the
+     * default expression engine, it may be necessary using a specific engine that can deal with such characters. Otherwise
+     * &lt;b&gt;null&lt;/b&gt; can be passed in for the {@code ExpressionEngine}; then the default expression engine is used. If the
+     * passed in configuration is already hierarchical, it is directly returned. (However, the {@code ExpressionEngine} is
+     * set if it is not &lt;b&gt;null&lt;/b&gt;.) Otherwise all properties are copied into a new hierarchical configuration.
+     *
+     * @param conf the configuration to convert
+     * @param engine the {@code ExpressionEngine} for the hierarchical configuration or &lt;b&gt;null&lt;/b&gt; for the default
+     * @return the new hierarchical configuration (the result is &lt;b&gt;null&lt;/b&gt; if and only if the passed in configuration is
+     *         &lt;b&gt;null&lt;/b&gt;)
+     * @since 1.6
+     */
+    public static HierarchicalConfiguration&lt;?&gt; convertToHierarchical(final Configuration conf, final ExpressionEngine engine) {
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (conf == null) {</span>
+<span class="fc" id="L270">            return null;</span>
+        }
+
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (conf instanceof HierarchicalConfiguration) {</span>
+<span class="fc" id="L274">            final HierarchicalConfiguration&lt;?&gt; hc = (HierarchicalConfiguration&lt;?&gt;) conf;</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            if (engine != null) {</span>
+<span class="fc" id="L276">                hc.setExpressionEngine(engine);</span>
+            }
+
+<span class="fc" id="L279">            return hc;</span>
+        }
+<span class="fc" id="L281">        final BaseHierarchicalConfiguration hc = new BaseHierarchicalConfiguration();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (engine != null) {</span>
+<span class="fc" id="L283">            hc.setExpressionEngine(engine);</span>
+        }
+
+        // Per default, a DisabledListDelimiterHandler is set.
+        // So list delimiters in property values are not an issue.
+<span class="fc" id="L288">        hc.copy(conf);</span>
+<span class="fc" id="L289">        return hc;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Copy all properties from the source configuration to the target configuration. Properties in the target configuration
+     * are replaced with the properties with the same key in the source configuration.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * &lt;em&gt;Note:&lt;/em&gt; This method is not able to handle some specifics of configurations derived from
+     * {@code AbstractConfiguration} (e.g. list delimiters). For a full support of all of these features the {@code copy()}
+     * method of {@code AbstractConfiguration} should be used. In a future release this method might become deprecated.
+     * &lt;/p&gt;
+     *
+     * @param source the source configuration
+     * @param target the target configuration
+     * @since 1.1
+     */
+    public static void copy(final Configuration source, final Configuration target) {
+<span class="fc" id="L308">        copy((ImmutableConfiguration) source, target);</span>
+<span class="fc" id="L309">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Copy all properties from the source configuration to the target configuration. Properties in the target configuration
+     * are replaced with the properties with the same key in the source configuration.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * &lt;em&gt;Note:&lt;/em&gt; This method is not able to handle some specifics of configurations derived from
+     * {@code AbstractConfiguration} (e.g. list delimiters). For a full support of all of these features the {@code copy()}
+     * method of {@code AbstractConfiguration} should be used. In a future release this method might become deprecated.
+     * &lt;/p&gt;
+     *
+     * @param source the source configuration
+     * @param target the target configuration
+     * @since 2.2
+     */
+    public static void copy(final ImmutableConfiguration source, final Configuration target) {
+<span class="fc" id="L327">        source.getKeys().forEachRemaining(key -&gt; target.setProperty(key, source.getProperty(key)));</span>
+<span class="fc" id="L328">    }</span>
+
+    /**
+     * Helper method for creating a proxy for an unmodifiable configuration. The interfaces the proxy should implement are
+     * passed as argument.
+     *
+     * @param ifcs an array with the interface classes the proxy must implement
+     * @param c the configuration object to be wrapped
+     * @return a proxy object for an immutable configuration
+     * @throws NullPointerException if the configuration is &lt;b&gt;null&lt;/b&gt;
+     */
+    private static ImmutableConfiguration createUnmodifiableConfiguration(final Class&lt;?&gt;[] ifcs, final Configuration c) {
+<span class="fc" id="L340">        return (ImmutableConfiguration) Proxy.newProxyInstance(ConfigurationUtils.class.getClassLoader(), ifcs, new ImmutableConfigurationInvocationHandler(c));</span>
+    }
+
+    /**
+     * Dump the configuration key/value mappings to some ouput stream. This version of the method exists only for backwards
+     * compatibility reason.
+     *
+     * @param configuration the configuration
+     * @param out the output stream to dump the configuration to
+     */
+    public static void dump(final Configuration configuration, final PrintStream out) {
+<span class="nc" id="L351">        dump((ImmutableConfiguration) configuration, out);</span>
+<span class="nc" id="L352">    }</span>
+
+    /**
+     * Dump the configuration key/value mappings to some writer. This version of the method exists only for backwards
+     * compatibility reason.
+     *
+     * @param configuration the configuration
+     * @param out the writer to dump the configuration to
+     */
+    public static void dump(final Configuration configuration, final PrintWriter out) {
+<span class="nc" id="L362">        dump((ImmutableConfiguration) configuration, out);</span>
+<span class="nc" id="L363">    }</span>
+
+    /**
+     * Dump the configuration key/value mappings to some ouput stream.
+     *
+     * @param configuration the configuration
+     * @param out the output stream to dump the configuration to
+     * @since 2.2
+     */
+    public static void dump(final ImmutableConfiguration configuration, final PrintStream out) {
+<span class="nc" id="L373">        dump(configuration, new PrintWriter(out));</span>
+<span class="nc" id="L374">    }</span>
+
+    /**
+     * Dump the configuration key/value mappings to some writer.
+     *
+     * @param configuration the configuration
+     * @param out the writer to dump the configuration to
+     * @since 2.2
+     */
+    public static void dump(final ImmutableConfiguration configuration, final PrintWriter out) {
+<span class="fc bfc" id="L384" title="All 2 branches covered.">        for (final Iterator&lt;String&gt; keys = configuration.getKeys(); keys.hasNext();) {</span>
+<span class="fc" id="L385">            final String key = keys.next();</span>
+<span class="fc" id="L386">            final Object value = configuration.getProperty(key);</span>
+<span class="fc" id="L387">            out.print(key);</span>
+<span class="fc" id="L388">            out.print(&quot;=&quot;);</span>
+<span class="fc" id="L389">            out.print(value);</span>
+
+<span class="fc bfc" id="L391" title="All 2 branches covered.">            if (keys.hasNext()) {</span>
+<span class="fc" id="L392">                out.println();</span>
+            }
+<span class="fc" id="L394">        }</span>
+
+<span class="fc" id="L396">        out.flush();</span>
+<span class="fc" id="L397">    }</span>
+
+    /**
+     * Enables runtime exceptions for the specified configuration object. This method can be used for configuration
+     * implementations that may face errors on normal property access, e.g. {@code DatabaseConfiguration} or
+     * {@code JNDIConfiguration}. Per default such errors are simply logged and then ignored. This implementation will
+     * register a special {@link EventListener} that throws a runtime exception (namely a
+     * {@code ConfigurationRuntimeException}) on each received error event.
+     *
+     * @param src the configuration, for which runtime exceptions are to be enabled; this configuration must implement
+     *        {@link EventSource}
+     */
+    public static void enableRuntimeExceptions(final Configuration src) {
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        if (!(src instanceof EventSource)) {</span>
+<span class="fc" id="L411">            throw new IllegalArgumentException(&quot;Configuration must implement EventSource!&quot;);</span>
+        }
+<span class="fc" id="L413">        ((EventSource) src).addEventListener(ConfigurationErrorEvent.ANY, event -&gt; {</span>
+            // Throw a runtime exception
+<span class="fc" id="L415">            throw new ConfigurationRuntimeException(event.getCause());</span>
+        });
+<span class="fc" id="L417">    }</span>
+
+    /**
+     * Loads the class with the given name. This method is used whenever a class has to be loaded dynamically. It first
+     * tries the current thread's context class loader. If this fails, the class loader of this class is tried.
+     *
+     * @param clsName the name of the class to be loaded
+     * @return the loaded class
+     * @throws ClassNotFoundException if the class cannot be resolved
+     * @since 2.0
+     */
+    public static Class&lt;?&gt; loadClass(final String clsName) throws ClassNotFoundException {
+<span class="pc bpc" id="L429" title="1 of 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L430">            LOG.debug(&quot;Loading class &quot; + clsName);</span>
+        }
+
+<span class="fc" id="L433">        final ClassLoader cl = Thread.currentThread().getContextClassLoader();</span>
+        try {
+<span class="fc bfc" id="L435" title="All 2 branches covered.">            if (cl != null) {</span>
+<span class="fc" id="L436">                return cl.loadClass(clsName);</span>
+            }
+<span class="fc" id="L438">        } catch (final ClassNotFoundException cnfex) {</span>
+<span class="fc" id="L439">            LOG.info(&quot;Could not load class &quot; + clsName + &quot; using CCL. Falling back to default CL.&quot;, cnfex);</span>
+<span class="fc" id="L440">        }</span>
+
+<span class="fc" id="L442">        return ConfigurationUtils.class.getClassLoader().loadClass(clsName);</span>
+    }
+
+    /**
+     * Loads the class with the specified name re-throwing {@code ClassNotFoundException} exceptions as runtime exceptions.
+     * This method works like {@link #loadClass(String)}. However, checked exceptions are caught and re-thrown as
+     * {@code ConfigurationRuntimeException}.
+     *
+     * @param clsName the name of the class to be loaded
+     * @return the loaded class
+     * @throws ConfigurationRuntimeException if the class cannot be resolved
+     * @since 2.0
+     */
+    public static Class&lt;?&gt; loadClassNoEx(final String clsName) {
+        try {
+<span class="fc" id="L457">            return loadClass(clsName);</span>
+<span class="fc" id="L458">        } catch (final ClassNotFoundException cnfex) {</span>
+<span class="fc" id="L459">            throw new ConfigurationRuntimeException(&quot;Cannot load class &quot; + clsName, cnfex);</span>
+        }
+    }
+
+    /**
+     * Gets a string representation of the key/value mappings of a configuration. This version of the method exists only for
+     * backwards compatibility reason.
+     *
+     * @param configuration the configuration
+     * @return a string representation of the configuration
+     */
+    public static String toString(final Configuration configuration) {
+<span class="fc" id="L471">        return toString((ImmutableConfiguration) configuration);</span>
+    }
+
+    /**
+     * Gets a string representation of the key/value mappings of a configuration.
+     *
+     * @param configuration the configuration
+     * @return a string representation of the configuration
+     * @since 2.2
+     */
+    public static String toString(final ImmutableConfiguration configuration) {
+<span class="fc" id="L482">        final StringWriter writer = new StringWriter();</span>
+<span class="fc" id="L483">        dump(configuration, new PrintWriter(writer));</span>
+<span class="fc" id="L484">        return writer.toString();</span>
+    }
+
+    /**
+     * Creates an {@code ImmutableConfiguration} from the given {@code Configuration} object. This method creates a proxy
+     * object wrapping the original configuration and making it available under the {@code ImmutableConfiguration}
+     * interface. Through this interface the configuration cannot be manipulated. It is also not possible to cast the
+     * returned object back to a {@code Configuration} instance to circumvent this protection.
+     *
+     * @param c the {@code Configuration} to be wrapped (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return an {@code ImmutableConfiguration} view on the specified {@code Configuration} object
+     * @throws NullPointerException if the passed in {@code Configuration} is &lt;b&gt;null&lt;/b&gt;
+     * @since 2.0
+     */
+    public static ImmutableConfiguration unmodifiableConfiguration(final Configuration c) {
+<span class="fc" id="L499">        return createUnmodifiableConfiguration(IMMUTABLE_CONFIG_IFCS, c);</span>
+    }
+
+    /**
+     * Creates an {@code ImmutableHierarchicalConfiguration} from the given {@code HierarchicalConfiguration} object. This
+     * method works exactly like the method with the same name, but it operates on hierarchical configurations.
+     *
+     * @param c the {@code HierarchicalConfiguration} to be wrapped (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return an {@code ImmutableHierarchicalConfiguration} view on the specified {@code HierarchicalConfiguration} object
+     * @throws NullPointerException if the passed in {@code HierarchicalConfiguration} is &lt;b&gt;null&lt;/b&gt;
+     * @since 2.0
+     */
+    public static ImmutableHierarchicalConfiguration unmodifiableConfiguration(final HierarchicalConfiguration&lt;?&gt; c) {
+<span class="fc" id="L512">        return (ImmutableHierarchicalConfiguration) createUnmodifiableConfiguration(IMMUTABLE_HIERARCHICAL_CONFIG_IFCS, c);</span>
+    }
+
+    /**
+     * Private constructor. Prevents instances from being created.
+     */
+    private ConfigurationUtils() {
+        // to prevent instantiation...
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

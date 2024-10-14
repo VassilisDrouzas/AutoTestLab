@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbandonedTrace.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">AbandonedTrace.java</span></div><h1>AbandonedTrace.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.lang.ref.WeakReference;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Consumer;
+
+import org.apache.commons.pool2.TrackedUse;
+
+/**
+ * Tracks connection usage for recovering and reporting abandoned connections.
+ * &lt;p&gt;
+ * The JDBC Connection, Statement, and ResultSet classes extend this class.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class AbandonedTrace implements TrackedUse, AutoCloseable {
+
+    static void add(final AbandonedTrace receiver, final AbandonedTrace trace) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (receiver != null) {</span>
+<span class="fc" id="L42">            receiver.addTrace(trace);</span>
+        }
+<span class="fc" id="L44">    }</span>
+
+    /** A list of objects created by children of this object. */
+<span class="fc" id="L47">    private final List&lt;WeakReference&lt;AbandonedTrace&gt;&gt; traceList = new ArrayList&lt;&gt;();</span>
+
+    /** Last time this connection was used. */
+<span class="fc" id="L50">    private volatile Instant lastUsedInstant = Instant.EPOCH;</span>
+
+    /**
+     * Creates a new AbandonedTrace without config and without doing abandoned tracing.
+     */
+<span class="fc" id="L55">    public AbandonedTrace() {</span>
+<span class="fc" id="L56">        init(null);</span>
+<span class="fc" id="L57">    }</span>
+
+    /**
+     * Constructs a new AbandonedTrace with a parent object.
+     *
+     * @param parent
+     *            AbandonedTrace parent object.
+     */
+<span class="fc" id="L65">    public AbandonedTrace(final AbandonedTrace parent) {</span>
+<span class="fc" id="L66">        init(parent);</span>
+<span class="fc" id="L67">    }</span>
+
+    /**
+     * Adds an object to the list of objects being traced.
+     *
+     * @param trace
+     *            AbandonedTrace object to add.
+     */
+    protected void addTrace(final AbandonedTrace trace) {
+<span class="fc" id="L76">        synchronized (this.traceList) {</span>
+<span class="fc" id="L77">            this.traceList.add(new WeakReference&lt;&gt;(trace));</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        setLastUsed();</span>
+<span class="fc" id="L80">    }</span>
+
+    /**
+     * Clears the list of objects being traced by this object.
+     */
+    protected void clearTrace() {
+<span class="fc" id="L86">        synchronized (this.traceList) {</span>
+<span class="fc" id="L87">            this.traceList.clear();</span>
+<span class="fc" id="L88">        }</span>
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * Subclasses can implement this nop.
+     *
+     * @throws SQLException Ignored here, for subclasses.
+     * @since 2.10.0
+     */
+    @Override
+    public void close() throws SQLException {
+        // nop
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Closes this resource and if an exception is caught, then calls {@code exceptionHandler}.
+     *
+     * @param exceptionHandler Consumes exception thrown closing this resource.
+     * @since 2.10.0
+     */
+    protected void close(final Consumer&lt;Exception&gt; exceptionHandler) {
+<span class="fc" id="L109">        Utils.close(this, exceptionHandler);</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Gets the last time this object was used in milliseconds.
+     *
+     * @return long time in milliseconds.
+     */
+    @Override
+    @Deprecated
+    public long getLastUsed() {
+<span class="fc" id="L120">        return lastUsedInstant.toEpochMilli();</span>
+    }
+
+    @Override
+    public Instant getLastUsedInstant() {
+<span class="fc" id="L125">        return lastUsedInstant;</span>
+    }
+
+    /**
+     * Gets a list of objects being traced by this object.
+     *
+     * @return List of objects.
+     */
+    protected List&lt;AbandonedTrace&gt; getTrace() {
+<span class="fc" id="L134">        final int size = traceList.size();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (size == 0) {</span>
+<span class="fc" id="L136">            return Collections.emptyList();</span>
+        }
+<span class="fc" id="L138">        final ArrayList&lt;AbandonedTrace&gt; result = new ArrayList&lt;&gt;(size);</span>
+<span class="fc" id="L139">        synchronized (this.traceList) {</span>
+<span class="fc" id="L140">            final Iterator&lt;WeakReference&lt;AbandonedTrace&gt;&gt; iter = traceList.iterator();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            while (iter.hasNext()) {</span>
+<span class="fc" id="L142">                final AbandonedTrace trace = iter.next().get();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (trace == null) {</span>
+                    // Clean-up since we are here anyway
+<span class="fc" id="L145">                    iter.remove();</span>
+                } else {
+<span class="fc" id="L147">                    result.add(trace);</span>
+                }
+<span class="fc" id="L149">            }</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">        return result;</span>
+    }
+
+    /**
+     * Initializes abandoned tracing for this object.
+     *
+     * @param parent
+     *            AbandonedTrace parent object.
+     */
+    private void init(final AbandonedTrace parent) {
+<span class="fc" id="L161">        AbandonedTrace.add(parent, this);</span>
+<span class="fc" id="L162">    }</span>
+
+    /**
+     * Removes this object the source object is tracing.
+     *
+     * @param source The object tracing
+     * @since 2.7.0
+     */
+    protected void removeThisTrace(final Object source) {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (source instanceof AbandonedTrace) {</span>
+<span class="fc" id="L172">            AbandonedTrace.class.cast(source).removeTrace(this);</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    /**
+     * Removes a child object this object is tracing.
+     *
+     * @param trace
+     *            AbandonedTrace object to remove.
+     */
+    protected void removeTrace(final AbandonedTrace trace) {
+<span class="fc" id="L183">        synchronized (this.traceList) {</span>
+<span class="fc" id="L184">            final Iterator&lt;WeakReference&lt;AbandonedTrace&gt;&gt; iter = traceList.iterator();</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            while (iter.hasNext()) {</span>
+<span class="fc" id="L186">                final AbandonedTrace traceInList = iter.next().get();</span>
+<span class="pc bpc" id="L187" title="1 of 4 branches missed.">                if (trace != null &amp;&amp; trace.equals(traceInList)) {</span>
+<span class="fc" id="L188">                    iter.remove();</span>
+<span class="fc" id="L189">                    break;</span>
+                }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                if (traceInList == null) {</span>
+                    // Clean-up since we are here anyway
+<span class="fc" id="L193">                    iter.remove();</span>
+                }
+<span class="fc" id="L195">            }</span>
+<span class="fc" id="L196">        }</span>
+<span class="fc" id="L197">    }</span>
+
+    /**
+     * Sets the time this object was last used to the current time in milliseconds.
+     */
+    protected void setLastUsed() {
+<span class="fc" id="L203">        lastUsedInstant = Instant.now();</span>
+<span class="fc" id="L204">    }</span>
+
+    /**
+     * Sets the instant this object was last used.
+     *
+     * @param lastUsedInstant
+     *            instant.
+     * @since 2.10.0
+     */
+    protected void setLastUsed(final Instant lastUsedInstant) {
+<span class="fc" id="L214">        this.lastUsedInstant = lastUsedInstant;</span>
+<span class="fc" id="L215">    }</span>
+
+    /**
+     * Sets the time in milliseconds this object was last used.
+     *
+     * @param lastUsedMillis
+     *            time in milliseconds.
+     * @deprecated Use {@link #setLastUsed(Instant)}
+     */
+    @Deprecated
+    protected void setLastUsed(final long lastUsedMillis) {
+<span class="nc" id="L226">        this.lastUsedInstant = Instant.ofEpochMilli(lastUsedMillis);</span>
+<span class="nc" id="L227">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

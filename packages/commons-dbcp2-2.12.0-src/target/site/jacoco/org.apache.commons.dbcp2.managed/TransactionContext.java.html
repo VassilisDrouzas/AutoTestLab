@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransactionContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.managed</a> &gt; <span class="el_source">TransactionContext.java</span></div><h1>TransactionContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.managed;
+
+import java.lang.ref.WeakReference;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Objects;
+
+import javax.transaction.RollbackException;
+import javax.transaction.Status;
+import javax.transaction.Synchronization;
+import javax.transaction.SystemException;
+import javax.transaction.Transaction;
+import javax.transaction.TransactionSynchronizationRegistry;
+import javax.transaction.xa.XAResource;
+
+/**
+ * TransactionContext represents the association between a single XAConnectionFactory and a Transaction. This context
+ * contains a single shared connection which should be used by all ManagedConnections for the XAConnectionFactory, the
+ * ability to listen for the transaction completion event, and a method to check the status of the transaction.
+ *
+ * @since 2.0
+ */
+public class TransactionContext {
+    private final TransactionRegistry transactionRegistry;
+    private final WeakReference&lt;Transaction&gt; transactionRef;
+    private final TransactionSynchronizationRegistry transactionSynchronizationRegistry;
+    private Connection sharedConnection;
+    private boolean transactionComplete;
+
+    /**
+     * Provided for backwards compatibility
+     *
+     * @param transactionRegistry the TransactionRegistry used to obtain the XAResource for the
+     * shared connection
+     * @param transaction the transaction
+     */
+    public TransactionContext(final TransactionRegistry transactionRegistry, final Transaction transaction) {
+<span class="fc" id="L54">        this (transactionRegistry, transaction, null);</span>
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * Creates a TransactionContext for the specified Transaction and TransactionRegistry. The TransactionRegistry is
+     * used to obtain the XAResource for the shared connection when it is enlisted in the transaction.
+     *
+     * @param transactionRegistry
+     *            the TransactionRegistry used to obtain the XAResource for the shared connection
+     * @param transaction
+     *            the transaction
+     * @param transactionSynchronizationRegistry
+     *              The optional TSR to register synchronizations with
+     * @since 2.6.0
+     */
+    public TransactionContext(final TransactionRegistry transactionRegistry, final Transaction transaction,
+<span class="fc" id="L70">                              final TransactionSynchronizationRegistry transactionSynchronizationRegistry) {</span>
+<span class="fc" id="L71">        Objects.requireNonNull(transactionRegistry, &quot;transactionRegistry&quot;);</span>
+<span class="fc" id="L72">        Objects.requireNonNull(transaction, &quot;transaction&quot;);</span>
+<span class="fc" id="L73">        this.transactionRegistry = transactionRegistry;</span>
+<span class="fc" id="L74">        this.transactionRef = new WeakReference&lt;&gt;(transaction);</span>
+<span class="fc" id="L75">        this.transactionComplete = false;</span>
+<span class="fc" id="L76">        this.transactionSynchronizationRegistry = transactionSynchronizationRegistry;</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Adds a listener for transaction completion events.
+     *
+     * @param listener
+     *            the listener to add
+     * @throws SQLException
+     *             if a problem occurs adding the listener to the transaction
+     */
+    public void addTransactionContextListener(final TransactionContextListener listener) throws SQLException {
+        try {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (!isActive()) {</span>
+<span class="fc" id="L90">                final Transaction transaction = this.transactionRef.get();</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">                listener.afterCompletion(this, transaction != null &amp;&amp; transaction.getStatus() == Status.STATUS_COMMITTED);</span>
+<span class="fc" id="L92">                return;</span>
+            }
+<span class="fc" id="L94">            final Synchronization s = new SynchronizationAdapter() {</span>
+                @Override
+                public void afterCompletion(final int status) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                    listener.afterCompletion(TransactionContext.this, status == Status.STATUS_COMMITTED);</span>
+<span class="fc" id="L98">                }</span>
+            };
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (transactionSynchronizationRegistry != null) {</span>
+<span class="fc" id="L101">                transactionSynchronizationRegistry.registerInterposedSynchronization(s);</span>
+            } else {
+<span class="fc" id="L103">                getTransaction().registerSynchronization(s);</span>
+            }
+<span class="nc" id="L105">        } catch (final RollbackException ignored) {</span>
+            // JTA spec doesn't let us register with a transaction marked rollback only
+            // just ignore this and the tx state will be cleared another way.
+<span class="fc" id="L108">        } catch (final Exception e) {</span>
+<span class="fc" id="L109">            throw new SQLException(&quot;Unable to register transaction context listener&quot;, e);</span>
+<span class="pc" id="L110">        }</span>
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Sets the transaction complete flag to true.
+     *
+     * @since 2.4.0
+     */
+    public void completeTransaction() {
+<span class="fc" id="L119">        this.transactionComplete = true;</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Gets the connection shared by all ManagedConnections in the transaction. Specifically, connection using the same
+     * XAConnectionFactory from which the TransactionRegistry was obtained.
+     *
+     * @return the shared connection for this transaction
+     */
+    public Connection getSharedConnection() {
+<span class="fc" id="L129">        return sharedConnection;</span>
+    }
+
+    private Transaction getTransaction() throws SQLException {
+<span class="fc" id="L133">        final Transaction transaction = this.transactionRef.get();</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (transaction == null) {</span>
+<span class="nc" id="L135">            throw new SQLException(&quot;Unable to enlist connection because the transaction has been garbage collected&quot;);</span>
+        }
+<span class="fc" id="L137">        return transaction;</span>
+    }
+
+    /**
+     * True if the transaction is active or marked for rollback only.
+     *
+     * @return true if the transaction is active or marked for rollback only; false otherwise
+     * @throws SQLException
+     *             if a problem occurs obtaining the transaction status
+     */
+    public boolean isActive() throws SQLException {
+        try {
+<span class="fc" id="L149">            final Transaction transaction = this.transactionRef.get();</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            if (transaction == null) {</span>
+<span class="nc" id="L151">                return false;</span>
+            }
+<span class="fc" id="L153">            final int status = transaction.getStatus();</span>
+<span class="fc bfc" id="L154" title="All 4 branches covered.">            return status == Status.STATUS_ACTIVE || status == Status.STATUS_MARKED_ROLLBACK;</span>
+<span class="nc" id="L155">        } catch (final SystemException e) {</span>
+<span class="nc" id="L156">            throw new SQLException(&quot;Unable to get transaction status&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Gets the transaction complete flag to true.
+     *
+     * @return The transaction complete flag.
+     *
+     * @since 2.4.0
+     */
+    public boolean isTransactionComplete() {
+<span class="fc" id="L168">        return this.transactionComplete;</span>
+    }
+
+    /**
+     * Sets the shared connection for this transaction. The shared connection is enlisted in the transaction.
+     *
+     * @param sharedConnection
+     *            the shared connection
+     * @throws SQLException
+     *             if a shared connection is already set, if XAResource for the connection could not be found in the
+     *             transaction registry, or if there was a problem enlisting the connection in the transaction
+     */
+    public void setSharedConnection(final Connection sharedConnection) throws SQLException {
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (this.sharedConnection != null) {</span>
+<span class="nc" id="L182">            throw new IllegalStateException(&quot;A shared connection is already set&quot;);</span>
+        }
+
+        // This is the first use of the connection in this transaction, so we must
+        // enlist it in the transaction
+<span class="fc" id="L187">        final Transaction transaction = getTransaction();</span>
+        try {
+<span class="fc" id="L189">            final XAResource xaResource = transactionRegistry.getXAResource(sharedConnection);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            if (!transaction.enlistResource(xaResource)) {</span>
+<span class="fc" id="L191">                throw new SQLException(&quot;Unable to enlist connection in transaction: enlistResource returns 'false'.&quot;);</span>
+            }
+<span class="fc" id="L193">        } catch (final IllegalStateException e) {</span>
+            // This can happen if the transaction is already timed out
+<span class="fc" id="L195">            throw new SQLException(&quot;Unable to enlist connection in the transaction&quot;, e);</span>
+<span class="nc" id="L196">        } catch (final RollbackException ignored) {</span>
+            // transaction was rolled back... proceed as if there never was a transaction
+<span class="nc" id="L198">        } catch (final SystemException e) {</span>
+<span class="nc" id="L199">            throw new SQLException(&quot;Unable to enlist connection the transaction&quot;, e);</span>
+<span class="pc" id="L200">        }</span>
+
+<span class="fc" id="L202">        this.sharedConnection = sharedConnection;</span>
+<span class="fc" id="L203">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

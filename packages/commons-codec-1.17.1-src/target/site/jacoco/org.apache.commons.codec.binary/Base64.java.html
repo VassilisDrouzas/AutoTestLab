@@ -1,0 +1,966 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Base64.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.binary</a> &gt; <span class="el_source">Base64.java</span></div><h1>Base64.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.binary;
+
+import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.Objects;
+
+import org.apache.commons.codec.CodecPolicy;
+
+/**
+ * Provides Base64 encoding and decoding as defined by &lt;a href=&quot;http://www.ietf.org/rfc/rfc2045.txt&quot;&gt;RFC 2045&lt;/a&gt;.
+ *
+ * &lt;p&gt;
+ * This class implements section &lt;cite&gt;6.8. Base64 Content-Transfer-Encoding&lt;/cite&gt; from RFC 2045 &lt;cite&gt;Multipurpose
+ * Internet Mail Extensions (MIME) Part One: Format of Internet Message Bodies&lt;/cite&gt; by Freed and Borenstein.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The class can be parameterized in the following manner with various constructors:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;URL-safe mode: Default off.&lt;/li&gt;
+ * &lt;li&gt;Line length: Default 76. Line length that aren't multiples of 4 will still essentially end up being multiples of
+ * 4 in the encoded data.
+ * &lt;li&gt;Line separator: Default is CRLF (&quot;\r\n&quot;)&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * The URL-safe parameter is only applied to encode operations. Decoding seamlessly handles both modes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Since this class operates directly on byte streams, and not character streams, it is hard-coded to only
+ * encode/decode character encodings which are compatible with the lower 127 ASCII chart (ISO-8859-1, Windows-1252,
+ * UTF-8, etc).
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is thread-safe.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * You can configure instances with the {@link Builder}.
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * Base64 base64 = Base64.builder()
+ *   .setDecodingPolicy(DecodingPolicy.LENIENT) // default is lenient, null resets to default
+ *   .setEncodeTable(customEncodeTable)         // default is built in, null resets to default
+ *   .setLineLength(0)                          // default is none
+ *   .setLineSeparator('\r', '\n')              // default is CR LF, null resets to default
+ *   .setPadding('=')                           // default is =
+ *   .setUrlSafe(false)                         // default is false
+ *   .get()
+ * &lt;/pre&gt;
+ *
+ * @see &lt;a href=&quot;http://www.ietf.org/rfc/rfc2045.txt&quot;&gt;RFC 2045&lt;/a&gt;
+ * @since 1.0
+ */
+public class Base64 extends BaseNCodec {
+
+    /**
+     * Builds {@link Base64} instances.
+     *
+     * @since 1.17.0
+     */
+    public static class Builder extends AbstractBuilder&lt;Base64, Builder&gt; {
+
+        /**
+         * Constructs a new instance.
+         */
+        public Builder() {
+<span class="fc" id="L83">            super(STANDARD_ENCODE_TABLE);</span>
+<span class="fc" id="L84">        }</span>
+
+        @Override
+        public Base64 get() {
+<span class="fc" id="L88">            return new Base64(getLineLength(), getLineSeparator(), getPadding(), getEncodeTable(), getDecodingPolicy());</span>
+        }
+
+        /**
+         * Sets the URL-safe encoding policy.
+         *
+         * @param urlSafe URL-safe encoding policy, null resets to the default.
+         * @return {@code this} instance.
+         */
+        public Builder setUrlSafe(final boolean urlSafe) {
+<span class="fc" id="L98">            return setEncodeTable(toUrlSafeEncodeTable(urlSafe));</span>
+        }
+
+    }
+
+    /**
+     * BASE64 characters are 6 bits in length.
+     * They are formed by taking a block of 3 octets to form a 24-bit string,
+     * which is converted into 4 BASE64 characters.
+     */
+    private static final int BITS_PER_ENCODED_BYTE = 6;
+    private static final int BYTES_PER_UNENCODED_BLOCK = 3;
+    private static final int BYTES_PER_ENCODED_BLOCK = 4;
+    private static final int ALPHABET_LENGTH = 64;
+    private static final int DECODING_TABLE_LENGTH = 256;
+
+    /**
+     * This array is a lookup table that translates 6-bit positive integer index values into their &quot;Base64 Alphabet&quot;
+     * equivalents as specified in Table 1 of RFC 2045.
+     * &lt;p&gt;
+     * Thanks to &quot;commons&quot; project in ws.apache.org for this code.
+     * https://svn.apache.org/repos/asf/webservices/commons/trunk/modules/util/
+     * &lt;/p&gt;
+     */
+<span class="fc" id="L122">    private static final byte[] STANDARD_ENCODE_TABLE = {</span>
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
+    };
+
+    /**
+     * This is a copy of the STANDARD_ENCODE_TABLE above, but with + and /
+     * changed to - and _ to make the encoded Base64 results more URL-SAFE.
+     * This table is only used when the Base64's mode is set to URL-SAFE.
+     */
+<span class="fc" id="L135">    private static final byte[] URL_SAFE_ENCODE_TABLE = {</span>
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '_'
+    };
+
+    /**
+     * This array is a lookup table that translates Unicode characters drawn from the &quot;Base64 Alphabet&quot; (as specified
+     * in Table 1 of RFC 2045) into their 6-bit positive integer equivalents. Characters that are not in the Base64
+     * alphabet but fall within the bounds of the array are translated to -1.
+     * &lt;p&gt;
+     * Note: '+' and '-' both decode to 62. '/' and '_' both decode to 63. This means decoder seamlessly handles both
+     * URL_SAFE and STANDARD base64. (The encoder, on the other hand, needs to know ahead of time what to emit).
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Thanks to &quot;commons&quot; project in ws.apache.org for this code.
+     * https://svn.apache.org/repos/asf/webservices/commons/trunk/modules/util/
+     * &lt;/p&gt;
+     */
+<span class="fc" id="L156">    private static final byte[] DECODE_TABLE = {</span>
+        //   0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 00-0f
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 10-1f
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, 62, -1, 63, // 20-2f + - /
+            52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, // 30-3f 0-9
+            -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, // 40-4f A-O
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, 63, // 50-5f P-Z _
+            -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, // 60-6f a-o
+            41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51                      // 70-7a p-z
+    };
+
+    /**
+     * Base64 uses 6-bit fields.
+     */
+    /** Mask used to extract 6 bits, used when encoding */
+    private static final int MASK_6BITS = 0x3f;
+
+    // The static final fields above are used for the original static byte[] methods on Base64.
+    // The private member fields below are used with the new streaming approach, which requires
+    // some state be preserved between calls of encode() and decode().
+
+    /** Mask used to extract 4 bits, used when decoding final trailing character. */
+    private static final int MASK_4BITS = 0xf;
+    /** Mask used to extract 2 bits, used when decoding final trailing character. */
+    private static final int MASK_2BITS = 0x3;
+
+    /**
+     * Creates a new Builder.
+     *
+     * @return a new Builder.
+     * @since 1.17.0
+     */
+    public static Builder builder() {
+<span class="fc" id="L190">        return new Builder();</span>
+    }
+
+    /**
+     * Decodes Base64 data into octets.
+     * &lt;p&gt;
+     * &lt;b&gt;Note:&lt;/b&gt; this method seamlessly handles data encoded in URL-safe or normal mode.
+     * &lt;/p&gt;
+     *
+     * @param base64Data
+     *            Byte array containing Base64 data
+     * @return Array containing decoded data.
+     */
+    public static byte[] decodeBase64(final byte[] base64Data) {
+<span class="fc" id="L204">        return new Base64().decode(base64Data);</span>
+    }
+
+    /**
+     * Decodes a Base64 String into octets.
+     * &lt;p&gt;
+     * &lt;b&gt;Note:&lt;/b&gt; this method seamlessly handles data encoded in URL-safe or normal mode.
+     * &lt;/p&gt;
+     *
+     * @param base64String
+     *            String containing Base64 data
+     * @return Array containing decoded data.
+     * @since 1.4
+     */
+    public static byte[] decodeBase64(final String base64String) {
+<span class="fc" id="L219">        return new Base64().decode(base64String);</span>
+    }
+
+    /**
+     * Decodes a byte64-encoded integer according to crypto standards such as W3C's XML-Signature.
+     *
+     * @param pArray
+     *            a byte array containing base64 character data
+     * @return A BigInteger
+     * @since 1.4
+     */
+    public static BigInteger decodeInteger(final byte[] pArray) {
+<span class="fc" id="L231">        return new BigInteger(1, decodeBase64(pArray));</span>
+    }
+
+    /**
+     * Encodes binary data using the base64 algorithm but does not chunk the output.
+     *
+     * @param binaryData
+     *            binary data to encode
+     * @return byte[] containing Base64 characters in their UTF-8 representation.
+     */
+    public static byte[] encodeBase64(final byte[] binaryData) {
+<span class="fc" id="L242">        return encodeBase64(binaryData, false);</span>
+    }
+
+    /**
+     * Encodes binary data using the base64 algorithm, optionally chunking the output into 76 character blocks.
+     *
+     * @param binaryData
+     *            Array containing binary data to encode.
+     * @param isChunked
+     *            if {@code true} this encoder will chunk the base64 output into 76 character blocks
+     * @return Base64-encoded data.
+     * @throws IllegalArgumentException
+     *             Thrown when the input array needs an output array bigger than {@link Integer#MAX_VALUE}
+     */
+    public static byte[] encodeBase64(final byte[] binaryData, final boolean isChunked) {
+<span class="fc" id="L257">        return encodeBase64(binaryData, isChunked, false);</span>
+    }
+
+    /**
+     * Encodes binary data using the base64 algorithm, optionally chunking the output into 76 character blocks.
+     *
+     * @param binaryData
+     *            Array containing binary data to encode.
+     * @param isChunked
+     *            if {@code true} this encoder will chunk the base64 output into 76 character blocks
+     * @param urlSafe
+     *            if {@code true} this encoder will emit - and _ instead of the usual + and / characters.
+     *            &lt;b&gt;Note: no padding is added when encoding using the URL-safe alphabet.&lt;/b&gt;
+     * @return Base64-encoded data.
+     * @throws IllegalArgumentException
+     *             Thrown when the input array needs an output array bigger than {@link Integer#MAX_VALUE}
+     * @since 1.4
+     */
+    public static byte[] encodeBase64(final byte[] binaryData, final boolean isChunked, final boolean urlSafe) {
+<span class="fc" id="L276">        return encodeBase64(binaryData, isChunked, urlSafe, Integer.MAX_VALUE);</span>
+    }
+
+    /**
+     * Encodes binary data using the base64 algorithm, optionally chunking the output into 76 character blocks.
+     *
+     * @param binaryData
+     *            Array containing binary data to encode.
+     * @param isChunked
+     *            if {@code true} this encoder will chunk the base64 output into 76 character blocks
+     * @param urlSafe
+     *            if {@code true} this encoder will emit - and _ instead of the usual + and / characters.
+     *            &lt;b&gt;Note: no padding is added when encoding using the URL-safe alphabet.&lt;/b&gt;
+     * @param maxResultSize
+     *            The maximum result size to accept.
+     * @return Base64-encoded data.
+     * @throws IllegalArgumentException
+     *             Thrown when the input array needs an output array bigger than maxResultSize
+     * @since 1.4
+     */
+    public static byte[] encodeBase64(final byte[] binaryData, final boolean isChunked,
+                                      final boolean urlSafe, final int maxResultSize) {
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        if (BinaryCodec.isEmpty(binaryData)) {</span>
+<span class="fc" id="L299">            return binaryData;</span>
+        }
+        // Create this so can use the super-class method
+        // Also ensures that the same roundings are performed by the ctor and the code
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        final Base64 b64 = isChunked ? new Base64(urlSafe) : new Base64(0, CHUNK_SEPARATOR, urlSafe);</span>
+<span class="fc" id="L304">        final long len = b64.getEncodedLength(binaryData);</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        if (len &gt; maxResultSize) {</span>
+<span class="fc" id="L306">            throw new IllegalArgumentException(&quot;Input array too big, the output array would be bigger (&quot; +</span>
+                len +
+                &quot;) than the specified maximum size of &quot; +
+                maxResultSize);
+        }
+<span class="fc" id="L311">        return b64.encode(binaryData);</span>
+    }
+
+    /**
+     * Encodes binary data using the base64 algorithm and chunks the encoded output into 76 character blocks
+     *
+     * @param binaryData
+     *            binary data to encode
+     * @return Base64 characters chunked in 76 character blocks
+     */
+    public static byte[] encodeBase64Chunked(final byte[] binaryData) {
+<span class="fc" id="L322">        return encodeBase64(binaryData, true);</span>
+    }
+
+    /**
+     * Encodes binary data using the base64 algorithm but does not chunk the output.
+     *
+     * NOTE:  We changed the behavior of this method from multi-line chunking (commons-codec-1.4) to
+     * single-line non-chunking (commons-codec-1.5).
+     *
+     * @param binaryData
+     *            binary data to encode
+     * @return String containing Base64 characters.
+     * @since 1.4 (NOTE:  1.4 chunked the output, whereas 1.5 does not).
+     */
+    public static String encodeBase64String(final byte[] binaryData) {
+<span class="fc" id="L337">        return StringUtils.newStringUsAscii(encodeBase64(binaryData, false));</span>
+    }
+
+    /**
+     * Encodes binary data using a URL-safe variation of the base64 algorithm but does not chunk the output. The
+     * url-safe variation emits - and _ instead of + and / characters.
+     * &lt;b&gt;Note: no padding is added.&lt;/b&gt;
+     * @param binaryData
+     *            binary data to encode
+     * @return byte[] containing Base64 characters in their UTF-8 representation.
+     * @since 1.4
+     */
+    public static byte[] encodeBase64URLSafe(final byte[] binaryData) {
+<span class="fc" id="L350">        return encodeBase64(binaryData, false, true);</span>
+    }
+
+    /**
+     * Encodes binary data using a URL-safe variation of the base64 algorithm but does not chunk the output. The
+     * url-safe variation emits - and _ instead of + and / characters.
+     * &lt;b&gt;Note: no padding is added.&lt;/b&gt;
+     * @param binaryData
+     *            binary data to encode
+     * @return String containing Base64 characters
+     * @since 1.4
+     */
+    public static String encodeBase64URLSafeString(final byte[] binaryData) {
+<span class="fc" id="L363">        return StringUtils.newStringUsAscii(encodeBase64(binaryData, false, true));</span>
+    }
+
+    /**
+     * Encodes to a byte64-encoded integer according to crypto standards such as W3C's XML-Signature.
+     *
+     * @param bigInteger
+     *            a BigInteger
+     * @return A byte array containing base64 character data
+     * @throws NullPointerException
+     *             if null is passed in
+     * @since 1.4
+     */
+    public static byte[] encodeInteger(final BigInteger bigInteger) {
+<span class="fc" id="L377">        Objects.requireNonNull(bigInteger, &quot;bigInteger&quot;);</span>
+<span class="fc" id="L378">        return encodeBase64(toIntegerBytes(bigInteger), false);</span>
+    }
+
+    /**
+     * Tests a given byte array to see if it contains only valid characters within the Base64 alphabet. Currently the
+     * method treats whitespace as valid.
+     *
+     * @param arrayOctet
+     *            byte array to test
+     * @return {@code true} if all bytes are valid characters in the Base64 alphabet or if the byte array is empty;
+     *         {@code false}, otherwise
+     * @deprecated 1.5 Use {@link #isBase64(byte[])}, will be removed in 2.0.
+     */
+    @Deprecated
+    public static boolean isArrayByteBase64(final byte[] arrayOctet) {
+<span class="nc" id="L393">        return isBase64(arrayOctet);</span>
+    }
+
+    /**
+     * Returns whether or not the {@code octet} is in the base 64 alphabet.
+     *
+     * @param octet
+     *            The value to test
+     * @return {@code true} if the value is defined in the base 64 alphabet, {@code false} otherwise.
+     * @since 1.4
+     */
+    public static boolean isBase64(final byte octet) {
+<span class="fc bfc" id="L405" title="All 8 branches covered.">        return octet == PAD_DEFAULT || octet &gt;= 0 &amp;&amp; octet &lt; DECODE_TABLE.length &amp;&amp; DECODE_TABLE[octet] != -1;</span>
+    }
+
+    /**
+     * Tests a given byte array to see if it contains only valid characters within the Base64 alphabet. Currently the
+     * method treats whitespace as valid.
+     *
+     * @param arrayOctet
+     *            byte array to test
+     * @return {@code true} if all bytes are valid characters in the Base64 alphabet or if the byte array is empty;
+     *         {@code false}, otherwise
+     * @since 1.5
+     */
+    public static boolean isBase64(final byte[] arrayOctet) {
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        for (final byte element : arrayOctet) {</span>
+<span class="fc bfc" id="L420" title="All 4 branches covered.">            if (!isBase64(element) &amp;&amp; !Character.isWhitespace(element)) {</span>
+<span class="fc" id="L421">                return false;</span>
+            }
+        }
+<span class="fc" id="L424">        return true;</span>
+    }
+
+    /**
+     * Tests a given String to see if it contains only valid characters within the Base64 alphabet. Currently the
+     * method treats whitespace as valid.
+     *
+     * @param base64
+     *            String to test
+     * @return {@code true} if all characters in the String are valid characters in the Base64 alphabet or if
+     *         the String is empty; {@code false}, otherwise
+     *  @since 1.5
+     */
+    public static boolean isBase64(final String base64) {
+<span class="fc" id="L438">        return isBase64(StringUtils.getBytesUtf8(base64));</span>
+    }
+
+    /**
+     * Returns a byte-array representation of a {@code BigInteger} without sign bit.
+     *
+     * @param bigInt
+     *            {@code BigInteger} to be converted
+     * @return a byte array representation of the BigInteger parameter
+     */
+    static byte[] toIntegerBytes(final BigInteger bigInt) {
+<span class="fc" id="L449">        int bitlen = bigInt.bitLength();</span>
+        // round bitlen
+<span class="fc" id="L451">        bitlen = bitlen + 7 &gt;&gt; 3 &lt;&lt; 3;</span>
+<span class="fc" id="L452">        final byte[] bigBytes = bigInt.toByteArray();</span>
+
+<span class="pc bpc" id="L454" title="1 of 4 branches missed.">        if (bigInt.bitLength() % 8 != 0 &amp;&amp; bigInt.bitLength() / 8 + 1 == bitlen / 8) {</span>
+<span class="fc" id="L455">            return bigBytes;</span>
+        }
+        // set up params for copying everything but sign bit
+<span class="fc" id="L458">        int startSrc = 0;</span>
+<span class="fc" id="L459">        int len = bigBytes.length;</span>
+
+        // if bigInt is exactly byte-aligned, just skip signbit in copy
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">        if (bigInt.bitLength() % 8 == 0) {</span>
+<span class="fc" id="L463">            startSrc = 1;</span>
+<span class="fc" id="L464">            len--;</span>
+        }
+<span class="fc" id="L466">        final int startDst = bitlen / 8 - len; // to pad w/ nulls as per spec</span>
+<span class="fc" id="L467">        final byte[] resizedBytes = new byte[bitlen / 8];</span>
+<span class="fc" id="L468">        System.arraycopy(bigBytes, startSrc, resizedBytes, startDst, len);</span>
+<span class="fc" id="L469">        return resizedBytes;</span>
+    }
+
+    private static byte[] toUrlSafeEncodeTable(final boolean urlSafe) {
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        return urlSafe ? URL_SAFE_ENCODE_TABLE : STANDARD_ENCODE_TABLE;</span>
+    }
+
+    /**
+     * Encode table to use: either STANDARD or URL_SAFE or custom.
+     * Note: the DECODE_TABLE above remains static because it is able
+     * to decode both STANDARD and URL_SAFE streams, but the encodeTable must be a member variable so we can switch
+     * between the two modes.
+     */
+    private final byte[] encodeTable;
+
+    /**
+     * Decode table to use.
+     */
+    private final byte[] decodeTable;
+
+    /**
+     * Line separator for encoding. Not used when decoding. Only used if lineLength &amp;gt; 0.
+     */
+    private final byte[] lineSeparator;
+
+    /**
+     * Convenience variable to help us determine when our buffer is going to run out of room and needs resizing.
+     * {@code encodeSize = 4 + lineSeparator.length;}
+     */
+    private final int encodeSize;
+
+    private final boolean isUrlSafe;
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in URL-unsafe mode.
+     * &lt;p&gt;
+     * When encoding the line length is 0 (no chunking), and the encoding table is STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     */
+    public Base64() {
+<span class="fc" id="L512">        this(0);</span>
+<span class="fc" id="L513">    }</span>
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in the given URL-safe mode.
+     * &lt;p&gt;
+     * When encoding the line length is 76, the line separator is CRLF, and the encoding table is STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     *
+     * @param urlSafe
+     *            if {@code true}, URL-safe encoding is used. In most cases this should be set to
+     *            {@code false}.
+     * @since 1.4
+     */
+    public Base64(final boolean urlSafe) {
+<span class="fc" id="L530">        this(MIME_CHUNK_SIZE, CHUNK_SEPARATOR, urlSafe);</span>
+<span class="fc" id="L531">    }</span>
+
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in URL-unsafe mode.
+     * &lt;p&gt;
+     * When encoding the line length is given in the constructor, the line separator is CRLF, and the encoding table is
+     * STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Line lengths that aren't multiples of 4 will still essentially end up being multiples of 4 in the encoded data.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     *
+     * @param lineLength
+     *            Each line of encoded data will be at most of the given length (rounded down to the nearest multiple of
+     *            4). If lineLength &amp;lt;= 0, then the output will not be divided into lines (chunks). Ignored when
+     *            decoding.
+     * @since 1.4
+     */
+    public Base64(final int lineLength) {
+<span class="fc" id="L554">        this(lineLength, CHUNK_SEPARATOR);</span>
+<span class="fc" id="L555">    }</span>
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in URL-unsafe mode.
+     * &lt;p&gt;
+     * When encoding the line length and line separator are given in the constructor, and the encoding table is
+     * STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Line lengths that aren't multiples of 4 will still essentially end up being multiples of 4 in the encoded data.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     *
+     * @param lineLength
+     *            Each line of encoded data will be at most of the given length (rounded down to the nearest multiple of
+     *            4). If lineLength &amp;lt;= 0, then the output will not be divided into lines (chunks). Ignored when
+     *            decoding.
+     * @param lineSeparator
+     *            Each line of encoded data will end with this sequence of bytes.
+     * @throws IllegalArgumentException
+     *             Thrown when the provided lineSeparator included some base64 characters.
+     * @since 1.4
+     */
+    public Base64(final int lineLength, final byte[] lineSeparator) {
+<span class="fc" id="L581">        this(lineLength, lineSeparator, false);</span>
+<span class="fc" id="L582">    }</span>
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in URL-unsafe mode.
+     * &lt;p&gt;
+     * When encoding the line length and line separator are given in the constructor, and the encoding table is
+     * STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Line lengths that aren't multiples of 4 will still essentially end up being multiples of 4 in the encoded data.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     *
+     * @param lineLength
+     *            Each line of encoded data will be at most of the given length (rounded down to the nearest multiple of
+     *            4). If lineLength &amp;lt;= 0, then the output will not be divided into lines (chunks). Ignored when
+     *            decoding.
+     * @param lineSeparator
+     *            Each line of encoded data will end with this sequence of bytes.
+     * @param urlSafe
+     *            Instead of emitting '+' and '/' we emit '-' and '_' respectively. urlSafe is only applied to encode
+     *            operations. Decoding seamlessly handles both modes.
+     *            &lt;b&gt;Note: no padding is added when using the URL-safe alphabet.&lt;/b&gt;
+     * @throws IllegalArgumentException
+     *             Thrown when the {@code lineSeparator} contains Base64 characters.
+     * @since 1.4
+     */
+    public Base64(final int lineLength, final byte[] lineSeparator, final boolean urlSafe) {
+<span class="fc" id="L612">        this(lineLength, lineSeparator, PAD_DEFAULT, toUrlSafeEncodeTable(urlSafe), DECODING_POLICY_DEFAULT);</span>
+<span class="fc" id="L613">    }</span>
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in URL-unsafe mode.
+     * &lt;p&gt;
+     * When encoding the line length and line separator are given in the constructor, and the encoding table is
+     * STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Line lengths that aren't multiples of 4 will still essentially end up being multiples of 4 in the encoded data.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     *
+     * @param lineLength
+     *            Each line of encoded data will be at most of the given length (rounded down to the nearest multiple of
+     *            4). If lineLength &amp;lt;= 0, then the output will not be divided into lines (chunks). Ignored when
+     *            decoding.
+     * @param lineSeparator
+     *            Each line of encoded data will end with this sequence of bytes.
+     * @param urlSafe
+     *            Instead of emitting '+' and '/' we emit '-' and '_' respectively. urlSafe is only applied to encode
+     *            operations. Decoding seamlessly handles both modes.
+     *            &lt;b&gt;Note: no padding is added when using the URL-safe alphabet.&lt;/b&gt;
+     * @param decodingPolicy The decoding policy.
+     * @throws IllegalArgumentException
+     *             Thrown when the {@code lineSeparator} contains Base64 characters.
+     * @since 1.15
+     */
+    public Base64(final int lineLength, final byte[] lineSeparator, final boolean urlSafe, final CodecPolicy decodingPolicy) {
+<span class="fc" id="L644">        this(lineLength, lineSeparator, PAD_DEFAULT, toUrlSafeEncodeTable(urlSafe), decodingPolicy);</span>
+<span class="fc" id="L645">    }</span>
+
+    /**
+     * Constructs a Base64 codec used for decoding (all modes) and encoding in URL-unsafe mode.
+     * &lt;p&gt;
+     * When encoding the line length and line separator are given in the constructor, and the encoding table is STANDARD_ENCODE_TABLE.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Line lengths that aren't multiples of 4 will still essentially end up being multiples of 4 in the encoded data.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * When decoding all variants are supported.
+     * &lt;/p&gt;
+     *
+     * @param lineLength     Each line of encoded data will be at most of the given length (rounded down to the nearest multiple of 4). If lineLength &amp;lt;= 0,
+     *                       then the output will not be divided into lines (chunks). Ignored when decoding.
+     * @param lineSeparator  Each line of encoded data will end with this sequence of bytes; the constructor makes a defensive copy. May be null.
+     * @param padding        padding byte.
+     * @param encodeTable    The manual encodeTable - a byte array of 64 chars.
+     * @param decodingPolicy The decoding policy.
+     * @throws IllegalArgumentException Thrown when the {@code lineSeparator} contains Base64 characters.
+     */
+    private Base64(final int lineLength, final byte[] lineSeparator, final byte padding, final byte[] encodeTable, final CodecPolicy decodingPolicy) {
+<span class="fc" id="L668">        super(BYTES_PER_UNENCODED_BLOCK, BYTES_PER_ENCODED_BLOCK, lineLength, toLength(lineSeparator), padding, decodingPolicy);</span>
+<span class="fc" id="L669">        Objects.requireNonNull(encodeTable, &quot;encodeTable&quot;);</span>
+<span class="fc bfc" id="L670" title="All 2 branches covered.">        if (encodeTable.length != ALPHABET_LENGTH) {</span>
+<span class="fc" id="L671">            throw new IllegalArgumentException(&quot;encodeTable must have exactly 64 entries.&quot;);</span>
+        }
+<span class="fc bfc" id="L673" title="All 2 branches covered.">        this.isUrlSafe = encodeTable == URL_SAFE_ENCODE_TABLE;</span>
+<span class="fc bfc" id="L674" title="All 4 branches covered.">        if (encodeTable == STANDARD_ENCODE_TABLE || this.isUrlSafe) {</span>
+<span class="fc" id="L675">            decodeTable = DECODE_TABLE;</span>
+            // No need of a defensive copy of an internal table.
+<span class="fc" id="L677">            this.encodeTable = encodeTable;</span>
+        } else {
+<span class="fc" id="L679">            this.encodeTable = encodeTable.clone();</span>
+<span class="fc" id="L680">            this.decodeTable = calculateDecodeTable(this.encodeTable);</span>
+        }
+        // TODO could be simplified if there is no requirement to reject invalid line sep when length &lt;=0
+        // @see test case Base64Test.testConstructors()
+<span class="fc bfc" id="L684" title="All 2 branches covered.">        if (lineSeparator != null) {</span>
+<span class="fc" id="L685">            final byte[] lineSeparatorCopy = lineSeparator.clone();</span>
+<span class="fc bfc" id="L686" title="All 2 branches covered.">            if (containsAlphabetOrPad(lineSeparatorCopy)) {</span>
+<span class="fc" id="L687">                final String sep = StringUtils.newStringUtf8(lineSeparatorCopy);</span>
+<span class="fc" id="L688">                throw new IllegalArgumentException(&quot;lineSeparator must not contain base64 characters: [&quot; + sep + &quot;]&quot;);</span>
+            }
+<span class="fc bfc" id="L690" title="All 2 branches covered.">            if (lineLength &gt; 0) { // null line-sep forces no chunking rather than throwing IAE</span>
+<span class="fc" id="L691">                this.encodeSize = BYTES_PER_ENCODED_BLOCK + lineSeparatorCopy.length;</span>
+<span class="fc" id="L692">                this.lineSeparator = lineSeparatorCopy;</span>
+            } else {
+<span class="fc" id="L694">                this.encodeSize = BYTES_PER_ENCODED_BLOCK;</span>
+<span class="fc" id="L695">                this.lineSeparator = null;</span>
+            }
+<span class="fc" id="L697">        } else {</span>
+<span class="fc" id="L698">            this.encodeSize = BYTES_PER_ENCODED_BLOCK;</span>
+<span class="fc" id="L699">            this.lineSeparator = null;</span>
+        }
+<span class="fc" id="L701">    }</span>
+
+    /**
+     * Calculates a decode table for a given encode table.
+     *
+     * @param encodeTable that is used to determine decode lookup table
+     * @return decodeTable
+     */
+    private byte[] calculateDecodeTable(final byte[] encodeTable) {
+<span class="fc" id="L710">        final byte[] decodeTable = new byte[DECODING_TABLE_LENGTH];</span>
+<span class="fc" id="L711">        Arrays.fill(decodeTable, (byte) -1);</span>
+<span class="fc bfc" id="L712" title="All 2 branches covered.">        for (int i = 0; i &lt; encodeTable.length; i++) {</span>
+<span class="fc" id="L713">            decodeTable[encodeTable[i]] = (byte) i;</span>
+        }
+<span class="fc" id="L715">        return decodeTable;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Decodes all of the provided data, starting at inPos, for inAvail bytes. Should be called at least twice: once
+     * with the data to decode, and once with inAvail set to &quot;-1&quot; to alert decoder that EOF has been reached. The &quot;-1&quot;
+     * call is not necessary when decoding, but it doesn't hurt, either.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Ignores all non-base64 characters. This is how chunked (e.g. 76 character) data is handled, since CR and LF are
+     * silently ignored, but has implications for other bytes, too. This method subscribes to the garbage-in,
+     * garbage-out philosophy: it will not check the provided data for validity.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Thanks to &quot;commons&quot; project in ws.apache.org for the bitwise operations, and general approach.
+     * https://svn.apache.org/repos/asf/webservices/commons/trunk/modules/util/
+     * &lt;/p&gt;
+     *
+     * @param input
+     *            byte[] array of ASCII data to base64 decode.
+     * @param inPos
+     *            Position to start reading data from.
+     * @param inAvail
+     *            Amount of bytes available from input for decoding.
+     * @param context
+     *            the context to be used
+     */
+    @Override
+    void decode(final byte[] input, int inPos, final int inAvail, final Context context) {
+<span class="fc bfc" id="L745" title="All 2 branches covered.">        if (context.eof) {</span>
+<span class="fc" id="L746">            return;</span>
+        }
+<span class="fc bfc" id="L748" title="All 2 branches covered.">        if (inAvail &lt; 0) {</span>
+<span class="fc" id="L749">            context.eof = true;</span>
+        }
+<span class="fc" id="L751">        final int decodeSize = this.encodeSize - 1;</span>
+<span class="fc bfc" id="L752" title="All 2 branches covered.">        for (int i = 0; i &lt; inAvail; i++) {</span>
+<span class="fc" id="L753">            final byte[] buffer = ensureBufferSize(decodeSize, context);</span>
+<span class="fc" id="L754">            final byte b = input[inPos++];</span>
+<span class="fc bfc" id="L755" title="All 2 branches covered.">            if (b == pad) {</span>
+                // We're done.
+<span class="fc" id="L757">                context.eof = true;</span>
+<span class="fc" id="L758">                break;</span>
+            }
+<span class="fc bfc" id="L760" title="All 4 branches covered.">            if (b &gt;= 0 &amp;&amp; b &lt; decodeTable.length) {</span>
+<span class="fc" id="L761">                final int result = decodeTable[b];</span>
+<span class="fc bfc" id="L762" title="All 2 branches covered.">                if (result &gt;= 0) {</span>
+<span class="fc" id="L763">                    context.modulus = (context.modulus + 1) % BYTES_PER_ENCODED_BLOCK;</span>
+<span class="fc" id="L764">                    context.ibitWorkArea = (context.ibitWorkArea &lt;&lt; BITS_PER_ENCODED_BYTE) + result;</span>
+<span class="fc bfc" id="L765" title="All 2 branches covered.">                    if (context.modulus == 0) {</span>
+<span class="fc" id="L766">                        buffer[context.pos++] = (byte) (context.ibitWorkArea &gt;&gt; 16 &amp; MASK_8BITS);</span>
+<span class="fc" id="L767">                        buffer[context.pos++] = (byte) (context.ibitWorkArea &gt;&gt; 8 &amp; MASK_8BITS);</span>
+<span class="fc" id="L768">                        buffer[context.pos++] = (byte) (context.ibitWorkArea &amp; MASK_8BITS);</span>
+                    }
+                }
+            }
+        }
+
+        // Two forms of EOF as far as base64 decoder is concerned: actual
+        // EOF (-1) and first time '=' character is encountered in stream.
+        // This approach makes the '=' padding characters completely optional.
+<span class="fc bfc" id="L777" title="All 4 branches covered.">        if (context.eof &amp;&amp; context.modulus != 0) {</span>
+<span class="fc" id="L778">            final byte[] buffer = ensureBufferSize(decodeSize, context);</span>
+
+            // We have some spare bits remaining
+            // Output all whole multiples of 8 bits and ignore the rest
+<span class="pc bpc" id="L782" title="1 of 4 branches missed.">            switch (context.modulus) {</span>
+//              case 0 : // impossible, as excluded above
+                case 1 : // 6 bits - either ignore entirely, or raise an exception
+<span class="fc" id="L785">                    validateTrailingCharacter();</span>
+<span class="fc" id="L786">                    break;</span>
+                case 2 : // 12 bits = 8 + 4
+<span class="fc" id="L788">                    validateCharacter(MASK_4BITS, context);</span>
+<span class="fc" id="L789">                    context.ibitWorkArea = context.ibitWorkArea &gt;&gt; 4; // dump the extra 4 bits</span>
+<span class="fc" id="L790">                    buffer[context.pos++] = (byte) (context.ibitWorkArea &amp; MASK_8BITS);</span>
+<span class="fc" id="L791">                    break;</span>
+                case 3 : // 18 bits = 8 + 8 + 2
+<span class="fc" id="L793">                    validateCharacter(MASK_2BITS, context);</span>
+<span class="fc" id="L794">                    context.ibitWorkArea = context.ibitWorkArea &gt;&gt; 2; // dump 2 bits</span>
+<span class="fc" id="L795">                    buffer[context.pos++] = (byte) (context.ibitWorkArea &gt;&gt; 8 &amp; MASK_8BITS);</span>
+<span class="fc" id="L796">                    buffer[context.pos++] = (byte) (context.ibitWorkArea &amp; MASK_8BITS);</span>
+<span class="fc" id="L797">                    break;</span>
+                default:
+<span class="nc" id="L799">                    throw new IllegalStateException(&quot;Impossible modulus &quot; + context.modulus);</span>
+            }
+        }
+<span class="fc" id="L802">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Encodes all of the provided data, starting at inPos, for inAvail bytes. Must be called at least twice: once with
+     * the data to encode, and once with inAvail set to &quot;-1&quot; to alert encoder that EOF has been reached, to flush last
+     * remaining bytes (if not multiple of 3).
+     * &lt;/p&gt;
+     * &lt;p&gt;&lt;b&gt;Note: no padding is added when encoding using the URL-safe alphabet.&lt;/b&gt;&lt;/p&gt;
+     * &lt;p&gt;
+     * Thanks to &quot;commons&quot; project in ws.apache.org for the bitwise operations, and general approach.
+     * https://svn.apache.org/repos/asf/webservices/commons/trunk/modules/util/
+     * &lt;/p&gt;
+     *
+     * @param in
+     *            byte[] array of binary data to base64 encode.
+     * @param inPos
+     *            Position to start reading data from.
+     * @param inAvail
+     *            Amount of bytes available from input for encoding.
+     * @param context
+     *            the context to be used
+     */
+    @Override
+    void encode(final byte[] in, int inPos, final int inAvail, final Context context) {
+<span class="fc bfc" id="L827" title="All 2 branches covered.">        if (context.eof) {</span>
+<span class="fc" id="L828">            return;</span>
+        }
+        // inAvail &lt; 0 is how we're informed of EOF in the underlying data we're
+        // encoding.
+<span class="fc bfc" id="L832" title="All 2 branches covered.">        if (inAvail &lt; 0) {</span>
+<span class="fc" id="L833">            context.eof = true;</span>
+<span class="fc bfc" id="L834" title="All 4 branches covered.">            if (0 == context.modulus &amp;&amp; lineLength == 0) {</span>
+<span class="fc" id="L835">                return; // no leftovers to process and not using chunking</span>
+            }
+<span class="fc" id="L837">            final byte[] buffer = ensureBufferSize(encodeSize, context);</span>
+<span class="fc" id="L838">            final int savedPos = context.pos;</span>
+<span class="pc bpc" id="L839" title="1 of 4 branches missed.">            switch (context.modulus) { // 0-2</span>
+                case 0 : // nothing to do here
+<span class="fc" id="L841">                    break;</span>
+                case 1 : // 8 bits = 6 + 2
+                    // top 6 bits:
+<span class="fc" id="L844">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &gt;&gt; 2 &amp; MASK_6BITS];</span>
+                    // remaining 2:
+<span class="fc" id="L846">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &lt;&lt; 4 &amp; MASK_6BITS];</span>
+                    // URL-SAFE skips the padding to further reduce size.
+<span class="fc bfc" id="L848" title="All 2 branches covered.">                    if (encodeTable == STANDARD_ENCODE_TABLE) {</span>
+<span class="fc" id="L849">                        buffer[context.pos++] = pad;</span>
+<span class="fc" id="L850">                        buffer[context.pos++] = pad;</span>
+                    }
+                    break;
+
+                case 2 : // 16 bits = 6 + 6 + 4
+<span class="fc" id="L855">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &gt;&gt; 10 &amp; MASK_6BITS];</span>
+<span class="fc" id="L856">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &gt;&gt; 4 &amp; MASK_6BITS];</span>
+<span class="fc" id="L857">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &lt;&lt; 2 &amp; MASK_6BITS];</span>
+                    // URL-SAFE skips the padding to further reduce size.
+<span class="fc bfc" id="L859" title="All 2 branches covered.">                    if (encodeTable == STANDARD_ENCODE_TABLE) {</span>
+<span class="fc" id="L860">                        buffer[context.pos++] = pad;</span>
+                    }
+                    break;
+                default:
+<span class="nc" id="L864">                    throw new IllegalStateException(&quot;Impossible modulus &quot; + context.modulus);</span>
+            }
+<span class="fc" id="L866">            context.currentLinePos += context.pos - savedPos; // keep track of current line position</span>
+            // if currentPos == 0 we are at the start of a line, so don't add CRLF
+<span class="fc bfc" id="L868" title="All 4 branches covered.">            if (lineLength &gt; 0 &amp;&amp; context.currentLinePos &gt; 0) {</span>
+<span class="fc" id="L869">                System.arraycopy(lineSeparator, 0, buffer, context.pos, lineSeparator.length);</span>
+<span class="fc" id="L870">                context.pos += lineSeparator.length;</span>
+            }
+<span class="fc" id="L872">        } else {</span>
+<span class="fc bfc" id="L873" title="All 2 branches covered.">            for (int i = 0; i &lt; inAvail; i++) {</span>
+<span class="fc" id="L874">                final byte[] buffer = ensureBufferSize(encodeSize, context);</span>
+<span class="fc" id="L875">                context.modulus = (context.modulus + 1) % BYTES_PER_UNENCODED_BLOCK;</span>
+<span class="fc" id="L876">                int b = in[inPos++];</span>
+<span class="fc bfc" id="L877" title="All 2 branches covered.">                if (b &lt; 0) {</span>
+<span class="fc" id="L878">                    b += 256;</span>
+                }
+<span class="fc" id="L880">                context.ibitWorkArea = (context.ibitWorkArea &lt;&lt; 8) + b; // BITS_PER_BYTE</span>
+<span class="fc bfc" id="L881" title="All 2 branches covered.">                if (0 == context.modulus) { // 3 bytes = 24 bits = 4 * 6 bits to extract</span>
+<span class="fc" id="L882">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &gt;&gt; 18 &amp; MASK_6BITS];</span>
+<span class="fc" id="L883">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &gt;&gt; 12 &amp; MASK_6BITS];</span>
+<span class="fc" id="L884">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &gt;&gt; 6 &amp; MASK_6BITS];</span>
+<span class="fc" id="L885">                    buffer[context.pos++] = encodeTable[context.ibitWorkArea &amp; MASK_6BITS];</span>
+<span class="fc" id="L886">                    context.currentLinePos += BYTES_PER_ENCODED_BLOCK;</span>
+<span class="fc bfc" id="L887" title="All 4 branches covered.">                    if (lineLength &gt; 0 &amp;&amp; lineLength &lt;= context.currentLinePos) {</span>
+<span class="fc" id="L888">                        System.arraycopy(lineSeparator, 0, buffer, context.pos, lineSeparator.length);</span>
+<span class="fc" id="L889">                        context.pos += lineSeparator.length;</span>
+<span class="fc" id="L890">                        context.currentLinePos = 0;</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L895">    }</span>
+
+    /**
+     * Gets the line separator (for testing only).
+     *
+     * @return the line separator.
+     */
+    byte[] getLineSeparator() {
+<span class="fc" id="L903">        return lineSeparator;</span>
+    }
+
+    /**
+     * Returns whether or not the {@code octet} is in the Base64 alphabet.
+     *
+     * @param octet
+     *            The value to test
+     * @return {@code true} if the value is defined in the Base64 alphabet {@code false} otherwise.
+     */
+    @Override
+    protected boolean isInAlphabet(final byte octet) {
+<span class="pc bpc" id="L915" title="2 of 6 branches missed.">        return octet &gt;= 0 &amp;&amp; octet &lt; decodeTable.length &amp;&amp; decodeTable[octet] != -1;</span>
+    }
+
+    /**
+     * Returns our current encode mode. True if we're URL-safe, false otherwise.
+     *
+     * @return true if we're in URL-safe mode, false otherwise.
+     * @since 1.4
+     */
+    public boolean isUrlSafe() {
+<span class="fc" id="L925">        return isUrlSafe;</span>
+    }
+
+    /**
+     * Validates whether decoding the final trailing character is possible in the context
+     * of the set of possible base 64 values.
+     * &lt;p&gt;
+     * The character is valid if the lower bits within the provided mask are zero. This
+     * is used to test the final trailing base-64 digit is zero in the bits that will be discarded.
+     * &lt;/p&gt;
+     *
+     * @param emptyBitsMask The mask of the lower bits that should be empty
+     * @param context the context to be used
+     *
+     * @throws IllegalArgumentException if the bits being checked contain any non-zero value
+     */
+    private void validateCharacter(final int emptyBitsMask, final Context context) {
+<span class="fc bfc" id="L942" title="All 4 branches covered.">        if (isStrictDecoding() &amp;&amp; (context.ibitWorkArea &amp; emptyBitsMask) != 0) {</span>
+<span class="fc" id="L943">            throw new IllegalArgumentException(</span>
+                &quot;Strict decoding: Last encoded character (before the paddings if any) is a valid &quot; +
+                &quot;base 64 alphabet but not a possible encoding. &quot; +
+                &quot;Expected the discarded bits from the character to be zero.&quot;);
+        }
+<span class="fc" id="L948">    }</span>
+
+    /**
+     * Validates whether decoding allows an entire final trailing character that cannot be
+     * used for a complete byte.
+     *
+     * @throws IllegalArgumentException if strict decoding is enabled
+     */
+    private void validateTrailingCharacter() {
+<span class="fc bfc" id="L957" title="All 2 branches covered.">        if (isStrictDecoding()) {</span>
+<span class="fc" id="L958">            throw new IllegalArgumentException(</span>
+                &quot;Strict decoding: Last encoded character (before the paddings if any) is a valid &quot; +
+                &quot;base 64 alphabet but not a possible encoding. &quot; +
+                &quot;Decoding requires at least two trailing 6-bit characters to create bytes.&quot;);
+        }
+<span class="fc" id="L963">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

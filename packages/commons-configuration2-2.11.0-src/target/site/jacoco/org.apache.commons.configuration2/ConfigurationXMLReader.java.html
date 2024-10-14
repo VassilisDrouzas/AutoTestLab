@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationXMLReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">ConfigurationXMLReader.java</span></div><h1>ConfigurationXMLReader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.io.IOException;
+
+import org.xml.sax.Attributes;
+import org.xml.sax.ContentHandler;
+import org.xml.sax.DTDHandler;
+import org.xml.sax.EntityResolver;
+import org.xml.sax.ErrorHandler;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.XMLReader;
+import org.xml.sax.helpers.AttributesImpl;
+
+/**
+ * &lt;p&gt;
+ * A base class for &amp;quot;faked&amp;quot; {@code XMLReader} classes that transform a configuration object in a set of SAX
+ * parsing events.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class provides dummy implementations for most of the methods defined in the {@code XMLReader} interface that are
+ * not used for this special purpose. There will be concrete sub classes that process specific configuration classes.
+ * &lt;/p&gt;
+ */
+public abstract class ConfigurationXMLReader implements XMLReader {
+    /** Constant for the namespace URI. */
+    protected static final String NS_URI = &quot;&quot;;
+
+    /** Constant for the default name of the root element. */
+    private static final String DEFAULT_ROOT_NAME = &quot;config&quot;;
+
+    /** An empty attributes object. */
+<span class="fc" id="L50">    private static final Attributes EMPTY_ATTRS = new AttributesImpl();</span>
+
+    /** Stores the content handler. */
+    private ContentHandler contentHandler;
+
+    /** Stores an exception that occurred during parsing. */
+    private SAXException exception;
+
+    /** Stores the name for the root element. */
+    private String rootName;
+
+    /**
+     * Creates a new instance of {@code ConfigurationXMLReader}.
+     */
+<span class="fc" id="L64">    protected ConfigurationXMLReader() {</span>
+<span class="fc" id="L65">        rootName = DEFAULT_ROOT_NAME;</span>
+<span class="fc" id="L66">    }</span>
+
+    /**
+     * Fires a SAX characters event.
+     *
+     * @param text the text
+     */
+    protected void fireCharacters(final String text) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (getException() == null) {</span>
+            try {
+<span class="fc" id="L76">                final char[] ch = text.toCharArray();</span>
+<span class="fc" id="L77">                getContentHandler().characters(ch, 0, ch.length);</span>
+<span class="fc" id="L78">            } catch (final SAXException ex) {</span>
+<span class="fc" id="L79">                exception = ex;</span>
+<span class="fc" id="L80">            }</span>
+        }
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * Fires a SAX element end event.
+     *
+     * @param name the name of the affected element
+     */
+    protected void fireElementEnd(final String name) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (getException() == null) {</span>
+            try {
+<span class="fc" id="L92">                getContentHandler().endElement(NS_URI, name, name);</span>
+<span class="nc" id="L93">            } catch (final SAXException ex) {</span>
+<span class="nc" id="L94">                exception = ex;</span>
+<span class="fc" id="L95">            }</span>
+        }
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Fires a SAX element start event.
+     *
+     * @param name the name of the actual element
+     * @param attribs the attributes of this element (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    protected void fireElementStart(final String name, final Attributes attribs) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (getException() == null) {</span>
+            try {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                final Attributes at = attribs == null ? EMPTY_ATTRS : attribs;</span>
+<span class="fc" id="L109">                getContentHandler().startElement(NS_URI, name, name, at);</span>
+<span class="nc" id="L110">            } catch (final SAXException ex) {</span>
+<span class="nc" id="L111">                exception = ex;</span>
+<span class="fc" id="L112">            }</span>
+        }
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Gets the actually set content handler.
+     *
+     * @return the content handler
+     */
+    @Override
+    public ContentHandler getContentHandler() {
+<span class="fc" id="L123">        return contentHandler;</span>
+    }
+
+    /**
+     * Gets the DTD handler. This class does not support DTD handlers, so this method always returns &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @return the DTD handler
+     */
+    @Override
+    public DTDHandler getDTDHandler() {
+<span class="nc" id="L133">        return null;</span>
+    }
+
+    /**
+     * Gets the entity resolver. This class does not support an entity resolver, so this method always returns
+     * &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @return the entity resolver
+     */
+    @Override
+    public EntityResolver getEntityResolver() {
+<span class="nc" id="L144">        return null;</span>
+    }
+
+    /**
+     * Gets the error handler. This class does not support an error handler, so this method always returns &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @return the error handler
+     */
+    @Override
+    public ErrorHandler getErrorHandler() {
+<span class="nc" id="L154">        return null;</span>
+    }
+
+    /**
+     * Gets a reference to an exception that occurred during parsing.
+     *
+     * @return a SAXExcpetion or &lt;b&gt;null&lt;/b&gt; if none occurred
+     */
+    public SAXException getException() {
+<span class="fc" id="L163">        return exception;</span>
+    }
+
+    /**
+     * Dummy implementation of the interface method.
+     *
+     * @param name the name of the feature
+     * @return always &lt;b&gt;false&lt;/b&gt; (no features are supported)
+     */
+    @Override
+    public boolean getFeature(final String name) {
+<span class="nc" id="L174">        return false;</span>
+    }
+
+    /**
+     * Gets a reference to the configuration that is parsed by this object.
+     *
+     * @return the parsed configuration
+     */
+    public abstract Configuration getParsedConfiguration();
+
+    /**
+     * Dummy implementation of the interface method. No properties are supported, so this method always returns &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param name the name of the requested property
+     * @return the property value
+     */
+    @Override
+    public Object getProperty(final String name) {
+<span class="nc" id="L192">        return null;</span>
+    }
+
+    /**
+     * Gets the name to be used for the root element.
+     *
+     * @return the name for the root element
+     */
+    public String getRootName() {
+<span class="fc" id="L201">        return rootName;</span>
+    }
+
+    /**
+     * Parses the actual configuration object. The passed input source will be ignored.
+     *
+     * @param input the input source (ignored)
+     * @throws IOException if no configuration was specified
+     * @throws SAXException if an error occurs during parsing
+     */
+    @Override
+    public void parse(final InputSource input) throws IOException, SAXException {
+<span class="fc" id="L213">        parseConfiguration();</span>
+<span class="fc" id="L214">    }</span>
+
+    /**
+     * Parses the current configuration object. The passed system ID will be ignored.
+     *
+     * @param systemId the system ID (ignored)
+     * @throws IOException if no configuration was specified
+     * @throws SAXException if an error occurs during parsing
+     */
+    @Override
+    public void parse(final String systemId) throws IOException, SAXException {
+<span class="nc" id="L225">        parseConfiguration();</span>
+<span class="nc" id="L226">    }</span>
+
+    /**
+     * Parses the configuration object and generates SAX events. This is the main processing method.
+     *
+     * @throws IOException if no configuration has been specified
+     * @throws SAXException if an error occurs during parsing
+     */
+    protected void parseConfiguration() throws IOException, SAXException {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (getParsedConfiguration() == null) {</span>
+<span class="fc" id="L236">            throw new IOException(&quot;No configuration specified!&quot;);</span>
+        }
+
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        if (getContentHandler() != null) {</span>
+<span class="fc" id="L240">            exception = null;</span>
+<span class="fc" id="L241">            getContentHandler().startDocument();</span>
+<span class="fc" id="L242">            processKeys();</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (getException() != null) {</span>
+<span class="fc" id="L244">                throw getException();</span>
+            }
+<span class="fc" id="L246">            getContentHandler().endDocument();</span>
+        }
+<span class="fc" id="L248">    }</span>
+
+    /**
+     * Processes all keys stored in the actual configuration. This method is called by {@code parseConfiguration()} to start
+     * the main parsing process. {@code parseConfiguration()} calls the content handler's {@code startDocument()} and
+     * {@code endElement()} methods and cares for exception handling. The remaining actions are left to this method that
+     * must be implemented in a concrete sub class.
+     *
+     * @throws IOException if an IO error occurs
+     * @throws SAXException if a SAX error occurs
+     */
+    protected abstract void processKeys() throws IOException, SAXException;
+
+    /**
+     * Sets the content handler. The object specified here will receive SAX events during parsing.
+     *
+     * @param handler the content handler
+     */
+    @Override
+    public void setContentHandler(final ContentHandler handler) {
+<span class="fc" id="L268">        contentHandler = handler;</span>
+<span class="fc" id="L269">    }</span>
+
+    /**
+     * Sets the DTD handler. The passed value is ignored.
+     *
+     * @param handler the handler to be set
+     */
+    @Override
+    public void setDTDHandler(final DTDHandler handler) {
+<span class="nc" id="L278">    }</span>
+
+    /**
+     * Sets the entity resolver. The passed value is ignored.
+     *
+     * @param resolver the entity resolver
+     */
+    @Override
+    public void setEntityResolver(final EntityResolver resolver) {
+<span class="nc" id="L287">    }</span>
+
+    /**
+     * Sets the error handler. The passed value is ignored.
+     *
+     * @param handler the error handler
+     */
+    @Override
+    public void setErrorHandler(final ErrorHandler handler) {
+<span class="nc" id="L296">    }</span>
+
+    /**
+     * Dummy implementation of the interface method.
+     *
+     * @param name the name of the feature to be set
+     * @param value the value of the feature
+     */
+    @Override
+    public void setFeature(final String name, final boolean value) {
+<span class="fc" id="L306">    }</span>
+
+    /**
+     * Dummy implementation of the interface method. No properties are supported, so a call of this method just has no
+     * effect.
+     *
+     * @param name the property name
+     * @param value the property value
+     */
+    @Override
+    public void setProperty(final String name, final Object value) {
+<span class="fc" id="L317">    }</span>
+
+    /**
+     * Sets the name for the root element.
+     *
+     * @param string the name for the root element.
+     */
+    public void setRootName(final String string) {
+<span class="fc" id="L325">        rootName = string;</span>
+<span class="fc" id="L326">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

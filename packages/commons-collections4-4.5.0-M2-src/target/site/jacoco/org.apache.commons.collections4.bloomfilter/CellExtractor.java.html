@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CellExtractor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">CellExtractor.java</span></div><h1>CellExtractor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.TreeMap;
+import java.util.function.IntPredicate;
+
+
+/**
+ * Some Bloom filter implementations use a count rather than a bit flag. The term {@code Cell} is used to
+ * refer to these counts and their associated index.  This class is the equivalent of the index extractor except
+ * that it produces cells.
+ *
+ * &lt;p&gt;Note that a CellExtractor must not return duplicate indices and must be ordered.&lt;/p&gt;
+ *
+ * &lt;p&gt;Implementations must guarantee that:&lt;/p&gt;
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;The IndexExtractor implementation returns unique ordered indices.&lt;/li&gt;
+ * &lt;li&gt;The cells are produced in IndexExtractor order.&lt;/li&gt;
+ * &lt;li&gt;For every value produced by the IndexExtractor there will be only one matching
+ * cell produced by the CellExtractor.&lt;/li&gt;
+ * &lt;li&gt;The CellExtractor will not generate cells with indices that are not output by the IndexExtractor.&lt;/li&gt;
+ * &lt;li&gt;The IndexExtractor will not generate indices that have a zero count for the cell.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 4.5
+ */
+@FunctionalInterface
+public interface CellExtractor extends IndexExtractor {
+
+    /**
+     * Represents an operation that accepts an {@code &lt;index, count&gt;} pair.
+     * Returns {@code true} if processing should continue, {@code false} otherwise.
+     *
+     * &lt;p&gt;Note: This is a functional interface as a specialization of
+     * {@link java.util.function.BiPredicate} for {@code int}.&lt;/p&gt;
+     */
+    @FunctionalInterface
+    interface CellPredicate {
+        /**
+         * Performs an operation on the given {@code &lt;index, count&gt;} pair.
+         *
+         * @param index the bit index.
+         * @param count the cell value at the specified bit index.
+         * @return {@code true} if processing should continue, {@code false} if processing should stop.
+         */
+        boolean test(int index, int count);
+    }
+
+    /**
+     * Creates a CellExtractor from an IndexExtractor.
+     *
+     * &lt;p&gt;Note the following properties:
+     * &lt;ul&gt;
+     * &lt;li&gt;Each index returned from the IndexExtractor is assumed to have a cell value of 1.&lt;/li&gt;
+     * &lt;li&gt;The CellExtractor aggregates duplicate indices from the IndexExtractor.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;A CellExtractor that outputs the mapping [(1,2),(2,3),(3,1)] can be created from many combinations
+     * of indices including:
+     * &lt;pre&gt;
+     * [1, 1, 2, 2, 2, 3]
+     * [1, 3, 1, 2, 2, 2]
+     * [3, 2, 1, 2, 1, 2]
+     * ...
+     * &lt;/pre&gt;
+     *
+     * @param indexExtractor An index indexExtractor.
+     * @return A CellExtractor with the same indices as the IndexExtractor.
+     */
+    static CellExtractor from(final IndexExtractor indexExtractor) {
+<span class="fc" id="L87">        return new CellExtractor() {</span>
+            /**
+             * Class to track cell values in the TreeMap.
+             */
+            final class CounterCell implements Comparable&lt;CounterCell&gt; {
+                final int idx;
+                int count;
+
+<span class="fc" id="L95">                CounterCell(final int idx, final int count) {</span>
+<span class="fc" id="L96">                    this.idx = idx;</span>
+<span class="fc" id="L97">                    this.count = count;</span>
+<span class="fc" id="L98">                }</span>
+
+                @Override
+                public int compareTo(final CounterCell other) {
+<span class="fc" id="L102">                    return Integer.compare(idx, other.idx);</span>
+                }
+            }
+
+<span class="fc" id="L106">            TreeMap&lt;CounterCell, CounterCell&gt; counterCells = new TreeMap&lt;&gt;();</span>
+
+            @Override
+            public int[] asIndexArray() {
+<span class="fc" id="L110">                populate();</span>
+<span class="fc" id="L111">                return counterCells.keySet().stream().mapToInt(c -&gt; c.idx).toArray();</span>
+            }
+
+            @Override
+            public boolean processCells(final CellPredicate consumer) {
+<span class="fc" id="L116">                populate();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                for (final CounterCell cell : counterCells.values()) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                    if (!consumer.test(cell.idx, cell.count)) {</span>
+<span class="fc" id="L119">                        return false;</span>
+                    }
+<span class="fc" id="L121">                }</span>
+<span class="fc" id="L122">                return true;</span>
+            }
+
+            private void populate() {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                if (counterCells.isEmpty()) {</span>
+<span class="fc" id="L127">                    indexExtractor.processIndices(idx -&gt; {</span>
+<span class="fc" id="L128">                        final CounterCell cell = new CounterCell(idx, 1);</span>
+<span class="fc" id="L129">                        final CounterCell counter = counterCells.get(cell);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                        if (counter == null) {</span>
+<span class="fc" id="L131">                            counterCells.put(cell, cell);</span>
+                        } else {
+<span class="fc" id="L133">                            counter.count++;</span>
+                        }
+<span class="fc" id="L135">                        return true;</span>
+                    });
+                }
+<span class="fc" id="L138">            }</span>
+        };
+    }
+
+    /**
+     * Performs the given action for each {@code cell}  where the cell count is non-zero.
+     *
+     * &lt;p&gt;Some Bloom filter implementations use a count rather than a bit flag.  The term {@code Cell} is used to
+     * refer to these counts.&lt;/p&gt;
+     *
+     * &lt;p&gt;Any exceptions thrown by the action are relayed to the caller. The consumer is applied to each
+     * cell. If the consumer returns {@code false} the execution is stopped, {@code false}
+     * is returned, and no further pairs are processed.&lt;/p&gt;
+     *
+     * @param consumer the action to be performed for each non-zero cell.
+     * @return {@code true} if all cells return true from consumer, {@code false} otherwise.
+     * @throws NullPointerException if the specified consumer is null
+     */
+    boolean processCells(CellPredicate consumer);
+
+    /**
+     * The default implementation returns distinct and ordered indices for all cells with a non-zero count.
+     */
+    @Override
+    default boolean processIndices(final IntPredicate predicate) {
+<span class="fc" id="L163">        return processCells((i, v) -&gt; predicate.test(i));</span>
+    }
+
+    @Override
+    default IndexExtractor uniqueIndices() {
+<span class="fc" id="L168">        return this;</span>
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

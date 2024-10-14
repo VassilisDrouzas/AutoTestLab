@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PoolablePreparedStatement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">PoolablePreparedStatement.java</span></div><h1>PoolablePreparedStatement.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import org.apache.commons.pool2.KeyedObjectPool;
+
+/**
+ * A {@link DelegatingPreparedStatement} that cooperates with {@link PoolingConnection} to implement a pool of
+ * {@link PreparedStatement}s.
+ * &lt;p&gt;
+ * My {@link #close} method returns me to my containing pool. (See {@link PoolingConnection}.)
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt;
+ *            the key type
+ *
+ * @see PoolingConnection
+ * @since 2.0
+ */
+public class PoolablePreparedStatement&lt;K&gt; extends DelegatingPreparedStatement {
+
+    /**
+     * The {@link KeyedObjectPool} from which I was obtained.
+     */
+    private final KeyedObjectPool&lt;K, PoolablePreparedStatement&lt;K&gt;&gt; pool;
+
+    /**
+     * My &quot;key&quot; as used by {@link KeyedObjectPool}.
+     */
+    private final K key;
+
+    private volatile boolean batchAdded;
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param stmt
+     *            my underlying {@link PreparedStatement}
+     * @param key
+     *            my key as used by {@link KeyedObjectPool}
+     * @param pool
+     *            the {@link KeyedObjectPool} from which I was obtained.
+     * @param conn
+     *            the {@link java.sql.Connection Connection} from which I was created
+     */
+    public PoolablePreparedStatement(final PreparedStatement stmt, final K key,
+            final KeyedObjectPool&lt;K, PoolablePreparedStatement&lt;K&gt;&gt; pool, final DelegatingConnection&lt;?&gt; conn) {
+<span class="fc" id="L65">        super(conn, stmt);</span>
+<span class="fc" id="L66">        this.pool = pool;</span>
+<span class="fc" id="L67">        this.key = key;</span>
+
+        // Remove from trace now because this statement will be
+        // added by the activate method.
+<span class="fc" id="L71">        removeThisTrace(conn);</span>
+<span class="fc" id="L72">    }</span>
+
+    @Override
+    public void activate() throws SQLException {
+<span class="fc" id="L76">        setClosedInternal(false);</span>
+<span class="fc" id="L77">        AbandonedTrace.add(getConnectionInternal(), this);</span>
+<span class="fc" id="L78">        super.activate();</span>
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * Add batch.
+     */
+    @Override
+    public void addBatch() throws SQLException {
+<span class="fc" id="L86">        super.addBatch();</span>
+<span class="fc" id="L87">        batchAdded = true;</span>
+<span class="fc" id="L88">    }</span>
+
+    /**
+     * Clear Batch.
+     */
+    @Override
+    public void clearBatch() throws SQLException {
+<span class="fc" id="L95">        batchAdded = false;</span>
+<span class="fc" id="L96">        super.clearBatch();</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Return me to my pool.
+     */
+    @Override
+    public void close() throws SQLException {
+        // calling close twice should have no effect
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (!isClosed()) {</span>
+            try {
+<span class="fc" id="L107">                pool.returnObject(key, this);</span>
+<span class="nc" id="L108">            } catch (final SQLException | RuntimeException e) {</span>
+<span class="nc" id="L109">                throw e;</span>
+<span class="nc" id="L110">            } catch (final Exception e) {</span>
+<span class="nc" id="L111">                throw new SQLException(&quot;Cannot close preparedstatement (return to pool failed)&quot;, e);</span>
+<span class="fc" id="L112">            }</span>
+        }
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Package-protected for tests.
+     *
+     * @return The key.
+     */
+    K getKey() {
+<span class="fc" id="L122">        return key;</span>
+    }
+
+    @Override
+    public void passivate() throws SQLException {
+        // DBCP-372. clearBatch with throw an exception if called when the
+        // connection is marked as closed.
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (batchAdded) {</span>
+<span class="fc" id="L130">            clearBatch();</span>
+        }
+<span class="fc" id="L132">        prepareToReturn();</span>
+<span class="fc" id="L133">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

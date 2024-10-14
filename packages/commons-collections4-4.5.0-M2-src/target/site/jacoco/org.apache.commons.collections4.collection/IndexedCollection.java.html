@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexedCollection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.collection</a> &gt; <span class="el_source">IndexedCollection.java</span></div><h1>IndexedCollection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.collection;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Objects;
+import java.util.function.Predicate;
+
+import org.apache.commons.collections4.MultiMap;
+import org.apache.commons.collections4.Transformer;
+import org.apache.commons.collections4.map.MultiValueMap;
+
+/**
+ * An IndexedCollection is a Map-like view onto a Collection. It accepts a
+ * keyTransformer to define how the keys are converted from the values.
+ * &lt;p&gt;
+ * Modifications made to this decorator modify the index as well as the
+ * decorated {@link Collection}. However, modifications to the underlying
+ * {@link Collection} will not update the index and it will get out of sync.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If modification of the decorated {@link Collection} is unavoidable, then a
+ * call to {@link #reindex()} will update the index to the current contents of
+ * the {@link Collection}.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of object in the index.
+ * @param &lt;C&gt; the type of object in the collection.
+ *
+ * @since 4.0
+ */
+public class IndexedCollection&lt;K, C&gt; extends AbstractCollectionDecorator&lt;C&gt; {
+
+    // TODO: replace with MultiValuedMap
+
+    /** Serialization version */
+    private static final long serialVersionUID = -5512610452568370038L;
+
+    /**
+     * Create an {@link IndexedCollection} for a non-unique index.
+     *
+     * @param &lt;K&gt; the index object type.
+     * @param &lt;C&gt; the collection type.
+     * @param coll the decorated {@link Collection}.
+     * @param keyTransformer the {@link Transformer} for generating index keys.
+     * @return the created {@link IndexedCollection}.
+     */
+    public static &lt;K, C&gt; IndexedCollection&lt;K, C&gt; nonUniqueIndexedCollection(final Collection&lt;C&gt; coll,
+                                                                            final Transformer&lt;C, K&gt; keyTransformer) {
+<span class="fc" id="L66">        return new IndexedCollection&lt;&gt;(coll, keyTransformer,</span>
+<span class="fc" id="L67">                                           MultiValueMap.&lt;K, C&gt;multiValueMap(new HashMap&lt;&gt;()),</span>
+                                           false);
+    }
+
+    /**
+     * Create an {@link IndexedCollection} for a unique index.
+     * &lt;p&gt;
+     * If an element is added, which maps to an existing key, an {@link IllegalArgumentException}
+     * will be thrown.
+     *
+     * @param &lt;K&gt; the index object type.
+     * @param &lt;C&gt; the collection type.
+     * @param coll the decorated {@link Collection}.
+     * @param keyTransformer the {@link Transformer} for generating index keys.
+     * @return the created {@link IndexedCollection}.
+     */
+    public static &lt;K, C&gt; IndexedCollection&lt;K, C&gt; uniqueIndexedCollection(final Collection&lt;C&gt; coll,
+                                                                         final Transformer&lt;C, K&gt; keyTransformer) {
+<span class="fc" id="L85">        return new IndexedCollection&lt;&gt;(coll, keyTransformer,</span>
+<span class="fc" id="L86">                                           MultiValueMap.&lt;K, C&gt;multiValueMap(new HashMap&lt;&gt;()),</span>
+                                           true);
+    }
+
+    /** The {@link Transformer} for generating index keys. */
+    private final Transformer&lt;C, K&gt; keyTransformer;
+
+    /** The map of indexes to collected objects. */
+    private final MultiMap&lt;K, C&gt; index;
+
+    /** The uniqueness constraint for the index. */
+    private final boolean uniqueIndex;
+
+    /**
+     * Create a {@link IndexedCollection}.
+     *
+     * @param coll  decorated {@link Collection}
+     * @param keyTransformer  {@link Transformer} for generating index keys
+     * @param map  map to use as index
+     * @param uniqueIndex  if the index shall enforce uniqueness of index keys
+     */
+    public IndexedCollection(final Collection&lt;C&gt; coll, final Transformer&lt;C, K&gt; keyTransformer,
+                             final MultiMap&lt;K, C&gt; map, final boolean uniqueIndex) {
+<span class="fc" id="L109">        super(coll);</span>
+<span class="fc" id="L110">        this.keyTransformer = keyTransformer;</span>
+<span class="fc" id="L111">        this.index = map;</span>
+<span class="fc" id="L112">        this.uniqueIndex = uniqueIndex;</span>
+<span class="fc" id="L113">        reindex();</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalArgumentException if the object maps to an existing key and the index
+     *   enforces a uniqueness constraint
+     */
+    @Override
+    public boolean add(final C object) {
+<span class="fc" id="L124">        final boolean added = super.add(object);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (added) {</span>
+<span class="fc" id="L126">            addToIndex(object);</span>
+        }
+<span class="fc" id="L128">        return added;</span>
+    }
+
+    @Override
+    public boolean addAll(final Collection&lt;? extends C&gt; coll) {
+<span class="fc" id="L133">        boolean changed = false;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        for (final C c: coll) {</span>
+<span class="fc" id="L135">            changed |= add(c);</span>
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">        return changed;</span>
+    }
+
+    /**
+     * Provides checking for adding the index.
+     *
+     * @param object the object to index
+     * @throws IllegalArgumentException if the object maps to an existing key and the index
+     *   enforces a uniqueness constraint
+     */
+    private void addToIndex(final C object) {
+<span class="fc" id="L148">        final K key = keyTransformer.transform(object);</span>
+<span class="fc bfc" id="L149" title="All 4 branches covered.">        if (uniqueIndex &amp;&amp; index.containsKey(key)) {</span>
+<span class="fc" id="L150">            throw new IllegalArgumentException(&quot;Duplicate key in uniquely indexed collection.&quot;);</span>
+        }
+<span class="fc" id="L152">        index.put(key, object);</span>
+<span class="fc" id="L153">    }</span>
+
+    @Override
+    public void clear() {
+<span class="fc" id="L157">        super.clear();</span>
+<span class="fc" id="L158">        index.clear();</span>
+<span class="fc" id="L159">    }</span>
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * Note: uses the index for fast lookup
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public boolean contains(final Object object) {
+<span class="fc" id="L169">        return index.containsKey(keyTransformer.transform((C) object));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * Note: uses the index for fast lookup
+     */
+    @Override
+    public boolean containsAll(final Collection&lt;?&gt; coll) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (final Object o : coll) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (!contains(o)) {</span>
+<span class="fc" id="L181">                return false;</span>
+            }
+<span class="fc" id="L183">        }</span>
+<span class="fc" id="L184">        return true;</span>
+    }
+
+    /**
+     * Gets the element associated with the given key.
+     * &lt;p&gt;
+     * In case of a non-unique index, this method will return the first
+     * value associated with the given key. To retrieve all elements associated
+     * with a key, use {@link #values(Object)}.
+     *
+     * @param key  key to look up
+     * @return element found
+     * @see #values(Object)
+     */
+    public C get(final K key) {
+        @SuppressWarnings(&quot;unchecked&quot;) // index is a MultiMap which returns a Collection
+<span class="fc" id="L200">        final Collection&lt;C&gt; coll = (Collection&lt;C&gt;) index.get(key);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        return coll == null ? null : coll.iterator().next();</span>
+    }
+
+    /**
+     * Clears the index and re-indexes the entire decorated {@link Collection}.
+     */
+    public void reindex() {
+<span class="fc" id="L208">        index.clear();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (final C c : decorated()) {</span>
+<span class="fc" id="L210">            addToIndex(c);</span>
+<span class="fc" id="L211">        }</span>
+<span class="fc" id="L212">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public boolean remove(final Object object) {
+<span class="fc" id="L217">        final boolean removed = super.remove(object);</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (removed) {</span>
+<span class="fc" id="L219">            removeFromIndex((C) object);</span>
+        }
+<span class="fc" id="L221">        return removed;</span>
+    }
+
+    @Override
+    public boolean removeAll(final Collection&lt;?&gt; coll) {
+<span class="fc" id="L226">        boolean changed = false;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (final Object o : coll) {</span>
+<span class="fc" id="L228">            changed |= remove(o);</span>
+<span class="fc" id="L229">        }</span>
+<span class="fc" id="L230">        return changed;</span>
+    }
+
+    /**
+     * Removes an object from the index.
+     *
+     * @param object the object to remove
+     */
+    private void removeFromIndex(final C object) {
+<span class="fc" id="L239">        index.remove(keyTransformer.transform(object));</span>
+<span class="fc" id="L240">    }</span>
+
+    /**
+     * @since 4.4
+     */
+    @Override
+    public boolean removeIf(final Predicate&lt;? super C&gt; filter) {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        if (Objects.isNull(filter)) {</span>
+<span class="nc" id="L248">            return false;</span>
+        }
+<span class="fc" id="L250">        boolean changed = false;</span>
+<span class="fc" id="L251">        final Iterator&lt;C&gt; it = iterator();</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            if (filter.test(it.next())) {</span>
+<span class="fc" id="L254">                it.remove();</span>
+<span class="fc" id="L255">                changed = true;</span>
+            }
+        }
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (changed) {</span>
+<span class="fc" id="L259">            reindex();</span>
+        }
+<span class="fc" id="L261">        return changed;</span>
+    }
+
+    @Override
+    public boolean retainAll(final Collection&lt;?&gt; coll) {
+<span class="fc" id="L266">        final boolean changed = super.retainAll(coll);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (changed) {</span>
+<span class="fc" id="L268">            reindex();</span>
+        }
+<span class="fc" id="L270">        return changed;</span>
+    }
+
+    /**
+     * Gets all elements associated with the given key.
+     *
+     * @param key  key to look up
+     * @return a collection of elements found, or null if {@code contains(key) == false}
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // index is a MultiMap which returns a Collection
+    public Collection&lt;C&gt; values(final K key) {
+<span class="nc" id="L281">        return (Collection&lt;C&gt;) index.get(key);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

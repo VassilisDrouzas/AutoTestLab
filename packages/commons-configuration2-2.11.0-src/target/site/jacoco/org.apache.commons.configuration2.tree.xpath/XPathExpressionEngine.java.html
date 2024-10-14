@@ -1,0 +1,443 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XPathExpressionEngine.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree.xpath</a> &gt; <span class="el_source">XPathExpressionEngine.java</span></div><h1>XPathExpressionEngine.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree.xpath;
+
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.StringTokenizer;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.tree.ExpressionEngine;
+import org.apache.commons.configuration2.tree.NodeAddData;
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.configuration2.tree.QueryResult;
+import org.apache.commons.jxpath.JXPathContext;
+import org.apache.commons.jxpath.ri.JXPathContextReferenceImpl;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * &lt;p&gt;
+ * A specialized implementation of the {@code ExpressionEngine} interface that is able to evaluate XPATH expressions.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class makes use of &lt;a href=&quot;https://commons.apache.org/jxpath/&quot;&gt; Commons JXPath&lt;/a&gt; for handling XPath
+ * expressions and mapping them to the nodes of a hierarchical configuration. This makes the rich and powerful XPATH
+ * syntax available for accessing properties from a configuration object.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For selecting properties arbitrary XPATH expressions can be used, which select single or multiple configuration
+ * nodes. The associated {@code Configuration} instance will directly pass the specified property keys into this engine.
+ * If a key is not syntactically correct, an exception will be thrown.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For adding new properties, this expression engine uses a specific syntax: the &amp;quot;key&amp;quot; of a new property must
+ * consist of two parts that are separated by whitespace:
+ * &lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;An XPATH expression selecting a single node, to which the new element(s) are to be added. This can be an
+ * arbitrary complex expression, but it must select exactly one node, otherwise an exception will be thrown.&lt;/li&gt;
+ * &lt;li&gt;The name of the new element(s) to be added below this parent node. Here either a single node name or a complete
+ * path of nodes (separated by the &amp;quot;/&amp;quot; character or &amp;quot;@&amp;quot; for an attribute) can be specified.&lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;p&gt;
+ * Some examples for valid keys that can be passed into the configuration's {@code addProperty()} method follow:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;quot;/tables/table[1] type&amp;quot;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * This will add a new {@code type} node as a child of the first {@code table} element.
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;quot;/tables/table[1] @type&amp;quot;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * Similar to the example above, but this time a new attribute named {@code type} will be added to the first
+ * {@code table} element.
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;quot;/tables table/fields/field/name&amp;quot;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * This example shows how a complex path can be added. Parent node is the {@code tables} element. Here a new branch
+ * consisting of the nodes {@code table}, {@code fields}, {@code field}, and {@code name} will be added.
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;quot;/tables table/fields/field@type&amp;quot;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * This is similar to the last example, but in this case a complex path ending with an attribute is defined.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note:&lt;/strong&gt; This extended syntax for adding properties only works with the {@code addProperty()} method.
+ * {@code setProperty()} does not support creating new nodes this way.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * From version 1.7 on, it is possible to use regular keys in calls to {@code addProperty()} (i.e. keys that do not have
+ * to contain a whitespace as delimiter). In this case the key is evaluated, and the biggest part pointing to an
+ * existing node is determined. The remaining part is then added as new path. As an example consider the key
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;quot;tables/table[last()]/fields/field/name&amp;quot;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * If the key does not point to an existing node, the engine will check the paths
+ * {@code &quot;tables/table[last()]/fields/field&quot;}, {@code &quot;tables/table[last()]/fields&quot;}, {@code &quot;tables/table[last()]&quot;},
+ * and so on, until a key is found which points to a node. Let's assume that the last key listed above can be resolved
+ * in this way. Then from this key the following key is derived: {@code &quot;tables/table[last()] fields/field/name&quot;} by
+ * appending the remaining part after a whitespace. This key can now be processed using the original algorithm. Keys of
+ * this form can also be used with the {@code setProperty()} method. However, it is still recommended to use the old
+ * format because it makes explicit at which position new nodes should be added. For keys without a whitespace delimiter
+ * there may be ambiguities.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ */
+public class XPathExpressionEngine implements ExpressionEngine {
+    /** Constant for the path delimiter. */
+    static final String PATH_DELIMITER = &quot;/&quot;;
+
+    /** Constant for the attribute delimiter. */
+    static final String ATTR_DELIMITER = &quot;@&quot;;
+
+    /** Constant for the delimiters for splitting node paths. */
+    private static final String NODE_PATH_DELIMITERS = PATH_DELIMITER + ATTR_DELIMITER;
+
+    /**
+     * Constant for a space which is used as delimiter in keys for adding properties.
+     */
+    private static final String SPACE = &quot; &quot;;
+
+    /** Constant for a default size of a key buffer. */
+    private static final int BUF_SIZE = 128;
+
+    /** Constant for the start of an index expression. */
+    private static final char START_INDEX = '[';
+
+    /** Constant for the end of an index expression. */
+    private static final char END_INDEX = ']';
+
+    // static initializer: registers the configuration node pointer factory
+    static {
+<span class="fc" id="L147">        JXPathContextReferenceImpl.addNodePointerFactory(new ConfigurationNodePointerFactory());</span>
+<span class="fc" id="L148">    }</span>
+
+    /**
+     * Converts the objects returned as query result from the JXPathContext to query result objects.
+     *
+     * @param results the list with results from the context
+     * @param &lt;T&gt; the type of results to be produced
+     * @return the result list
+     */
+    private static &lt;T&gt; List&lt;QueryResult&lt;T&gt;&gt; convertResults(final List&lt;?&gt; results) {
+<span class="fc" id="L158">        return results.stream().map(res -&gt; (QueryResult&lt;T&gt;) createResult(res)).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Creates a {@code QueryResult} object from the given result object of a query. Because of the node pointers involved
+     * result objects can only be of two types:
+     * &lt;ul&gt;
+     * &lt;li&gt;nodes of type T&lt;/li&gt;
+     * &lt;li&gt;attribute results already wrapped in {@code QueryResult} objects&lt;/li&gt;
+     * &lt;/ul&gt;
+     * This method performs a corresponding cast. Warnings can be suppressed because of the implementation of the query
+     * functionality.
+     *
+     * @param resObj the query result object
+     * @param &lt;T&gt; the type of the result to be produced
+     * @return the {@code QueryResult}
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private static &lt;T&gt; QueryResult&lt;T&gt; createResult(final Object resObj) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (resObj instanceof QueryResult) {</span>
+<span class="fc" id="L178">            return (QueryResult&lt;T&gt;) resObj;</span>
+        }
+<span class="fc" id="L180">        return QueryResult.createNodeResult((T) resObj);</span>
+    }
+
+    /**
+     * Determines the index of the given child node in the node list of its parent.
+     *
+     * @param parent the parent node
+     * @param child the child node
+     * @param handler the node handler
+     * @param &lt;T&gt; the type of the nodes involved
+     * @return the index of this child node
+     */
+    private static &lt;T&gt; int determineIndex(final T parent, final T child, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L193">        return handler.getChildren(parent, handler.nodeName(child)).indexOf(child) + 1;</span>
+    }
+
+    /**
+     * Determines the position of the separator in a key for adding new properties. If no delimiter is found, result is -1.
+     *
+     * @param key the key
+     * @return the position of the delimiter
+     */
+    private static int findKeySeparator(final String key) {
+<span class="fc" id="L203">        int index = key.length() - 1;</span>
+<span class="fc bfc" id="L204" title="All 4 branches covered.">        while (index &gt;= 0 &amp;&amp; !Character.isWhitespace(key.charAt(index))) {</span>
+<span class="fc" id="L205">            index--;</span>
+        }
+<span class="fc" id="L207">        return index;</span>
+    }
+
+    /**
+     * Helper method for throwing an exception about an invalid path.
+     *
+     * @param path the invalid path
+     * @param msg the exception message
+     */
+    private static void invalidPath(final String path, final String msg) {
+<span class="fc" id="L217">        throw new IllegalArgumentException(&quot;Invalid node path: \&quot;&quot; + path + &quot;\&quot; &quot; + msg);</span>
+    }
+
+    /** The internally used context factory. */
+    private final XPathContextFactory contextFactory;
+
+    /**
+     * Creates a new instance of {@code XPathExpressionEngine} with default settings.
+     */
+    public XPathExpressionEngine() {
+<span class="fc" id="L227">        this(new XPathContextFactory());</span>
+<span class="fc" id="L228">    }</span>
+
+    /**
+     * Creates a new instance of {@code XPathExpressionEngine} and sets the context factory. This constructor is mainly used
+     * for testing purposes.
+     *
+     * @param factory the {@code XPathContextFactory}
+     */
+<span class="fc" id="L236">    XPathExpressionEngine(final XPathContextFactory factory) {</span>
+<span class="fc" id="L237">        contextFactory = factory;</span>
+<span class="fc" id="L238">    }</span>
+
+    @Override
+    public String attributeKey(final String parentKey, final String attributeName) {
+<span class="fc" id="L242">        final StringBuilder buf = new StringBuilder(</span>
+<span class="fc" id="L243">            StringUtils.length(parentKey) + StringUtils.length(attributeName) + PATH_DELIMITER.length() + ATTR_DELIMITER.length());</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (StringUtils.isNotEmpty(parentKey)) {</span>
+<span class="fc" id="L245">            buf.append(parentKey).append(PATH_DELIMITER);</span>
+        }
+<span class="fc" id="L247">        buf.append(ATTR_DELIMITER).append(attributeName);</span>
+<span class="fc" id="L248">        return buf.toString();</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation works similar to {@code nodeKey()}, but always adds an index expression to the
+     * resulting key.
+     */
+    @Override
+    public &lt;T&gt; String canonicalKey(final T node, final String parentKey, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L257">        final T parent = handler.getParent(node);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (parent == null) {</span>
+            // this is the root node
+<span class="fc" id="L260">            return StringUtils.defaultString(parentKey);</span>
+        }
+
+<span class="fc" id="L263">        final StringBuilder buf = new StringBuilder(BUF_SIZE);</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (StringUtils.isNotEmpty(parentKey)) {</span>
+<span class="fc" id="L265">            buf.append(parentKey).append(PATH_DELIMITER);</span>
+        }
+<span class="fc" id="L267">        buf.append(handler.nodeName(node));</span>
+<span class="fc" id="L268">        buf.append(START_INDEX);</span>
+<span class="fc" id="L269">        buf.append(determineIndex(parent, node, handler));</span>
+<span class="fc" id="L270">        buf.append(END_INDEX);</span>
+<span class="fc" id="L271">        return buf.toString();</span>
+    }
+
+    /**
+     * Creates the {@code JXPathContext} to be used for executing a query. This method delegates to the context factory.
+     *
+     * @param root the configuration root node
+     * @param handler the node handler
+     * @return the new context
+     */
+    private &lt;T&gt; JXPathContext createContext(final T root, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L282">        return getContextFactory().createContext(root, handler);</span>
+    }
+
+    /**
+     * Creates a {@code NodeAddData} object as a result of a {@code prepareAdd()} operation. This method interprets the
+     * passed in path of the new node.
+     *
+     * @param path the path of the new node
+     * @param parentNodeResult the parent node
+     * @param &lt;T&gt; the type of the nodes involved
+     */
+    &lt;T&gt; NodeAddData&lt;T&gt; createNodeAddData(final String path, final QueryResult&lt;T&gt; parentNodeResult) {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (parentNodeResult.isAttributeResult()) {</span>
+<span class="nc" id="L295">            invalidPath(path, &quot; cannot add properties to an attribute.&quot;);</span>
+        }
+<span class="fc" id="L297">        final List&lt;String&gt; pathNodes = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L298">        String lastComponent = null;</span>
+<span class="fc" id="L299">        boolean attr = false;</span>
+<span class="fc" id="L300">        boolean first = true;</span>
+
+<span class="fc" id="L302">        final StringTokenizer tok = new StringTokenizer(path, NODE_PATH_DELIMITERS, true);</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        while (tok.hasMoreTokens()) {</span>
+<span class="fc" id="L304">            final String token = tok.nextToken();</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            if (PATH_DELIMITER.equals(token)) {</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                if (attr) {</span>
+<span class="nc" id="L307">                    invalidPath(path, &quot; contains an attribute&quot; + &quot; delimiter at a disallowed position.&quot;);</span>
+                }
+<span class="fc bfc" id="L309" title="All 2 branches covered.">                if (lastComponent == null) {</span>
+<span class="nc" id="L310">                    invalidPath(path, &quot; contains a '/' at a disallowed position.&quot;);</span>
+                }
+<span class="fc" id="L312">                pathNodes.add(lastComponent);</span>
+<span class="fc" id="L313">                lastComponent = null;</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">            } else if (ATTR_DELIMITER.equals(token)) {</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                if (attr) {</span>
+<span class="nc" id="L316">                    invalidPath(path, &quot; contains multiple attribute delimiters.&quot;);</span>
+                }
+<span class="fc bfc" id="L318" title="All 4 branches covered.">                if (lastComponent == null &amp;&amp; !first) {</span>
+<span class="nc" id="L319">                    invalidPath(path, &quot; contains an attribute delimiter at a disallowed position.&quot;);</span>
+                }
+<span class="fc bfc" id="L321" title="All 2 branches covered.">                if (lastComponent != null) {</span>
+<span class="fc" id="L322">                    pathNodes.add(lastComponent);</span>
+                }
+<span class="fc" id="L324">                attr = true;</span>
+<span class="fc" id="L325">                lastComponent = null;</span>
+            } else {
+<span class="fc" id="L327">                lastComponent = token;</span>
+            }
+<span class="fc" id="L329">            first = false;</span>
+<span class="fc" id="L330">        }</span>
+
+<span class="fc bfc" id="L332" title="All 2 branches covered.">        if (lastComponent == null) {</span>
+<span class="nc" id="L333">            invalidPath(path, &quot;contains no components.&quot;);</span>
+        }
+
+<span class="fc" id="L336">        return new NodeAddData&lt;&gt;(parentNodeResult.getNode(), lastComponent, attr, pathNodes);</span>
+    }
+
+    /**
+     * Tries to generate a key for adding a property. This method is called if a key was used for adding properties which
+     * does not contain a space character. It splits the key at its single components and searches for the last existing
+     * component. Then a key compatible key for adding properties is generated.
+     *
+     * @param root the root node of the configuration
+     * @param key the key in question
+     * @param handler the node handler
+     * @return the key to be used for adding the property
+     */
+    private &lt;T&gt; String generateKeyForAdd(final T root, final String key, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L350">        int pos = key.lastIndexOf(PATH_DELIMITER, key.length());</span>
+
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        while (pos &gt;= 0) {</span>
+<span class="fc" id="L353">            final String keyExisting = key.substring(0, pos);</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">            if (!query(root, keyExisting, handler).isEmpty()) {</span>
+<span class="fc" id="L355">                final StringBuilder buf = new StringBuilder(key.length() + 1);</span>
+<span class="fc" id="L356">                buf.append(keyExisting).append(SPACE);</span>
+<span class="fc" id="L357">                buf.append(key.substring(pos + 1));</span>
+<span class="fc" id="L358">                return buf.toString();</span>
+            }
+<span class="fc" id="L360">            pos = key.lastIndexOf(PATH_DELIMITER, pos - 1);</span>
+<span class="fc" id="L361">        }</span>
+
+<span class="fc" id="L363">        return SPACE + key;</span>
+    }
+
+    /**
+     * Gets the {@code XPathContextFactory} used by this instance.
+     *
+     * @return the {@code XPathContextFactory}
+     */
+    XPathContextFactory getContextFactory() {
+<span class="fc" id="L372">        return contextFactory;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates an XPATH expression that selects the given node (under the assumption that
+     * the passed in parent key is valid). As the {@code nodeKey()} implementation of
+     * {@link org.apache.commons.configuration2.tree.DefaultExpressionEngine DefaultExpressionEngine} this method does not
+     * return indices for nodes. So all child nodes of a given parent with the same name have the same key.
+     */
+    @Override
+    public &lt;T&gt; String nodeKey(final T node, final String parentKey, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L383" title="All 2 branches covered.">        if (parentKey == null) {</span>
+            // name of the root node
+<span class="fc" id="L385">            return StringUtils.EMPTY;</span>
+        }
+<span class="fc bfc" id="L387" title="All 2 branches covered.">        if (handler.nodeName(node) == null) {</span>
+            // paranoia check for undefined node names
+<span class="fc" id="L389">            return parentKey;</span>
+        }
+<span class="fc" id="L391">        final StringBuilder buf = new StringBuilder(parentKey.length() + handler.nodeName(node).length() + PATH_DELIMITER.length());</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        if (!parentKey.isEmpty()) {</span>
+<span class="fc" id="L393">            buf.append(parentKey);</span>
+<span class="fc" id="L394">            buf.append(PATH_DELIMITER);</span>
+        }
+<span class="fc" id="L396">        buf.append(handler.nodeName(node));</span>
+<span class="fc" id="L397">        return buf.toString();</span>
+    }
+
+    /**
+     * {@inheritDoc} The expected format of the passed in key is explained in the class comment.
+     */
+    @Override
+    public &lt;T&gt; NodeAddData&lt;T&gt; prepareAdd(final T root, final String key, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L405" title="All 2 branches covered.">        if (key == null) {</span>
+<span class="fc" id="L406">            throw new IllegalArgumentException(&quot;prepareAdd: key must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L409">        String addKey = key;</span>
+<span class="fc" id="L410">        int index = findKeySeparator(addKey);</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (index &lt; 0) {</span>
+<span class="fc" id="L412">            addKey = generateKeyForAdd(root, addKey, handler);</span>
+<span class="fc" id="L413">            index = findKeySeparator(addKey);</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        } else if (index &gt;= addKey.length() - 1) {</span>
+<span class="nc" id="L415">            invalidPath(addKey, &quot; new node path must not be empty.&quot;);</span>
+        }
+
+<span class="fc" id="L418">        final List&lt;QueryResult&lt;T&gt;&gt; nodes = query(root, addKey.substring(0, index).trim(), handler);</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        if (nodes.size() != 1) {</span>
+<span class="fc" id="L420">            throw new IllegalArgumentException(&quot;prepareAdd: key '&quot; + key + &quot;' must select exactly one target node!&quot;);</span>
+        }
+
+<span class="fc" id="L423">        return createNodeAddData(addKey.substring(index).trim(), nodes.get(0));</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation interprets the passed in key as an XPATH expression.
+     */
+    @Override
+    public &lt;T&gt; List&lt;QueryResult&lt;T&gt;&gt; query(final T root, final String key, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        if (StringUtils.isEmpty(key)) {</span>
+<span class="fc" id="L432">            final QueryResult&lt;T&gt; result = createResult(root);</span>
+<span class="fc" id="L433">            return Collections.singletonList(result);</span>
+        }
+<span class="fc" id="L435">        final JXPathContext context = createContext(root, handler);</span>
+<span class="fc" id="L436">        List&lt;?&gt; results = context.selectNodes(key);</span>
+<span class="pc bpc" id="L437" title="1 of 2 branches missed.">        if (results == null) {</span>
+<span class="nc" id="L438">            results = Collections.emptyList();</span>
+        }
+<span class="fc" id="L440">        return convertResults(results);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

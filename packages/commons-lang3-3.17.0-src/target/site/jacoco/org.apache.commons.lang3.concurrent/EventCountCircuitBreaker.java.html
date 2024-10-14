@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventCountCircuitBreaker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.concurrent</a> &gt; <span class="el_source">EventCountCircuitBreaker.java</span></div><h1>EventCountCircuitBreaker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.concurrent;
+
+import java.beans.PropertyChangeListener;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * A simple implementation of the &lt;a
+ * href=&quot;https://martinfowler.com/bliki/CircuitBreaker.html&quot;&gt;Circuit Breaker&lt;/a&gt; pattern
+ * that counts specific events.
+ *
+ * &lt;p&gt;
+ * A &lt;em&gt;circuit breaker&lt;/em&gt; can be used to protect an application against unreliable
+ * services or unexpected load. A newly created {@link EventCountCircuitBreaker} object is
+ * initially in state &lt;em&gt;closed&lt;/em&gt; meaning that no problem has been detected. When the
+ * application encounters specific events (like errors or service timeouts), it tells the
+ * circuit breaker to increment an internal counter. If the number of events reported in a
+ * specific time interval exceeds a configurable threshold, the circuit breaker changes
+ * into state &lt;em&gt;open&lt;/em&gt;. This means that there is a problem with the associated sub
+ * system; the application should no longer call it, but give it some time to settle down.
+ * The circuit breaker can be configured to switch back to &lt;em&gt;closed&lt;/em&gt; state after a
+ * certain time frame if the number of events received goes below a threshold.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When a {@link EventCountCircuitBreaker} object is constructed the following parameters
+ * can be provided:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;A threshold for the number of events that causes a state transition to
+ * &lt;em&gt;open&lt;/em&gt; state. If more events are received in the configured check interval, the
+ * circuit breaker switches to &lt;em&gt;open&lt;/em&gt; state.&lt;/li&gt;
+ * &lt;li&gt;The interval for checks whether the circuit breaker should open. So it is possible
+ * to specify something like &quot;The circuit breaker should open if more than 10 errors are
+ * encountered in a minute.&quot;&lt;/li&gt;
+ * &lt;li&gt;The same parameters can be specified for automatically closing the circuit breaker
+ * again, as in &quot;If the number of requests goes down to 100 per minute, the circuit
+ * breaker should close itself again&quot;. Depending on the use case, it may make sense to use
+ * a slightly lower threshold for closing the circuit breaker than for opening it to avoid
+ * continuously flipping when the number of events received is close to the threshold.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * This class supports the following typical use cases:
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Protecting against load peaks&lt;/strong&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Imagine you have a server which can handle a certain number of requests per minute.
+ * Suddenly, the number of requests increases significantly - maybe because a connected
+ * partner system is going mad or due to a denial of service attack. A
+ * {@link EventCountCircuitBreaker} can be configured to stop the application from
+ * processing requests when a sudden peak load is detected and to start request processing
+ * again when things calm down. The following code fragment shows a typical example of
+ * such a scenario. Here the {@link EventCountCircuitBreaker} allows up to 1000 requests
+ * per minute before it interferes. When the load goes down again to 800 requests per
+ * second it switches back to state &lt;em&gt;closed&lt;/em&gt;:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * EventCountCircuitBreaker breaker = new EventCountCircuitBreaker(1000, 1, TimeUnit.MINUTE, 800);
+ * ...
+ * public void handleRequest(Request request) {
+ *     if (breaker.incrementAndCheckState()) {
+ *         // actually handle this request
+ *     } else {
+ *         // do something else, e.g. send an error code
+ *     }
+ * }
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Deal with an unreliable service&lt;/strong&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * In this scenario, an application uses an external service which may fail from time to
+ * time. If there are too many errors, the service is considered down and should not be
+ * called for a while. This can be achieved using the following pattern - in this concrete
+ * example we accept up to 5 errors in 2 minutes; if this limit is reached, the service is
+ * given a rest time of 10 minutes:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * EventCountCircuitBreaker breaker = new EventCountCircuitBreaker(5, 2, TimeUnit.MINUTE, 5, 10, TimeUnit.MINUTE);
+ * ...
+ * public void handleRequest(Request request) {
+ *     if (breaker.checkState()) {
+ *         try {
+ *             service.doSomething();
+ *         } catch (ServiceException ex) {
+ *             breaker.incrementAndCheckState();
+ *         }
+ *     } else {
+ *         // return an error code, use an alternative service, etc.
+ *     }
+ * }
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * In addition to automatic state transitions, the state of a circuit breaker can be
+ * changed manually using the methods {@link #open()} and {@link #close()}. It is also
+ * possible to register {@link PropertyChangeListener} objects that get notified whenever
+ * a state transition occurs. This is useful, for instance to directly react on a freshly
+ * detected error condition.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;em&gt;Implementation notes:&lt;/em&gt;
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;This implementation uses non-blocking algorithms to update the internal counter and
+ * state. This should be pretty efficient if there is not too much contention.&lt;/li&gt;
+ * &lt;li&gt;This implementation is not intended to operate as a high-precision timer in very
+ * short check intervals. It is deliberately kept simple to avoid complex and
+ * time-consuming state checks. It should work well in time intervals from a few seconds
+ * up to minutes and longer. If the intervals become too short, there might be race
+ * conditions causing spurious state transitions.&lt;/li&gt;
+ * &lt;li&gt;The handling of check intervals is a bit simplistic. Therefore, there is no
+ * guarantee that the circuit breaker is triggered at a specific point in time; there may
+ * be some delay (less than a check interval).&lt;/li&gt;
+ * &lt;/ul&gt;
+ * @since 3.5
+ */
+public class EventCountCircuitBreaker extends AbstractCircuitBreaker&lt;Integer&gt; {
+
+    /**
+     * An internally used data class holding information about the checks performed by
+     * this class. Basically, the number of received events and the start time of the
+     * current check interval are stored.
+     */
+    private static final class CheckIntervalData {
+        /** The counter for events. */
+        private final int eventCount;
+
+        /** The start time of the current check interval. */
+        private final long checkIntervalStart;
+
+        /**
+         * Creates a new instance of {@link CheckIntervalData}.
+         *
+         * @param count the current count value
+         * @param intervalStart the start time of the check interval
+         */
+<span class="fc" id="L158">        CheckIntervalData(final int count, final long intervalStart) {</span>
+<span class="fc" id="L159">            eventCount = count;</span>
+<span class="fc" id="L160">            checkIntervalStart = intervalStart;</span>
+<span class="fc" id="L161">        }</span>
+
+        /**
+         * Returns the start time of the current check interval.
+         *
+         * @return the check interval start time
+         */
+        public long getCheckIntervalStart() {
+<span class="fc" id="L169">            return checkIntervalStart;</span>
+        }
+
+        /**
+         * Returns the event counter.
+         *
+         * @return the number of received events
+         */
+        public int getEventCount() {
+<span class="fc" id="L178">            return eventCount;</span>
+        }
+
+        /**
+         * Returns a new instance of {@link CheckIntervalData} with the event counter
+         * incremented by the given delta. If the delta is 0, this object is returned.
+         *
+         * @param delta the delta
+         * @return the updated instance
+         */
+        public CheckIntervalData increment(final int delta) {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            return delta == 0 ? this : new CheckIntervalData(getEventCount() + delta,</span>
+<span class="fc" id="L190">                    getCheckIntervalStart());</span>
+        }
+    }
+
+    /**
+     * Internally used class for executing check logic based on the current state of the
+     * circuit breaker. Having this logic extracted into special classes avoids complex
+     * if-then-else cascades.
+     */
+    private abstract static class StateStrategy {
+        /**
+         * Obtains the check interval to applied for the represented state from the given
+         * {@link CircuitBreaker}.
+         *
+         * @param breaker the {@link CircuitBreaker}
+         * @return the check interval to be applied
+         */
+        protected abstract long fetchCheckInterval(EventCountCircuitBreaker breaker);
+
+        /**
+         * Returns a flag whether the end of the current check interval is reached.
+         *
+         * @param breaker the {@link CircuitBreaker}
+         * @param currentData the current state object
+         * @param now the current time
+         * @return a flag whether the end of the current check interval is reached
+         */
+        public boolean isCheckIntervalFinished(final EventCountCircuitBreaker breaker,
+                final CheckIntervalData currentData, final long now) {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            return now - currentData.getCheckIntervalStart() &gt; fetchCheckInterval(breaker);</span>
+        }
+
+        /**
+         * Checks whether the specified {@link CheckIntervalData} objects indicate that a
+         * state transition should occur. Here the logic which checks for thresholds
+         * depending on the current state is implemented.
+         *
+         * @param breaker the {@link CircuitBreaker}
+         * @param currentData the current {@link CheckIntervalData} object
+         * @param nextData the updated {@link CheckIntervalData} object
+         * @return a flag whether a state transition should be performed
+         */
+        public abstract boolean isStateTransition(EventCountCircuitBreaker breaker,
+                CheckIntervalData currentData, CheckIntervalData nextData);
+    }
+
+    /**
+     * A specialized {@link StateStrategy} implementation for the state closed.
+     */
+<span class="fc" id="L239">    private static final class StateStrategyClosed extends StateStrategy {</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        protected long fetchCheckInterval(final EventCountCircuitBreaker breaker) {
+<span class="fc" id="L246">            return breaker.getOpeningInterval();</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean isStateTransition(final EventCountCircuitBreaker breaker,
+                final CheckIntervalData currentData, final CheckIntervalData nextData) {
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            return nextData.getEventCount() &gt; breaker.getOpeningThreshold();</span>
+        }
+    }
+
+    /**
+     * A specialized {@link StateStrategy} implementation for the state open.
+     */
+<span class="fc" id="L262">    private static final class StateStrategyOpen extends StateStrategy {</span>
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        protected long fetchCheckInterval(final EventCountCircuitBreaker breaker) {
+<span class="fc" id="L268">            return breaker.getClosingInterval();</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean isStateTransition(final EventCountCircuitBreaker breaker,
+                final CheckIntervalData currentData, final CheckIntervalData nextData) {
+<span class="fc" id="L277">            return nextData.getCheckIntervalStart() != currentData</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                    .getCheckIntervalStart()</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">                    &amp;&amp; currentData.getEventCount() &lt; breaker.getClosingThreshold();</span>
+        }
+    }
+
+    /** A map for accessing the strategy objects for the different states. */
+<span class="fc" id="L284">    private static final Map&lt;State, StateStrategy&gt; STRATEGY_MAP = createStrategyMap();</span>
+
+    /**
+     * Creates the map with strategy objects. It allows access for a strategy for a given
+     * state.
+     *
+     * @return the strategy map
+     */
+    private static Map&lt;State, StateStrategy&gt; createStrategyMap() {
+<span class="fc" id="L293">        final Map&lt;State, StateStrategy&gt; map = new EnumMap&lt;&gt;(State.class);</span>
+<span class="fc" id="L294">        map.put(State.CLOSED, new StateStrategyClosed());</span>
+<span class="fc" id="L295">        map.put(State.OPEN, new StateStrategyOpen());</span>
+<span class="fc" id="L296">        return map;</span>
+    }
+
+    /**
+     * Returns the {@link StateStrategy} object responsible for the given state.
+     *
+     * @param state the state
+     * @return the corresponding {@link StateStrategy}
+     * @throws CircuitBreakingException if the strategy cannot be resolved
+     */
+    private static StateStrategy stateStrategy(final State state) {
+<span class="fc" id="L307">        return STRATEGY_MAP.get(state);</span>
+    }
+
+    /** Stores information about the current check interval. */
+    private final AtomicReference&lt;CheckIntervalData&gt; checkIntervalData;
+
+    /** The threshold for opening the circuit breaker. */
+    private final int openingThreshold;
+
+    /** The time interval for opening the circuit breaker. */
+    private final long openingInterval;
+
+    /** The threshold for closing the circuit breaker. */
+    private final int closingThreshold;
+
+    /** The time interval for closing the circuit breaker. */
+    private final long closingInterval;
+
+    /**
+     * Creates a new instance of {@link EventCountCircuitBreaker} which uses the same parameters for
+     * opening and closing checks.
+     *
+     * @param threshold the threshold for changing the status of the circuit breaker; if
+     * the number of events received in a check interval is greater than this value, the
+     * circuit breaker is opened; if it is lower than this value, it is closed again
+     * @param checkInterval the check interval for opening or closing the circuit breaker
+     * @param checkUnit the {@link TimeUnit} defining the check interval
+     */
+    public EventCountCircuitBreaker(final int threshold, final long checkInterval, final TimeUnit checkUnit) {
+<span class="fc" id="L336">        this(threshold, checkInterval, checkUnit, threshold);</span>
+<span class="fc" id="L337">    }</span>
+
+    /**
+     * Creates a new instance of {@link EventCountCircuitBreaker} with the same interval for opening
+     * and closing checks.
+     *
+     * @param openingThreshold the threshold for opening the circuit breaker; if this
+     * number of events is received in the time span determined by the check interval, the
+     * circuit breaker is opened
+     * @param checkInterval the check interval for opening or closing the circuit breaker
+     * @param checkUnit the {@link TimeUnit} defining the check interval
+     * @param closingThreshold the threshold for closing the circuit breaker; if the
+     * number of events received in the time span determined by the check interval goes
+     * below this threshold, the circuit breaker is closed again
+     */
+    public EventCountCircuitBreaker(final int openingThreshold, final long checkInterval, final TimeUnit checkUnit,
+                                    final int closingThreshold) {
+<span class="fc" id="L354">        this(openingThreshold, checkInterval, checkUnit, closingThreshold, checkInterval,</span>
+                checkUnit);
+<span class="fc" id="L356">    }</span>
+
+    /**
+     * Creates a new instance of {@link EventCountCircuitBreaker} and initializes all properties for
+     * opening and closing it based on threshold values for events occurring in specific
+     * intervals.
+     *
+     * @param openingThreshold the threshold for opening the circuit breaker; if this
+     * number of events is received in the time span determined by the opening interval,
+     * the circuit breaker is opened
+     * @param openingInterval the interval for opening the circuit breaker
+     * @param openingUnit the {@link TimeUnit} defining the opening interval
+     * @param closingThreshold the threshold for closing the circuit breaker; if the
+     * number of events received in the time span determined by the closing interval goes
+     * below this threshold, the circuit breaker is closed again
+     * @param closingInterval the interval for closing the circuit breaker
+     * @param closingUnit the {@link TimeUnit} defining the closing interval
+     */
+    public EventCountCircuitBreaker(final int openingThreshold, final long openingInterval,
+                                    final TimeUnit openingUnit, final int closingThreshold, final long closingInterval,
+<span class="fc" id="L376">                                    final TimeUnit closingUnit) {</span>
+<span class="fc" id="L377">        checkIntervalData = new AtomicReference&lt;&gt;(new CheckIntervalData(0, 0));</span>
+<span class="fc" id="L378">        this.openingThreshold = openingThreshold;</span>
+<span class="fc" id="L379">        this.openingInterval = openingUnit.toNanos(openingInterval);</span>
+<span class="fc" id="L380">        this.closingThreshold = closingThreshold;</span>
+<span class="fc" id="L381">        this.closingInterval = closingUnit.toNanos(closingInterval);</span>
+<span class="fc" id="L382">    }</span>
+
+    /**
+     * Changes the state of this circuit breaker and also initializes a new
+     * {@link CheckIntervalData} object.
+     *
+     * @param newState the new state to be set
+     */
+    private void changeStateAndStartNewCheckInterval(final State newState) {
+<span class="fc" id="L391">        changeState(newState);</span>
+<span class="fc" id="L392">        checkIntervalData.set(new CheckIntervalData(0, nanoTime()));</span>
+<span class="fc" id="L393">    }</span>
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * This implementation checks the internal event counter against the
+     * threshold values and the check intervals. This may cause a state change of this
+     * circuit breaker.
+     * &lt;/p&gt;
+     */
+    @Override
+    public boolean checkState() {
+<span class="fc" id="L405">        return performStateCheck(0);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * A new check interval is started. If too many events are received in
+     * this interval, the circuit breaker changes again to state open. If this circuit
+     * breaker is already closed, this method has no effect, except that a new check
+     * interval is started.
+     * &lt;/p&gt;
+     */
+    @Override
+    public void close() {
+<span class="fc" id="L419">        super.close();</span>
+<span class="fc" id="L420">        checkIntervalData.set(new CheckIntervalData(0, nanoTime()));</span>
+<span class="fc" id="L421">    }</span>
+
+    /**
+     * Returns the interval (in nanoseconds) for checking for the closing threshold.
+     *
+     * @return the opening check interval
+     */
+    public long getClosingInterval() {
+<span class="fc" id="L429">        return closingInterval;</span>
+    }
+
+    /**
+     * Returns the threshold value for closing the circuit breaker. If the number of
+     * events received in the time span determined by the closing interval goes below this
+     * threshold, the circuit breaker is closed again.
+     *
+     * @return the closing threshold
+     */
+    public int getClosingThreshold() {
+<span class="fc" id="L440">        return closingThreshold;</span>
+    }
+
+    /**
+     * Returns the interval (in nanoseconds) for checking for the opening threshold.
+     *
+     * @return the opening check interval
+     */
+    public long getOpeningInterval() {
+<span class="fc" id="L449">        return openingInterval;</span>
+    }
+
+    /**
+     * Returns the threshold value for opening the circuit breaker. If this number of
+     * events is received in the time span determined by the opening interval, the circuit
+     * breaker is opened.
+     *
+     * @return the opening threshold
+     */
+    public int getOpeningThreshold() {
+<span class="fc" id="L460">        return openingThreshold;</span>
+    }
+
+    /**
+     * Increments the monitored value by &lt;strong&gt;1&lt;/strong&gt; and performs a check of the current state of this
+     * circuit breaker. This method works like {@link #checkState()}, but the monitored
+     * value is incremented before the state check is performed.
+     *
+     * @return &lt;strong&gt;true&lt;/strong&gt; if the circuit breaker is now closed;
+     * &lt;strong&gt;false&lt;/strong&gt; otherwise
+     */
+    public boolean incrementAndCheckState() {
+<span class="fc" id="L472">        return incrementAndCheckState(1);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean incrementAndCheckState(final Integer increment) {
+<span class="fc" id="L480">        return performStateCheck(increment);</span>
+    }
+
+    /**
+     * Returns the current time in nanoseconds. This method is used to obtain the current
+     * time. This is needed to calculate the check intervals correctly.
+     *
+     * @return the current time in nanoseconds
+     */
+    long nanoTime() {
+<span class="fc" id="L490">        return System.nanoTime();</span>
+    }
+
+    /**
+     * Calculates the next {@link CheckIntervalData} object based on the current data and
+     * the current state. The next data object takes the counter increment and the current
+     * time into account.
+     *
+     * @param increment the increment for the internal counter
+     * @param currentData the current check data object
+     * @param currentState the current state of the circuit breaker
+     * @param time the current time
+     * @return the updated {@link CheckIntervalData} object
+     */
+    private CheckIntervalData nextCheckIntervalData(final int increment,
+            final CheckIntervalData currentData, final State currentState, final long time) {
+        final CheckIntervalData nextData;
+<span class="fc bfc" id="L507" title="All 2 branches covered.">        if (stateStrategy(currentState).isCheckIntervalFinished(this, currentData, time)) {</span>
+<span class="fc" id="L508">            nextData = new CheckIntervalData(increment, time);</span>
+        } else {
+<span class="fc" id="L510">            nextData = currentData.increment(increment);</span>
+        }
+<span class="fc" id="L512">        return nextData;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * This circuit breaker may close itself again if the number of events
+     * received during a check interval goes below the closing threshold. If this circuit
+     * breaker is already open, this method has no effect, except that a new check
+     * interval is started.
+     * &lt;/p&gt;
+     */
+    @Override
+    public void open() {
+<span class="fc" id="L526">        super.open();</span>
+<span class="fc" id="L527">        checkIntervalData.set(new CheckIntervalData(0, nanoTime()));</span>
+<span class="fc" id="L528">    }</span>
+
+    /**
+     * Actually checks the state of this circuit breaker and executes a state transition
+     * if necessary.
+     *
+     * @param increment the increment for the internal counter
+     * @return a flag whether the circuit breaker is now closed
+     */
+    private boolean performStateCheck(final int increment) {
+        CheckIntervalData currentData;
+        CheckIntervalData nextData;
+        State currentState;
+
+        do {
+<span class="fc" id="L543">            final long time = nanoTime();</span>
+<span class="fc" id="L544">            currentState = state.get();</span>
+<span class="fc" id="L545">            currentData = checkIntervalData.get();</span>
+<span class="fc" id="L546">            nextData = nextCheckIntervalData(increment, currentData, currentState, time);</span>
+<span class="pc bpc" id="L547" title="1 of 2 branches missed.">        } while (!updateCheckIntervalData(currentData, nextData));</span>
+
+        // This might cause a race condition if other changes happen in between!
+        // Refer to the header comment!
+<span class="fc bfc" id="L551" title="All 2 branches covered.">        if (stateStrategy(currentState).isStateTransition(this, currentData, nextData)) {</span>
+<span class="fc" id="L552">            currentState = currentState.oppositeState();</span>
+<span class="fc" id="L553">            changeStateAndStartNewCheckInterval(currentState);</span>
+        }
+<span class="fc bfc" id="L555" title="All 2 branches covered.">        return !isOpen(currentState);</span>
+    }
+
+    /**
+     * Updates the {@link CheckIntervalData} object. The current data object is replaced
+     * by the one modified by the last check. The return value indicates whether this was
+     * successful. If it is &lt;strong&gt;false&lt;/strong&gt;, another thread interfered, and the
+     * whole operation has to be redone.
+     *
+     * @param currentData the current check data object
+     * @param nextData the replacing check data object
+     * @return a flag whether the update was successful
+     */
+    private boolean updateCheckIntervalData(final CheckIntervalData currentData,
+            final CheckIntervalData nextData) {
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        return currentData == nextData</span>
+<span class="pc bpc" id="L571" title="1 of 2 branches missed.">                || checkIntervalData.compareAndSet(currentData, nextData);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

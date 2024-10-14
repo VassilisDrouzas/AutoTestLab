@@ -1,0 +1,701 @@
+<?xml version="1.0"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+
+<document>
+
+ <properties>
+  <title>Basic Features</title>
+  <author email="oheger@apache.org">Oliver Heger</author>
+ </properties>
+
+<body>
+    <section name="Basic features and AbstractConfiguration">
+    <p>
+      The <code>Configuration</code> interface defines a whole bunch of methods.
+      Implementing these methods all from scratch can be quite hard. Because of
+      that the <code><a href="../apidocs/org/apache/commons/configuration2/AbstractConfiguration.html">
+      AbstractConfiguration</a></code> class exists. This class serves as a
+      common base class for most of the <code>Configuration</code> implementations
+      in <em>Commons Configuration</em> and provides a great deal of the
+      functionality required by the interface. So for creating a custom
+      <code>Configuration</code> implementation this class will be a good
+      starting point.
+    </p>
+    <p>
+      In addition to base implementations for lots of the methods declared in
+      the <code>Configuration</code> interface the <code>AbstractConfiguration</code>
+      class provides some other handy and convenient features. Because this
+      class is at the very root of the class hierarchy in <em>Commons
+      Configuration</em> these features are available in most of the specific
+      implementations of the <code>Configuration</code> interface provided by
+      this library. We will cover some of these basic features in this section.
+    </p>
+
+    <subsection name="Handling of missing properties">
+    <p>
+      What is a configuration object supposed to do if you pass in a key to one
+      of its get methods that does not map to an existing property? Well, the
+      default behavior as implemented in <code>AbstractConfiguration</code> is
+      to return <b>null</b> if the return value is an object type. For primitive
+      types as return values returning <b>null</b> (or any other special
+      value) is not possible, so in this case a <code>NoSuchElementException</code>
+      is thrown:
+    </p>
+    <source><![CDATA[
+// This will return null if no property with key "NonExistingProperty" exists
+String strValue = config.getString("NonExistingProperty");
+
+// This will throw a NoSuchElementException exception if no property with
+// key "NonExistingProperty" exists
+long longValue = config.getLong("NonExistingProperty");
+]]></source>
+    <p>
+      For object types like <code>String</code>, <code>BigDecimal</code>, or
+      <code>BigInteger</code> this default behavior can be changed: If the
+      <code>setThrowExceptionOnMissing()</code> method is called with an
+      argument of <b>true</b>, these methods will behave like their primitive
+      counter parts and also throw an exception if the passed in property key
+      cannot be resolved.
+    </p>
+    <p>
+      <em>Note:</em> Unfortunately support for the <code>throwExceptionOnMissing</code>
+      property is not always consistent: The methods <code>getList()</code> and
+      <code>getStringArray()</code> do not evaluate this flag, but return an
+      empty list or array if the requested property cannot be found. Maybe this
+      behavior will be changed in a future major release.
+    </p>
+    </subsection>
+
+    <subsection name="List handling">
+    <p>
+      With <code>getList()</code> and <code>getStringArray()</code> the
+      <code>Configuration</code> interface defines methods for dealing with
+      properties that have multiple values. When a configuration source (e.g.
+      a properties file, an XML document, or a JNDI context) is processed the
+      corresponding <code>Configuration</code> implementation detects such
+      properties with multiple values and ensures that the data is correctly
+      stored.
+    </p>
+    <p>
+      When modifying properties the <code>addProperty()</code> and
+      <code>setProperty()</code> methods of <code>AbstractConfiguration</code>
+      also implement special list handling. The property value that is passed
+      to these methods can be a list or an array resulting in a property
+      with multiple values.
+    </p>
+    <p>
+      For some use cases it makes sense to treat string values in a special way.
+      For instance, some configuration formats do not support lists directly.
+      As an example, properties files can be used: they just consist of
+      key-value pairs, and there is no default syntax to assign multiple values
+      to a key. <code>AbstractConfiguration</code> supports a mechanism to split
+      strings at specific characters, so that effectively multiple values are
+      generated from a single string. To achieve this, an
+      <code>AbstractConfiguration</code> instance collaborates with an object
+      implementing the
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/ListDelimiterHandler.html">
+      ListDelimiterHandler</a></code> interface. This interface defines methods
+      for dealing with objects that may contain multiple values. Examples of
+      such complex objects are arrays, lists, and strings containing a specific
+      list delimiter. Depending on a concrete implementation of the
+      <code>ListDelimiterHandler</code> interface, these objects are treated in
+      a special way.
+    </p>
+    <p>
+      Per default, <code>AbstractConfiguration</code> uses an instance of the
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/DisabledListDelimiterHandler.html">
+      DisabledListDelimiterHandler</a></code> class as list handler. This
+      class can deal with lists and arrays, but it does not recognize any list
+      delimiter characters in strings. (Hence the name, as splitting of strings
+      at list delimiters is disabled.)
+    </p>
+    <p>
+      An alternative implementation of <code>ListDelimiterHandler</code> is
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/DefaultListDelimiterHandler.html">
+      DefaultListDelimiterHandler</a></code>. This class actually supports
+      string splitting; the list delimiter character has to be passed to the
+      constructor. Whenever a property is added to the configuration (or the
+      configuration is loaded from its source), it is checked whether the
+      property value is a string and - if so - if it contains the list
+      delimiter character. In this case, the string is split, and its single
+      parts are added one by one. By using the <code>setListDelimiterHandler()</code>
+      method you can set a specific list handler implementation. Here are some
+      examples:
+    </p>
+<source>
+// Enable list delimiter handling using a slash as delimiter character
+config.setListDelimiterHandler(new DefaultListDelimiterHandler('/'));
+// Now add some properties
+config.addProperty("greeting", "Hello, how are you?");
+config.addProperty("colors.pie",
+  new String[] { "#FF0000", "#00FF00", "#0000FF" });
+config.addProperty("colors.graph", "#808080/#00FFCC/#6422FF");
+
+// Access data
+String salut = config.getString("greeting");
+List&lt;Object&gt; colPie = config.getList("colors.pie");
+String[] colGraph = config.getStringArray("colors.graph");
+
+String firstPieColor = config.getString("colors.pie");
+</source>
+    <p>
+      In this example splitting of strings is enabled using the slash character
+      as delimiter. Because this character is not contained in the
+      <code>greeting</code> property it won't be split, but remains a single
+      string. In contrast, the string passed as value for the
+      <code>colors.graph</code> property contains the delimiter character and
+      thus will result in a property with three values. Note that the
+      version of the <code>getList()</code> method used here returns lists of type
+      <code>Object</code>. This is because the concrete class of the values of a
+      property is not known. For instance, if you call
+      <code>addProperty(&quot;answer&quot;, 42)</code>, an
+      <code>Integer</code> object will be stored in the configuration. However,
+      there are overloaded versions of <code>getList()</code> supporting a
+      data type conversion to a specific target class (see below).
+    </p>
+    <p>
+      Of interest is also the last line of the example fragment. Here the
+      <code>getString()</code> method is called for a property that has
+      multiple values. This call will return the first value of the list.
+    </p>
+    <p>
+      One word of warning at the end: Be careful when changing the list
+      delimiter handler on a configuration which already contains values. List
+      handling is typically applied already when properties are added to the
+      configuration. If later another handler is set which processes lists
+      differently, results may be unexpected; some operations may even cause
+      exceptions!
+    </p>
+    </subsection>
+
+    <subsection name="Variable Interpolation">
+    <p>
+      If you are familiar with Ant or Maven, you have most certainly already encountered
+      the variables (like <code>${token}</code>) that are automatically expanded when the
+      configuration file is loaded. Commons Configuration supports this feature as well,
+      here is an example (we use a properties file in this example, but other
+      configuration sources work the same way; you can learn more about
+      properties files in the chapter <a href="howto_properties.html">Properties
+      files</a>):
+    </p>
+<source>
+application.name = Killer App
+application.version = 1.6.2
+
+application.title = ${application.name} ${application.version}
+</source>
+    <p>
+      If you now retrieve the value for the <code>application.title</code>
+      property, the result will be <code>Killer App 1.6.2</code>. So per default
+      variables are interpreted as the keys of other properties. This is only a
+      special case, the general syntax of a variable name is
+      <code>${prefix:name}</code>. The prefix tells Commons Configuration that
+      the variable is to be evaluated in a certain context. We have already seen
+      that the context is the current configuration instance if the prefix is
+      missing. The following table lists a few of the prefixes supported by default.
+      (See the next section for more details.)
+      <table border="1">
+      <tr>
+        <th>Prefix</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td valign="top">sys</td>
+        <td>This prefix marks a variable to be a system property. Commons
+        Configuration will search for a system property with the given name and
+        replace the variable by its value. This is a very easy means for
+        accessing the values of system properties in every configuration
+        implementation.</td>
+      </tr>
+      <tr>
+        <td valign="top">const</td>
+        <td>The <code>const</code> prefix indicates that a variable is to be
+        interpreted as a constant member field of a class (i.e. a field with the
+        <b>static final</b> modifiers). The name of the variable must be of the form
+        <code>&lt;full qualified class name&gt;.&lt;field name&gt;</code>. The
+        specified class will be loaded and the value of this field will be
+        obtained.</td>
+      </tr>
+      <tr>
+        <td valign="top">env</td>
+        <td>Variables can also reference OS-specific environment properties.
+        This is indicated by the <code>env</code> prefix.</td>
+      </tr>
+      </table>
+      Here are some examples (again using properties syntax):
+    </p>
+    <source><![CDATA[
+user.file = ${sys:user.home}/settings.xml
+
+action.key = ${const:java.awt.event.KeyEvent.VK_CANCEL}
+
+java.home = ${env:JAVA_HOME}
+]]></source>
+    <p>
+      Below is some more information related to variable interpolation users
+      should be aware of:
+      <ul>
+        <li>If a variable cannot be resolved, e.g. because the name is invalid
+        or an unknown prefix is used, it won't be replaced, but is returned as
+        is including the dollar sign and the curly braces.</li>
+        <li>References to variables can be nested; a variable can refer to a
+        variable which in turn can have references to other variables and so
+        on.</li>
+        <li>Cyclic references are detected. In this case, no interpolation is
+        done.</li>
+        <li>Variable interpolation happens when properties are queried from the
+        configuration, not at creation time. Therefore, the mechanism is quite
+        dynamic: changes on one property can impact the value of another
+        property that references the first one.</li>
+        <li>Variable interpolation is done by all property access methods. One
+        exception is the generic <code>getProperty()</code> method which
+        returns the raw property value.</li>
+      </ul>
+    </p>
+    </subsection>
+
+    <subsection name="Default interpolation lookups">
+    <p>
+        Commons configuration comes with a number of default prefix interpolators in addition
+        to the few demonstrated above. The full list can be found in the documentation of
+        the <code><a href="../apidocs/org/apache/commons/configuration2/interpol/ConfigurationInterpolator.html#getDefaultPrefixLookups()">
+        ConfigurationInterpolator.getDefaultPrefixLookups()</a></code> method. This method returns a map of 
+        standard interpolation lookup objects keyed by prefix, which are enabled by default in all 
+        interpolation operations performed through the <code>Configuration</code> interface. Prior to version 
+        <code>2.8.0</code>, this map was constant. However, starting in version <code>2.8.0</code>, the lookups 
+        included in this map can be optionally configured via system property, allowing users greater control over the 
+        types of interpolation performed in their applications. The system property in question is named
+        <code>org.apache.commons.configuration2.interpol.ConfigurationInterpolator.defaultPrefixLookups</code>
+        and is expected to contain a comma-separated list of names from the
+        <code><a href="../apidocs/org/apache/commons/configuration2/interpol/DefaultLookups.html">DefaultLookups</a></code>
+        enum. For example, launching an application with the system property given below will only enable the
+        <code>sys</code> and <code>env</code> lookups.
+    </p>
+<source><![CDATA[
+org.apache.commons.configuration2.interpol.ConfigurationInterpolator.defaultPrefixLookups=SYSTEM_PROPERTIES,ENVIRONMENT
+]]></source>
+    <p>
+        It is also important to note that starting in version <code>2.8.0</code>, several previously enabled
+        default lookups were changed to be disabled by default. These include the
+        <code><a href="../apidocs/org/apache/commons/configuration2/interpol/DefaultLookups.html#DNS">dns</a></code>,
+        <code><a href="../apidocs/org/apache/commons/configuration2/interpol/DefaultLookups.html#URL">url</a></code>, and
+        <code><a href="../apidocs/org/apache/commons/configuration2/interpol/DefaultLookups.html#SCRIPT">script</a></code> lookups.
+        These lookups are still present in the library but must be explicitly enabled by either
+        <ol> 
+            <li>listing them in the system property described above (along with all other enabled lookups), or</li>
+            <li>adding them programmatically using the techniques laid out in the next section.</li>
+        </ol>.
+        Users who do not make use of these disabled lookups do not need to make any changes to their code or
+        deployment scripts when upgrading from previous versions to <code>2.8.0</code>.
+    </p>
+    </subsection>
+
+    <subsection name="Customizing interpolation">
+    <p>
+      This sub section goes a bit behind the scenes of interpolation and
+      explains some approaches for adding your own interpolation facilities.
+      Under the hood the implementation of interpolation relies on objects
+      implementing the
+      <code><a href="../apidocs/org/apache/commons/configuration2/interpol/Lookup.html">
+      Lookup</a></code> interface. <code>Lookup</code> defines a simple
+      <code>lookup()</code> method that must be implemented by custom
+      implementations; it expects the name of a variable as argument and
+      returns the corresponding value. The standard prefixes for variables we
+      have covered so far are indeed provided by special classes implementing
+      <code>Lookup</code>.
+    </p>
+    <p>
+      It is now possible to create your own implementation of <code>Lookup</code>
+      and configure a <a href="howto_builder.html">configuration builder</a>
+      (builders are introduced in the next chapter of this user's guide) to
+      make it available for all configuration objects it creates under a custom
+      prefix. We will show how this can be achieved. The first step is to
+      create a new class implementing <code>Lookup</code>, which must
+      define the <code>lookup()</code> method. As an example we implement a
+      rather dull lookup object that simply returns a kind of &quot;echo&quot;
+      for the variable passed in:
+    </p>
+    <source><![CDATA[
+import org.apache.commons.configuration2.interpol.Lookup;
+
+public class EchoLookup implements Lookup
+{
+    @Override
+    public Object lookup(String varName)
+    {
+        return "Value of variable " + varName;
+    }
+}
+]]></source>
+    <p>
+      Now we want this class to be called for variables with the prefix
+      <code>echo</code>. For this purpose the <code>EchoLookup</code> class
+      has to be registered at the
+      <code><a href="../apidocs/org/apache/commons/configuration2/interpol/ConfigurationInterpolator.html">
+      ConfigurationInterpolator</a></code> instance of our configuration with
+      the desired prefix. Each <code>Configuration</code> object is associated
+      with a <code>ConfigurationInterpolator</code> object that handles variable
+      interpolation. It manages the <code>Lookup</code> objects that should be
+      used to resolve variables.
+    </p>
+    <p>
+      There are multiple ways to make a <code>Lookup</code> object known to a
+      <code>ConfigurationInterpolator</code>. The most direct way is to call
+      the interpolator's <code>registerLookup()</code> method passing in the
+      <code>Lookup</code> and the desired prefix:
+    </p>
+<source><![CDATA[
+// simple, but not recommended approach
+ConfigurationInterpolator interpolator = config.getInterpolator();
+interpolator.registerLookup("echo", new EchoLookup());
+]]></source>
+    <p>
+      This approach works, but has some drawbacks, especially when used with
+      advanced features like reloading of configurations. The recommended way
+      is to set custom lookup objects via the builder which creates the
+      configuration object; this ensures that every <code>Configuration</code>
+      instance created via the builder has a correctly initialized
+      <code>ConfigurationInterpolator</code> object. To achieve this, create
+      a map using the variable prefixes as keys and the associated
+      <code>Lookup</code> objects as values. This map can then be passed to the
+      <code>setPrefixLookup()</code> method of a parameters object for the
+      builder. Note that the lookups for the default prefixes are added
+      explicitly; omitting a lookup would remove support for the corresponding
+      prefix:
+    </p>
+<source><![CDATA[
+// Create a map with defaults and one additional lookup
+Map<String, Lookup> lookups = new HashMap<String, Lookup>(
+    ConfigurationInterpolator.getDefaultPrefixLookups());
+lookups.put("echo", new EchoLookup());
+
+// Configure builder with lookups
+Parameters params = new Parameters();
+BasicConfigurationBuilder<PropertiesConfiguration> builder =
+        new BasicConfigurationBuilder<PropertiesConfiguration>(
+                PropertiesConfiguration.class)
+                .configure(params.basic()
+                        .setPrefixLookups(lookups);
+PropertiesConfiguration config = builder.getConfiguration();
+]]></source>
+    </subsection>
+
+    <subsection name="Using Expressions">
+      <p>
+        In addition to the simple lookup mechanisms previously described, Commons Configuration
+        provides <code>ExprLookup</code> which uses <a href="https://commons.apache.org/jexl">Apache
+        Commons Jexl</a> to allow expressions to be resolved wherever a StrLookup is allowed. This
+        example shows an alternate way of obtaining a system property if the ExprLookup is
+        configured.
+      </p>
+<source><![CDATA[
+user.file = ${expr:System.getProperty("user.home")}/settings.xml
+]]></source>
+      <p>
+        <code>ExprLookup</code> is not enabled by default, it must be manually added or configured via
+        <code>DefaultConfigurationBuilder</code>. Builds that use Maven 2 and reference Commons
+        Configuration will not include a dependency on Jexl, so if this feature is used the
+        dependency on Jexl must be manually added to the project.
+      </p>
+      <p>
+        When using <code>DefaultConfigurationBuilder</code> adding <code>ExprLookup</code> is
+        straightforward.
+      </p>
+<source><![CDATA[
+<configuration>
+  <header>
+    <result/>
+    <lookups>
+      <lookup config-prefix="expr"
+              config-class="org.apache.commons.configuration2.interpol.ExprLookup">
+        <variables>
+          <variable name="System" value="Class:java.lang.System"/>
+          <variable name"net" value="Class:java.net.InetAddress"/>
+          <variable name="String" value="Class:org.apache.commons.lang.StringUtils"/>
+        </variables>
+      </lookup>
+    </lookups>
+  </header>
+  <override>
+    <xml fileName="${expr:System.getProperty('basePath') +
+         String.lowercase(net.localHost.hostName) + '/testMultiConfiguration_default.xml'}"
+         config-name="defaultConfig" delimiterParsingDisabled="true">
+    </xml>
+  </override>
+</configuration>
+]]></source>
+      <p>
+        The example above shows how to invoke static methods during expression evaluation. The
+        next example shows mixing expression evaluation with a subordinate lookup to
+        obtain the "basePath" system property. Note the difference in how the
+        system property was obtained in the previous example.
+      </p>
+<source><![CDATA[
+<configuration>
+  <header>
+    <result/>
+    <lookups>
+      <lookup config-prefix="expr"
+              config-class="org.apache.commons.configuration2.interpol.ExprLookup">
+        <variables>
+          <variable name"net" value="Class:java.net.InetAddress"/>
+          <variable name="String" value="Class:org.apache.commons.lang.StringUtils"/>
+        </variables>
+      </lookup>
+    </lookups>
+  </header>
+  <override>
+    <xml fileName="${expr:$[sys:basePath] +
+         String.lowercase(net.localHost.hostName) + '/testMultiConfiguration_default.xml'}"
+         config-name="defaultConfig" delimiterParsingDisabled="true">
+    </xml>
+  </override>
+</configuration>
+]]></source>
+    </subsection>
+
+    <subsection name="Data type conversions">
+    <p>
+      As was already mentioned when discussing the
+      <code><a href="../apidocs/org/apache/commons/configuration2/Configuration.html">
+      Configuration</a></code> interface, there are various <code>get()</code>
+      methods returning property values in different target data types. If
+      necessary, a data type conversion is performed. Take a look at the
+      following example:
+    </p>
+<source><![CDATA[
+config.addProperty("answer", "42");
+int theAnswer = config.getInt("answer");
+]]></source>
+    <p>
+      Here a string value is assigned to the key <em>answer</em>. Then the
+      <code>getInt()</code> method is called to query this key as an integer
+      value. <code>getInt()</code> triggers a type conversion automatically.
+      If such a conversion is not possible, a runtime exception of type
+      <code>ConversionException</code> is thrown.
+    </p>
+    <p>
+      The <code>Configuration</code> interface defines a bunch of methods
+      returning property values in different data types. All of these methods
+      work in the same way: they obtain the actual value of the property and
+      attempt a data type conversion if necessary. In addition, there are
+      generic methods for accessing properties in specific data types:
+      <dl>
+        <dt>&lt;T&gt; get(Class&lt;T&gt; cls, String key);</dt>
+        <dd>Obtains the value of the specified property and tries to convert it
+        to the specified target type. If the key cannot be resolved, result is
+        <b>null</b>, or - if the <em>throwExceptionOnMissing</em> flag is set -
+        an exception is thrown.</dd>
+        <dt>&lt;T&gt; get(Class&lt;T&gt; cls, String key, T defValue);</dt>
+        <dd>Obtains the value of the specified property and tries to convert it
+        to the specified target type. If the key cannot be resolved, the
+        specified default value is returned (which may be <b>null</b>).</dd>
+      </dl>
+      In fact, all specialized <code>get()</code> methods are based on these
+      generic methods.
+    </p>
+    <p>
+      Generic conversion methods are also available for obtaining arrays or
+      collections. For instance, it is possible to obtain the value of a
+      property as an array of <b>int</b> or a list of <code>java.lang.Long</code>
+      objects. For arrays these conversions are directly supported by the generic
+      <code>get()</code> methods: if the target type passed to the method is an
+      array class, an array conversion is done automatically. So to obtain an
+      array of <strong>int</strong> from a configuration, the following code
+      can be used:
+    </p>
+      <source><![CDATA[
+int[] result = config.getInt(int[].class, "myIntArrayKey");
+]]></source>
+    <p>
+      For conversions to collections specific methods are provided (this is
+      necessary because the element type of the collection cannot be
+      determined automatically as in case of arrays). These are the following
+      ones:
+      <dl>
+        <dt>&lt;T&gt; List&lt;T&gt; getList(Class&lt;T&gt; cls, String key);</dt>
+        <dd>Returns a list of the specified element class.</dd>
+        <dt>&lt;T&gt; Collection&lt;T&gt; getCollection(Class&lt;T&gt; cls,
+        String key, Collection&lt;T&gt; target);</dt>
+        <dd>This method is similar to <code>getList()</code>, but it allows
+        specifying the target collection. This is useful if the result should
+        be stored in a different collection type, e.g. a set to remove
+        duplicates.</dd>
+      </dl>
+    </p>
+    <p>
+      These methods obtain all values stored for the property with the
+      passed in key. For each value a conversion to the desired target type is
+      performed. Then the resulting values are stored in the target array or
+      collection. There are also variants supporting default values.
+    </p>
+    <p>
+      It is worth to mention that data type conversion plays well together with
+      <a href="#Variable_Interpolation">variable interpolation</a>: Before a
+      data type conversion is attempted interpolation is handled first. Then
+      the resulting object is converted if necessary.
+    </p>
+    </subsection>
+
+    <subsection name="Customizing data type conversions">
+    <p>
+      <em>Commons Configuration</em> supports a number of conversions to
+      standard types out of the box. In addition to the result types of the
+      <code>get()</code> methods in the <code>Configuration</code> interface,
+      some more types are supported. These are listed in the documentation of the
+      <code><a href="../apidocs/org/apache/commons/configuration2/DataConfiguration.html">
+      DataConfiguration</a></code> class. <code>DataConfiguration</code> is a
+      <em>decorator</em> providing additional data type conversion methods for
+      more target types; these additional methods are implemented on top of the
+      generic conversion methods provided by <code>AbstractConfiguration</code>.
+    </p>
+    <p>
+      If your application deals with special objects, there may be the
+      requirement to extend the conversion capabilities offered by the
+      library. To support this use case, there is the
+      <code><a href="../apidocs/org/apache/commons/configuration2/convert/ConversionHandler.html">
+      ConversionHandler</a></code> interface. Each instance of a configuration
+      class derived from <code>AbstractConfiguration</code> is associated with
+      such a <code>ConversionHandler</code> object. The interface defines
+      methods for converting an object to a target class, and for converting
+      values to arrays or collections of a given element type. The data type
+      conversion methods implemented in <code>AbstractConfiguration</code>
+      delegate to this handler object.
+    </p>
+    <p>
+      The <code>ConversionHandler</code> interface gives a developer full
+      control over the whole data conversion process. By implementing the
+      different conversion methods, it is possible to integrate existing
+      conversion libraries (e.g. the converters offered by
+      <a href="https://commons.apache.org/proper/commons-beanutils/">Commons
+      BeanUtils</a>) with <em>Commons Configuration</em>.
+    </p>
+    <p>
+      If the conversion facilities provided by <em>Commons Configuration</em>
+      are not to be fully replaced, but only extended by some custom types,
+      the class <code><a href="../apidocs/org/apache/commons/configuration2/convert/DefaultConversionHandler.html">
+      DefaultConversionHandler</a></code> is a good starting point. As the name
+      implies, an instance of this class is used per default for doing type
+      conversions. <code>DefaultConversionHandler</code> has some protected
+      methods which can be overridden by subclasses in order to extend data type
+      conversions:
+      <dl>
+        <dt><code>convertValue()</code></dt>
+        <dd>This is the main conversion method for single values. It is called
+        when a single value is to be converted to a target type and also for
+        the single elements of arrays or collections. If a conversion to another
+        target class is to be supported, this is the method to override. A
+        custom implementation typically checks whether the desired target class
+        is one of the classes it supports. If this is the case, the passed in
+        source object is converted, and the result is returned. Otherwise, the
+        super method is called to handle standard conversions.</dd>
+        <dt><code>isComplexObject()</code></dt>
+        <dd>This boolean method determines whether a passed in object contains
+        multiple values. When doing a conversion to a target class
+        <code>DefaultConversionHandler</code> checks whether the source object
+        is a complex object like an array or a collection. If this is the case,
+        it first extracts the value to be converted from the source object
+        before it calls <code>convertValue()</code>.</dd>
+        <dt><code>extractConversionValue()</code></dt>
+        <dd><code>extractConversionValue()</code> is called if a complex object
+        (i.e. an object containing multiple values) is to be converted to a
+        single object (i.e. not an array or a collection). In this case, it is
+        not directly obvious how the multiple values should be handled. This
+        situation occurs for example if a client calls <code>getInt()</code>
+        on a property which actually has multiple values. The default
+        implementation of <code>extractConversionValue()</code> simply returns
+        the first value available. If an application needs a different
+        behavior, it can provide a custom implementation of this method.</dd>
+        <dt><code>convert()</code></dt>
+        <dd>This method contains the logic for converting a single value. It
+        delegates to the other methods discussed here. It first checks whether
+        the object to be converted is a complex one. If so, it extracts the
+        value to be converted. Eventually, it delegates to
+        <code>convertValue()</code> for performing the actual conversion. So
+        in order to gain more control over the whole conversion process, this
+        method is a good candidate for overriding.</dd>
+      </dl>
+    </p>
+    <p>
+      After a custom <code>ConversionHandler</code> implementation has been
+      created, it can be installed at a configuration instance by using the
+      <code>setConversionHandler()</code> method:
+    </p>
+<source><![CDATA[
+CustomConversionHandler handler = new CustomConversionHandler(...);
+config.setConversionHandler(handler);
+]]></source>
+    <p>
+      Another feature of <code>DefaultConversionHandler</code> is that is
+      allows defining the format for the conversion of <code>Date</code> and
+      <code>Calendar</code> objects. This can be done by calling
+      <code>setDateFormat()</code> with the corresponding date pattern. The
+      expected string argument must be a pattern string compatible with the
+      <code>java.text.SimpleDateFormat</code> class. If no date format was set,
+      the default pattern <code>yyyy-MM-dd HH:mm:ss</code> is used.
+    </p>
+    </subsection>
+
+    <subsection name="Encoded Properties">
+    <p>
+      Sometimes property values cannot be stored in plain text in configuration
+      files. For instance, security-related information like database passwords
+      should be encrypted. <em>Commons Configuration</em> does not provide
+      algorithms for encrypting (or otherwise encoding) properties. However,
+      there is a generic mechanism for automatically reading encoded properties
+      and transforming them into plain text before they are handed over to the
+      caller. A key role in this mechanism plays the
+      <code><a href="../apidocs/org/apache/commons/configuration2/ConfigurationDecoder.html">
+      ConfigurationDecoder</a></code> interface.
+    </p>
+    <p>
+      <code>ConfigurationDecoder</code> defines a single method <em>decode()</em>
+      which expects a string as input and returns a decoded string. It should be
+      easy for an application to provide a custom implementation for the
+      encoding algorithm it uses. The
+      <code><a href="../apidocs/org/apache/commons/configuration2/ImmutableConfiguration.html">
+      ImmutableConfiguration</a></code> interface defines two overloaded methods
+      for querying the values of encoded properties:
+    </p>
+<source><![CDATA[
+    String getEncodedString(String key, ConfigurationDecoder decoder);
+
+    String getEncodedString(String key);
+]]></source>
+    <p>
+      Both methods operate on string properties. Basically, the string value for
+      the passed in key is retrieved by delegating to <code>getString()</code>.
+      This value is then passed to a <code>ConfigurationDecoder</code> to
+      obtain the plain text value. One of these methods expects the
+      <code>ConfigurationDecoder</code> to be used as argument. The other
+      variant makes use of a decoder associated with this configuration. For
+      this purpose
+      <code><a href="../apidocs/org/apache/commons/configuration2/AbstractConfiguration.html">
+      AbstractConfiguration</a></code> offers a property named
+      <em>configurationDecoder</em>. Making use of this property simplifies
+      access to encoded properties: When the central configuration object is
+      created the decoder is initialized. Other parts of the application do not
+      need any knowledge about the decoding algorithm to be applied; rather, it
+      is sufficient to call the simple variant of <code>getEncodedString()</code>
+      to obtain a property value which can be processed immediately.
+    </p>
+    </subsection>
+  </section>
+</body>
+
+</document>

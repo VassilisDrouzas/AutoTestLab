@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileBasedConfigurationBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder</a> &gt; <span class="el_source">FileBasedConfigurationBuilder.java</span></div><h1>FileBasedConfigurationBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.commons.configuration2.FileBasedConfiguration;
+import org.apache.commons.configuration2.PropertiesConfiguration;
+import org.apache.commons.configuration2.XMLPropertiesConfiguration;
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * &lt;p&gt;
+ * A specialized {@code ConfigurationBuilder} implementation which can handle configurations read from a
+ * {@link FileHandler}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class extends its base class by the support of a {@link FileBasedBuilderParametersImpl} object, and especially
+ * of the {@link FileHandler} contained in this object. When the builder creates a new object the resulting
+ * {@code Configuration} instance is associated with the {@code FileHandler}. If the {@code FileHandler} has a location
+ * set, the {@code Configuration} is directly loaded from this location.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The {@code FileHandler} is kept by this builder and can be queried later on. It can be used for instance to save the
+ * current {@code Configuration} after it was modified. Some care has to be taken when changing the location of the
+ * {@code FileHandler}: The new location is recorded and also survives an invocation of the {@code resetResult()}
+ * method. However, when the builder's initialization parameters are reset by calling {@code resetParameters()} the
+ * location is reset, too.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ * @param &lt;T&gt; the concrete type of {@code Configuration} objects created by this builder
+ */
+public class FileBasedConfigurationBuilder&lt;T extends FileBasedConfiguration&gt; extends BasicConfigurationBuilder&lt;T&gt; {
+    /** A map for storing default encodings for specific configuration classes. */
+<span class="fc" id="L55">    private static final Map&lt;Class&lt;?&gt;, String&gt; DEFAULT_ENCODINGS = initializeDefaultEncodings();</span>
+
+    /**
+     * Gets the default encoding for the specified configuration class. If an encoding has been set for the specified
+     * class (or one of its super classes), it is returned. Otherwise, result is &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param configClass the configuration class in question
+     * @return the default encoding for this class (may be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public static String getDefaultEncoding(final Class&lt;?&gt; configClass) {
+<span class="fc" id="L65">        String enc = DEFAULT_ENCODINGS.get(configClass);</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">        if (enc != null || configClass == null) {</span>
+<span class="fc" id="L67">            return enc;</span>
+        }
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (final Class&lt;?&gt; cls : ClassUtils.getAllSuperclasses(configClass)) {</span>
+<span class="fc" id="L71">            enc = DEFAULT_ENCODINGS.get(cls);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (enc != null) {</span>
+<span class="fc" id="L73">                return enc;</span>
+            }
+<span class="fc" id="L75">        }</span>
+
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (final Class&lt;?&gt; cls : ClassUtils.getAllInterfaces(configClass)) {</span>
+<span class="fc" id="L78">            enc = DEFAULT_ENCODINGS.get(cls);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (enc != null) {</span>
+<span class="fc" id="L80">                return enc;</span>
+            }
+<span class="fc" id="L82">        }</span>
+
+<span class="fc" id="L84">        return null;</span>
+    }
+
+    /**
+     * Creates a map with default encodings for configuration classes and populates it with default entries.
+     *
+     * @return the map with default encodings
+     */
+    private static Map&lt;Class&lt;?&gt;, String&gt; initializeDefaultEncodings() {
+<span class="fc" id="L93">        final Map&lt;Class&lt;?&gt;, String&gt; enc = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L94">        enc.put(PropertiesConfiguration.class, PropertiesConfiguration.DEFAULT_ENCODING);</span>
+<span class="fc" id="L95">        enc.put(XMLPropertiesConfiguration.class, XMLPropertiesConfiguration.DEFAULT_ENCODING);</span>
+<span class="fc" id="L96">        return enc;</span>
+    }
+
+    /**
+     * Sets a default encoding for a specific configuration class. This encoding is used if an instance of this
+     * configuration class is to be created and no encoding has been set in the parameters object for this builder. The
+     * encoding passed here not only applies to the specified class but also to its sub classes. If the encoding is
+     * &lt;b&gt;null&lt;/b&gt;, it is removed.
+     *
+     * @param configClass the name of the configuration class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param encoding the default encoding for this class
+     * @throws IllegalArgumentException if the class is &lt;b&gt;null&lt;/b&gt;
+     */
+    public static void setDefaultEncoding(final Class&lt;?&gt; configClass, final String encoding) {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (configClass == null) {</span>
+<span class="fc" id="L111">            throw new IllegalArgumentException(&quot;Configuration class must not be null!&quot;);</span>
+        }
+
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (encoding == null) {</span>
+<span class="fc" id="L115">            DEFAULT_ENCODINGS.remove(configClass);</span>
+        } else {
+<span class="fc" id="L117">            DEFAULT_ENCODINGS.put(configClass, encoding);</span>
+        }
+<span class="fc" id="L119">    }</span>
+
+    /** Stores the FileHandler associated with the current configuration. */
+    private FileHandler currentFileHandler;
+
+    /** A specialized listener for the auto save mechanism. */
+    private AutoSaveListener autoSaveListener;
+
+    /** A flag whether the builder's parameters were reset. */
+    private boolean resetParameters;
+
+    /**
+     * Creates a new instance of {@code FileBasedConfigurationBuilder} which produces result objects of the specified class.
+     *
+     * @param resCls the result class (must not be &lt;b&gt;null&lt;/b&gt;
+     * @throws IllegalArgumentException if the result class is &lt;b&gt;null&lt;/b&gt;
+     */
+    public FileBasedConfigurationBuilder(final Class&lt;? extends T&gt; resCls) {
+<span class="fc" id="L137">        super(resCls);</span>
+<span class="fc" id="L138">    }</span>
+
+    /**
+     * Creates a new instance of {@code FileBasedConfigurationBuilder} which produces result objects of the specified class
+     * and sets initialization parameters.
+     *
+     * @param resCls the result class (must not be &lt;b&gt;null&lt;/b&gt;
+     * @param params a map with initialization parameters
+     * @throws IllegalArgumentException if the result class is &lt;b&gt;null&lt;/b&gt;
+     */
+    public FileBasedConfigurationBuilder(final Class&lt;? extends T&gt; resCls, final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L149">        super(resCls, params);</span>
+<span class="fc" id="L150">    }</span>
+
+    /**
+     * Creates a new instance of {@code FileBasedConfigurationBuilder} which produces result objects of the specified class
+     * and sets initialization parameters and the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag.
+     *
+     * @param resCls the result class (must not be &lt;b&gt;null&lt;/b&gt;
+     * @param params a map with initialization parameters
+     * @param allowFailOnInit the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag
+     * @throws IllegalArgumentException if the result class is &lt;b&gt;null&lt;/b&gt;
+     */
+    public FileBasedConfigurationBuilder(final Class&lt;? extends T&gt; resCls, final Map&lt;String, Object&gt; params, final boolean allowFailOnInit) {
+<span class="fc" id="L162">        super(resCls, params, allowFailOnInit);</span>
+<span class="fc" id="L163">    }</span>
+
+    /**
+     * {@inheritDoc} This method is overridden here to change the result type.
+     */
+    @Override
+    public FileBasedConfigurationBuilder&lt;T&gt; configure(final BuilderParameters... params) {
+<span class="fc" id="L170">        super.configure(params);</span>
+<span class="fc" id="L171">        return this;</span>
+    }
+
+    /**
+     * Obtains the {@code FileHandler} from this builder's parameters. If no {@code FileBasedBuilderParametersImpl} object
+     * is found in this builder's parameters, a new one is created now and stored. This makes it possible to change the
+     * location of the associated file even if no parameters object was provided.
+     *
+     * @return the {@code FileHandler} from initialization parameters
+     */
+    private FileHandler fetchFileHandlerFromParameters() {
+<span class="fc" id="L182">        FileBasedBuilderParametersImpl fileParams = FileBasedBuilderParametersImpl.fromParameters(getParameters(), false);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (fileParams == null) {</span>
+<span class="fc" id="L184">            fileParams = new FileBasedBuilderParametersImpl();</span>
+<span class="fc" id="L185">            addParameters(fileParams.getParameters());</span>
+        }
+<span class="fc" id="L187">        return fileParams.getFileHandler();</span>
+    }
+
+    /**
+     * Gets the {@code FileHandler} associated with this builder. If already a result object has been created, this
+     * {@code FileHandler} can be used to save it. Otherwise, the {@code FileHandler} from the initialization parameters is
+     * returned (which is not associated with a {@code FileBased} object). Result is never &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @return the {@code FileHandler} associated with this builder
+     */
+    public synchronized FileHandler getFileHandler() {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        return currentFileHandler != null ? currentFileHandler : fetchFileHandlerFromParameters();</span>
+    }
+
+    /**
+     * Initializes the encoding of the specified file handler. If already an encoding is set, it is used. Otherwise, the
+     * default encoding for the result configuration class is obtained and set.
+     *
+     * @param handler the handler to be initialized
+     */
+    private void initEncoding(final FileHandler handler) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (StringUtils.isEmpty(handler.getEncoding())) {</span>
+<span class="fc" id="L209">            final String encoding = getDefaultEncoding(getResultClass());</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (encoding != null) {</span>
+<span class="fc" id="L211">                handler.setEncoding(encoding);</span>
+            }
+        }
+<span class="fc" id="L214">    }</span>
+
+    /**
+     * Initializes the new current {@code FileHandler}. When a new result object is created, a new {@code FileHandler} is
+     * created, too, and associated with the result object. This new handler is passed to this method. If a location is
+     * defined, the result object is loaded from this location. Note: This method is called from a synchronized block.
+     *
+     * @param handler the new current {@code FileHandler}
+     * @throws ConfigurationException if an error occurs
+     */
+    protected void initFileHandler(final FileHandler handler) throws ConfigurationException {
+<span class="fc" id="L225">        initEncoding(handler);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (handler.isLocationDefined()) {</span>
+<span class="fc" id="L227">            handler.locate();</span>
+<span class="fc" id="L228">            handler.load();</span>
+        }
+<span class="fc" id="L230">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation deals with the creation and initialization of a {@code FileHandler} associated with
+     * the new result object.
+     */
+    @Override
+    protected void initResultInstance(final T obj) throws ConfigurationException {
+<span class="fc" id="L238">        super.initResultInstance(obj);</span>
+<span class="fc bfc" id="L239" title="All 4 branches covered.">        final FileHandler srcHandler = currentFileHandler != null &amp;&amp; !resetParameters ? currentFileHandler : fetchFileHandlerFromParameters();</span>
+<span class="fc" id="L240">        currentFileHandler = new FileHandler(obj, srcHandler);</span>
+
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (autoSaveListener != null) {</span>
+<span class="fc" id="L243">            autoSaveListener.updateFileHandler(currentFileHandler);</span>
+        }
+<span class="fc" id="L245">        initFileHandler(currentFileHandler);</span>
+<span class="fc" id="L246">        resetParameters = false;</span>
+<span class="fc" id="L247">    }</span>
+
+    /**
+     * Installs the listener for the auto save mechanism if it is not yet active.
+     */
+    private void installAutoSaveListener() {
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (autoSaveListener == null) {</span>
+<span class="fc" id="L254">            autoSaveListener = new AutoSaveListener(this);</span>
+<span class="fc" id="L255">            addEventListener(ConfigurationEvent.ANY, autoSaveListener);</span>
+<span class="fc" id="L256">            autoSaveListener.updateFileHandler(getFileHandler());</span>
+        }
+<span class="fc" id="L258">    }</span>
+
+    /**
+     * Gets a flag whether auto save mode is currently active.
+     *
+     * @return &lt;b&gt;true&lt;/b&gt; if auto save is enabled, &lt;b&gt;false&lt;/b&gt; otherwise
+     */
+    public synchronized boolean isAutoSave() {
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        return autoSaveListener != null;</span>
+    }
+
+    /**
+     * Removes the listener for the auto save mechanism if it is currently active.
+     */
+    private void removeAutoSaveListener() {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (autoSaveListener != null) {</span>
+<span class="fc" id="L274">            removeEventListener(ConfigurationEvent.ANY, autoSaveListener);</span>
+<span class="fc" id="L275">            autoSaveListener.updateFileHandler(null);</span>
+<span class="fc" id="L276">            autoSaveListener = null;</span>
+        }
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Convenience method which saves the associated configuration. This method expects that the managed configuration has
+     * already been created and that a valid file location is available in the current {@code FileHandler}. The file handler
+     * is then used to store the configuration.
+     *
+     * @throws ConfigurationException if an error occurs
+     */
+    public void save() throws ConfigurationException {
+<span class="fc" id="L288">        getFileHandler().save();</span>
+<span class="fc" id="L289">    }</span>
+
+    /**
+     * Enables or disables auto save mode. If auto save mode is enabled, every update of the managed configuration causes it
+     * to be saved automatically; so changes are directly written to disk.
+     *
+     * @param enabled &lt;b&gt;true&lt;/b&gt; if auto save mode is to be enabled, &lt;b&gt;false&lt;/b&gt; otherwise
+     */
+    public synchronized void setAutoSave(final boolean enabled) {
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        if (enabled) {</span>
+<span class="fc" id="L299">            installAutoSaveListener();</span>
+        } else {
+<span class="fc" id="L301">            removeAutoSaveListener();</span>
+        }
+<span class="fc" id="L303">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation just records the fact that new parameters have been set. This means that the next
+     * time a result object is created, the {@code FileHandler} has to be initialized from initialization parameters rather
+     * than reusing the existing one.
+     */
+    @Override
+    public synchronized BasicConfigurationBuilder&lt;T&gt; setParameters(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L312">        super.setParameters(params);</span>
+<span class="fc" id="L313">        resetParameters = true;</span>
+<span class="fc" id="L314">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

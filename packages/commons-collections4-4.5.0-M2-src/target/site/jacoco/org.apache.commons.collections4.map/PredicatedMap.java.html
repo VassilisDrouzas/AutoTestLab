@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PredicatedMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">PredicatedMap.java</span></div><h1>PredicatedMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Map;
+
+import org.apache.commons.collections4.Predicate;
+
+/**
+ * Decorates another {@code Map} to validate that additions
+ * match a specified predicate.
+ * &lt;p&gt;
+ * This map exists to provide validation for the decorated map.
+ * It is normally created to decorate an empty map.
+ * If an object cannot be added to the map, an IllegalArgumentException is thrown.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * One usage would be to ensure that no null keys are added to the map.
+ * &lt;/p&gt;
+ * &lt;pre&gt;Map map = PredicatedSet.decorate(new HashMap(), NotNullPredicate.INSTANCE, null);&lt;/pre&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that PredicatedMap is not synchronized and is not thread-safe.&lt;/strong&gt;
+ * If you wish to use this map from multiple threads concurrently, you must use
+ * appropriate synchronization. The simplest approach is to wrap this map
+ * using {@link java.util.Collections#synchronizedMap(Map)}. This class may throw
+ * exceptions when accessed by concurrent threads without synchronization.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is Serializable from Commons Collections 3.1.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.0
+ */
+public class PredicatedMap&lt;K, V&gt;
+        extends AbstractInputCheckedMapDecorator&lt;K, V&gt;
+        implements Serializable {
+
+    /** Serialization version */
+    private static final long serialVersionUID = 7412622456128415156L;
+
+    /**
+     * Factory method to create a predicated (validating) map.
+     * &lt;p&gt;
+     * If there are any elements already in the list being decorated, they
+     * are validated.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param map  the map to decorate, must not be null
+     * @param keyPredicate  the predicate to validate the keys, null means no check
+     * @param valuePredicate  the predicate to validate to values, null means no check
+     * @return a new predicated map
+     * @throws NullPointerException if the map is null
+     * @since 4.0
+     */
+    public static &lt;K, V&gt; PredicatedMap&lt;K, V&gt; predicatedMap(final Map&lt;K, V&gt; map,
+                                                           final Predicate&lt;? super K&gt; keyPredicate,
+                                                           final Predicate&lt;? super V&gt; valuePredicate) {
+<span class="fc" id="L79">        return new PredicatedMap&lt;&gt;(map, keyPredicate, valuePredicate);</span>
+    }
+
+    /** The key predicate to use */
+    protected final Predicate&lt;? super K&gt; keyPredicate;
+
+    /** The value predicate to use */
+    protected final Predicate&lt;? super V&gt; valuePredicate;
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param map  the map to decorate, must not be null
+     * @param keyPredicate  the predicate to validate the keys, null means no check
+     * @param valuePredicate  the predicate to validate to values, null means no check
+     * @throws NullPointerException if the map is null
+     */
+    protected PredicatedMap(final Map&lt;K, V&gt; map, final Predicate&lt;? super K&gt; keyPredicate,
+                            final Predicate&lt;? super V&gt; valuePredicate) {
+<span class="fc" id="L98">        super(map);</span>
+<span class="fc" id="L99">        this.keyPredicate = keyPredicate;</span>
+<span class="fc" id="L100">        this.valuePredicate = valuePredicate;</span>
+<span class="fc" id="L101">        map.forEach(this::validate);</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * Override to validate an object set into the map via {@code setValue}.
+     *
+     * @param value  the value to validate
+     * @return the value itself
+     * @throws IllegalArgumentException if invalid
+     * @since 3.1
+     */
+    @Override
+    protected V checkSetValue(final V value) {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (!valuePredicate.evaluate(value)) {</span>
+<span class="fc" id="L115">            throw new IllegalArgumentException(&quot;Cannot set value - Predicate rejected it&quot;);</span>
+        }
+<span class="fc" id="L117">        return value;</span>
+    }
+
+    /**
+     * Override to only return true when there is a value transformer.
+     *
+     * @return true if a value predicate is in use
+     * @since 3.1
+     */
+    @Override
+    protected boolean isSetValueChecking() {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        return valuePredicate != null;</span>
+    }
+
+    @Override
+    public V put(final K key, final V value) {
+<span class="fc" id="L133">        validate(key, value);</span>
+<span class="fc" id="L134">        return map.put(key, value);</span>
+    }
+
+    @Override
+    public void putAll(final Map&lt;? extends K, ? extends V&gt; mapToCopy) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (final Map.Entry&lt;? extends K, ? extends V&gt; entry : mapToCopy.entrySet()) {</span>
+<span class="fc" id="L140">            validate(entry.getKey(), entry.getValue());</span>
+<span class="fc" id="L141">        }</span>
+<span class="fc" id="L142">        super.putAll(mapToCopy);</span>
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in  the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     * @since 3.1
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // (1) should only fail if input stream is incorrect
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L155">        in.defaultReadObject();</span>
+<span class="fc" id="L156">        map = (Map&lt;K, V&gt;) in.readObject(); // (1)</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Validates a key value pair.
+     *
+     * @param key  the key to validate
+     * @param value  the value to validate
+     * @throws IllegalArgumentException if invalid
+     */
+    protected void validate(final K key, final V value) {
+<span class="fc bfc" id="L167" title="All 4 branches covered.">        if (keyPredicate != null &amp;&amp; !keyPredicate.evaluate(key)) {</span>
+<span class="fc" id="L168">            throw new IllegalArgumentException(&quot;Cannot add key - Predicate rejected it&quot;);</span>
+        }
+<span class="fc bfc" id="L170" title="All 4 branches covered.">        if (valuePredicate != null &amp;&amp; !valuePredicate.evaluate(value)) {</span>
+<span class="fc" id="L171">            throw new IllegalArgumentException(&quot;Cannot add value - Predicate rejected it&quot;);</span>
+        }
+<span class="fc" id="L173">    }</span>
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out  the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     * @since 3.1
+     */
+    private void writeObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L183">        out.defaultWriteObject();</span>
+<span class="fc" id="L184">        out.writeObject(map);</span>
+<span class="fc" id="L185">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">MapConfiguration.java</span></div><h1>MapConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+
+/**
+ * &lt;p&gt;
+ * A Map based Configuration.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This implementation of the {@code Configuration} interface is initialized with a {@link java.util.Map}. The methods
+ * of the {@code Configuration} interface are implemented on top of the content of this map. The following storage
+ * scheme is used:
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Property keys are directly mapped to map keys, i.e. the {@code getProperty()} method directly performs a
+ * {@code get()} on the map. Analogously, {@code setProperty()} or {@code addProperty()} operations write new data into
+ * the map. If a value is added to an existing property, a {@link java.util.List} is created, which stores the values of
+ * this property.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An important use case of this class is to treat a map as a {@code Configuration} allowing access to its data through
+ * the richer interface. This can be a bit problematic in some cases because the map may contain values that need not
+ * adhere to the default storage scheme used by typical configuration implementations, e.g. regarding lists. In such
+ * cases care must be taken when manipulating the data through the {@code Configuration} interface, e.g. by calling
+ * {@code addProperty()}; results may be different than expected.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The handling of list delimiters is a bit different for this configuration implementation: When a property of type
+ * String is queried, it is passed to the current {@link org.apache.commons.configuration2.convert.ListDelimiterHandler
+ * ListDelimiterHandler} which may generate multiple values. Note that per default a list delimiter handler is set which
+ * does not do any list splitting, so this feature is disabled. It can be enabled by setting a properly configured
+ * {@code ListDelimiterHandler} implementation, e.g. a
+ * {@link org.apache.commons.configuration2.convert.DefaultListDelimiterHandler DefaultListDelimiterHandler} object.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Notice that list splitting is only performed for single string values. If a property has multiple values, the single
+ * values are not split even if they contain the list delimiter character.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * As the underlying {@code Map} is directly used as store of the property values, the thread-safety of this
+ * {@code Configuration} implementation depends on the map passed to the constructor.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Notes about type safety: For properties with multiple values this implementation creates lists of type {@code Object}
+ * and stores them. If a property is assigned another value, the value is added to the list. This can cause problems if
+ * the map passed to the constructor already contains lists of other types. This should be avoided, otherwise it cannot
+ * be guaranteed that the application might throw {@code ClassCastException} exceptions later.
+ * &lt;/p&gt;
+ *
+ * @since 1.1
+ */
+public class MapConfiguration extends AbstractConfiguration implements Cloneable {
+    /**
+     * Helper method for converting the type of the {@code Properties} object to a supported map type. As stated by the
+     * comment of the constructor, we expect the {@code Properties} object to contain only String key; therefore, it is safe
+     * to do this cast.
+     *
+     * @param props the {@code Properties} to be copied
+     * @return a newly created map with all string keys of the properties
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private static Map&lt;String, Object&gt; toMap(final Properties props) {
+        @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L89">        final Map map = props;</span>
+<span class="fc" id="L90">        return map;</span>
+    }
+
+    /** The Map decorated by this configuration. */
+    protected Map&lt;String, Object&gt; map;
+
+    /** A flag whether trimming of property values should be disabled. */
+    private boolean trimmingDisabled;
+
+    /**
+     * Create a Configuration decorator around the specified Map. The map is used to store the configuration properties, any
+     * change will also affect the Map.
+     *
+     * @param map the map
+     */
+<span class="fc" id="L105">    public MapConfiguration(final Map&lt;String, ?&gt; map) {</span>
+<span class="fc" id="L106">        this.map = (Map&lt;String, Object&gt;) Objects.requireNonNull(map, &quot;map&quot;);</span>
+<span class="fc" id="L107">    }</span>
+
+    /**
+     * Creates a new instance of {@code MapConfiguration} which uses the specified {@code Properties} object as its data
+     * store. All changes of this configuration affect the given {@code Properties} object and vice versa. Note that while
+     * {@code Properties} actually implements {@code Map&lt;Object, Object&gt;}, we expect it to contain only string keys. Other
+     * key types will lead to {@code ClassCastException} exceptions on certain methods.
+     *
+     * @param props the {@code Properties} object defining the content of this configuration
+     * @since 1.8
+     */
+<span class="fc" id="L118">    public MapConfiguration(final Properties props) {</span>
+<span class="fc" id="L119">        map = toMap(Objects.requireNonNull(props));</span>
+<span class="fc" id="L120">    }</span>
+
+    @Override
+    protected void addPropertyDirect(final String key, final Object value) {
+<span class="fc" id="L124">        final Object previousValue = getProperty(key);</span>
+
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (previousValue == null) {</span>
+<span class="fc" id="L127">            map.put(key, value);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        } else if (previousValue instanceof List) {</span>
+            // the value is added to the existing list
+            // Note: This is problematic. See header comment!
+<span class="fc" id="L131">            ((List&lt;Object&gt;) previousValue).add(value);</span>
+        } else {
+            // the previous value is replaced by a list containing the previous value and the new value
+<span class="fc" id="L134">            final List&lt;Object&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L135">            list.add(previousValue);</span>
+<span class="fc" id="L136">            list.add(value);</span>
+
+<span class="fc" id="L138">            map.put(key, list);</span>
+        }
+<span class="fc" id="L140">    }</span>
+
+    @Override
+    protected void clearPropertyDirect(final String key) {
+<span class="fc" id="L144">        map.remove(key);</span>
+<span class="fc" id="L145">    }</span>
+
+    /**
+     * Returns a copy of this object. The returned configuration will contain the same properties as the original. Event
+     * listeners are not cloned.
+     *
+     * @return the copy
+     * @since 1.3
+     */
+    @Override
+    public Object clone() {
+        try {
+<span class="fc" id="L157">            final MapConfiguration copy = (MapConfiguration) super.clone();</span>
+            // Safe because ConfigurationUtils returns a map of the same types.
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L160">            final Map&lt;String, Object&gt; clonedMap = (Map&lt;String, Object&gt;) ConfigurationUtils.clone(map);</span>
+<span class="fc" id="L161">            copy.map = clonedMap;</span>
+<span class="fc" id="L162">            copy.cloneInterpolator(this);</span>
+<span class="fc" id="L163">            return copy;</span>
+<span class="nc" id="L164">        } catch (final CloneNotSupportedException cex) {</span>
+            // cannot happen
+<span class="nc" id="L166">            throw new ConfigurationRuntimeException(cex);</span>
+        }
+    }
+
+    @Override
+    protected boolean containsKeyInternal(final String key) {
+<span class="fc" id="L172">        return map.containsKey(key);</span>
+    }
+
+    /**
+     * Tests whether this configuration contains one or more matches to this value. This operation stops at first match
+     * but may be more expensive than the containsKey method.
+     * @since 2.11.0
+     */
+    @Override
+    protected boolean containsValueInternal(final Object value) {
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">        return value != null &amp;&amp; map.containsValue(value);</span>
+    }
+
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal() {
+<span class="fc" id="L187">        return map.keySet().iterator();</span>
+    }
+
+    /**
+     * Gets the Map decorated by this configuration.
+     *
+     * @return the map this configuration is based onto
+     */
+    public Map&lt;String, Object&gt; getMap() {
+<span class="fc" id="L196">        return map;</span>
+    }
+
+    @Override
+    protected Object getPropertyInternal(final String key) {
+<span class="fc" id="L201">        final Object value = map.get(key);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (value instanceof String) {</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            final Collection&lt;String&gt; list = getListDelimiterHandler().split((String) value, !isTrimmingDisabled());</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            return list.size() &gt; 1 ? list : list.iterator().next();</span>
+        }
+<span class="fc" id="L206">        return value;</span>
+    }
+
+    @Override
+    protected boolean isEmptyInternal() {
+<span class="fc" id="L211">        return map.isEmpty();</span>
+    }
+
+    /**
+     * Returns the flag whether trimming of property values is disabled.
+     *
+     * @return &lt;b&gt;true&lt;/b&gt; if trimming of property values is disabled; &lt;b&gt;false&lt;/b&gt; otherwise
+     * @since 1.7
+     */
+    public boolean isTrimmingDisabled() {
+<span class="fc" id="L221">        return trimmingDisabled;</span>
+    }
+
+    /**
+     * Sets a flag whether trimming of property values is disabled. This flag is only evaluated if list splitting is
+     * enabled. Refer to the header comment for more information about list splitting and trimming.
+     *
+     * @param trimmingDisabled a flag whether trimming of property values should be disabled
+     * @since 1.7
+     */
+    public void setTrimmingDisabled(final boolean trimmingDisabled) {
+<span class="fc" id="L232">        this.trimmingDisabled = trimmingDisabled;</span>
+<span class="fc" id="L233">    }</span>
+
+    @Override
+    protected int sizeInternal() {
+<span class="fc" id="L237">        return map.size();</span>
+    }
+
+    /**
+     * Converts this object to a String suitable for debugging and logging.
+     *
+     * @since 2.3
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L247">        return getClass().getSimpleName() + &quot; [map=&quot; + map + &quot;, trimmingDisabled=&quot; + trimmingDisabled + &quot;]&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

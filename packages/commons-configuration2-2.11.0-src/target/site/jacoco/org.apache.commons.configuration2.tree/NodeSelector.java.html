@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NodeSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">NodeSelector.java</span></div><h1>NodeSelector.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+
+import org.apache.commons.lang3.builder.ToStringBuilder;
+
+/**
+ * &lt;p&gt;
+ * A class for selecting a specific node based on a key or a set of keys.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this class is initialized with the key of a node. It is also possible to concatenate multiple keys -
+ * e.g. if a sub key is to be constructed from another sub key. {@code NodeSelector} provides the {@code select()}
+ * method which evaluates the wrapped keys on a specified root node and returns the resulting unique target node. The
+ * class expects that the key(s) stored in an instance select exactly one target node. If this is not the case, result
+ * is &lt;b&gt;null&lt;/b&gt; indicating that the selection criteria are not sufficient.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation node: Instances of this class are immutable. They can be shared between arbitrary components.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class NodeSelector {
+    /** Stores the wrapped keys. */
+    private final List&lt;String&gt; nodeKeys;
+
+    /**
+     * Creates a new instance of {@code NodeSelector} and initializes it with the list of keys to be used as selection
+     * criteria.
+     *
+     * @param keys the keys for selecting nodes
+     */
+<span class="fc" id="L54">    private NodeSelector(final List&lt;String&gt; keys) {</span>
+<span class="fc" id="L55">        nodeKeys = keys;</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * Creates a new instance of {@code NodeSelector} and initializes it with the key to the target node.
+     *
+     * @param key the key
+     */
+    public NodeSelector(final String key) {
+<span class="fc" id="L64">        this(Collections.singletonList(key));</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Compares this object with another one. Two instances of {@code NodeSelector} are considered equal if they have the
+     * same keys as selection criteria.
+     *
+     * @param obj the object to be compared
+     * @return a flag whether these objects are equal
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (this == obj) {</span>
+<span class="fc" id="L77">            return true;</span>
+        }
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (!(obj instanceof NodeSelector)) {</span>
+<span class="fc" id="L80">            return false;</span>
+        }
+
+<span class="fc" id="L83">        final NodeSelector c = (NodeSelector) obj;</span>
+<span class="fc" id="L84">        return nodeKeys.equals(c.nodeKeys);</span>
+    }
+
+    /**
+     * Executes a query for a given key and filters the results for nodes only.
+     *
+     * @param root the root node for the query
+     * @param resolver the {@code NodeKeyResolver}
+     * @param handler the {@code NodeHandler}
+     * @param key the key
+     * @param nodes here the results are stored
+     */
+    private void getFilteredResults(final ImmutableNode root, final NodeKeyResolver&lt;ImmutableNode&gt; resolver, final NodeHandler&lt;ImmutableNode&gt; handler,
+        final String key, final List&lt;ImmutableNode&gt; nodes) {
+<span class="fc" id="L98">        final List&lt;QueryResult&lt;ImmutableNode&gt;&gt; results = resolver.resolveKey(root, key, handler);</span>
+<span class="fc" id="L99">        results.forEach(result -&gt; {</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (!result.isAttributeResult()) {</span>
+<span class="fc" id="L101">                nodes.add(result.getNode());</span>
+            }
+<span class="fc" id="L103">        });</span>
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * Returns a hash code for this object.
+     *
+     * @return a hash code
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L113">        return nodeKeys.hashCode();</span>
+    }
+
+    /**
+     * Applies this {@code NodeSelector} on the specified root node. This method applies the selection criteria stored in
+     * this object and tries to determine a single target node. If this is successful, the target node is returned.
+     * Otherwise, result is &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param root the root node on which to apply this selector
+     * @param resolver the {@code NodeKeyResolver}
+     * @param handler the {@code NodeHandler}
+     * @return the selected target node or &lt;b&gt;null&lt;/b&gt;
+     */
+    public ImmutableNode select(final ImmutableNode root, final NodeKeyResolver&lt;ImmutableNode&gt; resolver, final NodeHandler&lt;ImmutableNode&gt; handler) {
+<span class="fc" id="L127">        List&lt;ImmutableNode&gt; nodes = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L128">        final Iterator&lt;String&gt; itKeys = nodeKeys.iterator();</span>
+<span class="fc" id="L129">        getFilteredResults(root, resolver, handler, itKeys.next(), nodes);</span>
+
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        while (itKeys.hasNext()) {</span>
+<span class="fc" id="L132">            final String currentKey = itKeys.next();</span>
+<span class="fc" id="L133">            final List&lt;ImmutableNode&gt; currentResults = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L134">            nodes.forEach(currentRoot -&gt; getFilteredResults(currentRoot, resolver, handler, currentKey, currentResults));</span>
+<span class="fc" id="L135">            nodes = currentResults;</span>
+<span class="fc" id="L136">        }</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        return nodes.size() == 1 ? nodes.get(0) : null;</span>
+    }
+
+    /**
+     * Creates a sub {@code NodeSelector} object which uses the key(s) of this selector plus the specified key as selection
+     * criteria. This is useful when another selection is to be performed on the results of a first selector.
+     *
+     * @param subKey the additional key for the sub selector
+     * @return the sub {@code NodeSelector} instance
+     */
+    public NodeSelector subSelector(final String subKey) {
+<span class="fc" id="L149">        final List&lt;String&gt; keys = new ArrayList&lt;&gt;(nodeKeys.size() + 1);</span>
+<span class="fc" id="L150">        keys.addAll(nodeKeys);</span>
+<span class="fc" id="L151">        keys.add(subKey);</span>
+<span class="fc" id="L152">        return new NodeSelector(keys);</span>
+    }
+
+    /**
+     * Returns a string representation for this object. This string contains the keys to be used as selection criteria.
+     *
+     * @return a string for this object
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L162">        return new ToStringBuilder(this).append(&quot;keys&quot;, nodeKeys).toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

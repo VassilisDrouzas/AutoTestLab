@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultListDelimiterHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.convert</a> &gt; <span class="el_source">DefaultListDelimiterHandler.java</span></div><h1>DefaultListDelimiterHandler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.convert;
+
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * &lt;p&gt;
+ * The default implementation of the {@code ListDelimiterHandler} interface.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class supports list splitting and delimiter escaping using a delimiter character that can be specified when
+ * constructing an instance. Splitting of strings works by scanning the input for the list delimiter character. The list
+ * delimiter character can be escaped by a backslash. So, provided that a comma is configured as list delimiter, in the
+ * example {@code val1,val2,val3} three values are recognized. In {@code 3\,1415} the list delimiter is escaped so that
+ * only a single element is detected. (Note that when writing these examples in Java code, each backslash has to be
+ * doubled. This is also true for all other examples in this documentation.)
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Because the backslash has a special meaning as escaping character it is always treated in a special way. If it occurs
+ * as a normal character in a property value, it has to be escaped using another backslash (similar to the rules of the
+ * Java programming language). The following example shows the correct way to define windows network shares:
+ * {@code \\\\Server\\path}. Note that each backslash is doubled. When combining the list delimiter with backslashes the
+ * same escaping rules apply. For instance, in {@code C:\\Temp\\,D:\\data\\} the list delimiter is recognized; it is not
+ * escaped by the preceding backslash because this backslash is itself escaped. In contrast,
+ * {@code C:\\Temp\\\,D:\\data\\} defines a single element with a comma being part of the value; two backslashes after
+ * {@code Temp} result in a single one, the third backslash escapes the list delimiter.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * As can be seen, there are some constellations which are a bit tricky and cause a larger number of backslashes in
+ * sequence. Nevertheless, the escaping rules are consistent and do not cause ambiguous results.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation node: An instance of this class can safely be shared between multiple {@code Configuration} instances.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class DefaultListDelimiterHandler extends AbstractListDelimiterHandler {
+    /** Constant for the escape character. */
+    private static final char ESCAPE = '\\';
+
+    /**
+     * Constant for a buffer size for escaping strings. When a character is escaped the string becomes longer. Therefore,
+     * the output buffer is longer than the original string length. But we assume, that there are not too many characters
+     * that need to be escaped.
+     */
+    private static final int BUF_SIZE = 16;
+
+    /** Stores the list delimiter character. */
+    private final char delimiter;
+
+    /**
+     * Creates a new instance of {@code DefaultListDelimiterHandler} and sets the list delimiter character.
+     *
+     * @param listDelimiter the list delimiter character
+     */
+<span class="fc" id="L76">    public DefaultListDelimiterHandler(final char listDelimiter) {</span>
+<span class="fc" id="L77">        delimiter = listDelimiter;</span>
+<span class="fc" id="L78">    }</span>
+
+    @Override
+    public Object escapeList(final List&lt;?&gt; values, final ValueTransformer transformer) {
+<span class="fc" id="L82">        final Object[] escapedValues = new Object[values.size()];</span>
+<span class="fc" id="L83">        int idx = 0;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (final Object v : values) {</span>
+<span class="fc" id="L85">            escapedValues[idx++] = escape(v, transformer);</span>
+<span class="fc" id="L86">        }</span>
+<span class="fc" id="L87">        return StringUtils.join(escapedValues, getDelimiter());</span>
+    }
+
+    @Override
+    protected String escapeString(final String s) {
+<span class="fc" id="L92">        final StringBuilder buf = new StringBuilder(s.length() + BUF_SIZE);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (int i = 0; i &lt; s.length(); i++) {</span>
+<span class="fc" id="L94">            final char c = s.charAt(i);</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">            if (c == getDelimiter() || c == ESCAPE) {</span>
+<span class="fc" id="L96">                buf.append(ESCAPE);</span>
+            }
+<span class="fc" id="L98">            buf.append(c);</span>
+        }
+<span class="fc" id="L100">        return buf.toString();</span>
+    }
+
+    /**
+     * Gets the list delimiter character used by this instance.
+     *
+     * @return the list delimiter character
+     */
+    public char getDelimiter() {
+<span class="fc" id="L109">        return delimiter;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation reverses the escaping done by the {@code escape()} methods of this class. However,
+     * it tries to be tolerant with unexpected escaping sequences: If after the escape character &quot;\&quot; no allowed character
+     * follows, both the backslash and the following character are output.
+     */
+    @Override
+    protected Collection&lt;String&gt; splitString(final String s, final boolean trim) {
+<span class="fc" id="L119">        final List&lt;String&gt; list = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L120">        StringBuilder token = new StringBuilder();</span>
+<span class="fc" id="L121">        boolean inEscape = false;</span>
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (int i = 0; i &lt; s.length(); i++) {</span>
+<span class="fc" id="L124">            final char c = s.charAt(i);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (inEscape) {</span>
+                // last character was the escape marker
+                // can current character be escaped?
+<span class="fc bfc" id="L128" title="All 4 branches covered.">                if (c != getDelimiter() &amp;&amp; c != ESCAPE) {</span>
+                    // no, also add escape character
+<span class="fc" id="L130">                    token.append(ESCAPE);</span>
+                }
+<span class="fc" id="L132">                token.append(c);</span>
+<span class="fc" id="L133">                inEscape = false;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            } else if (c == getDelimiter()) {</span>
+                // found a list delimiter -&gt; add token and
+                // reset buffer
+<span class="fc" id="L137">                String t = token.toString();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                if (trim) {</span>
+<span class="fc" id="L139">                    t = t.trim();</span>
+                }
+<span class="fc" id="L141">                list.add(t);</span>
+<span class="fc" id="L142">                token = new StringBuilder();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            } else if (c == ESCAPE) {</span>
+                // potentially escape next character
+<span class="fc" id="L145">                inEscape = true;</span>
+            } else {
+<span class="fc" id="L147">                token.append(c);</span>
+            }
+        }
+
+        // Trailing delimiter?
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (inEscape) {</span>
+<span class="fc" id="L153">            token.append(ESCAPE);</span>
+        }
+        // Add last token
+<span class="fc" id="L156">        String t = token.toString();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (trim) {</span>
+<span class="fc" id="L158">            t = t.trim();</span>
+        }
+<span class="fc" id="L160">        list.add(t);</span>
+
+<span class="fc" id="L162">        return list;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,426 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MatchRatingApproachEncoder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.language</a> &gt; <span class="el_source">MatchRatingApproachEncoder.java</span></div><h1>MatchRatingApproachEncoder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.codec.language;
+
+import java.util.Locale;
+
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.StringEncoder;
+
+/**
+ * Match Rating Approach Phonetic Algorithm Developed by &lt;CITE&gt;Western Airlines&lt;/CITE&gt; in 1977.
+ * &lt;p&gt;
+ * This class is immutable and thread-safe.
+ * &lt;/p&gt;
+ *
+ * @see &lt;a href=&quot;https://en.wikipedia.org/wiki/Match_rating_approach&quot;&gt;Wikipedia - Match Rating Approach&lt;/a&gt;
+ * @since 1.8
+ */
+<span class="fc" id="L33">public class MatchRatingApproachEncoder implements StringEncoder {</span>
+
+    private static final String SPACE = &quot; &quot;;
+
+    private static final String EMPTY = &quot;&quot;;
+
+    /**
+     * The plain letter equivalent of the accented letters.
+     */
+    private static final String PLAIN_ASCII = &quot;AaEeIiOoUu&quot; + // grave
+            &quot;AaEeIiOoUuYy&quot; + // acute
+            &quot;AaEeIiOoUuYy&quot; + // circumflex
+            &quot;AaOoNn&quot; + // tilde
+            &quot;AaEeIiOoUuYy&quot; + // umlaut
+            &quot;Aa&quot; + // ring
+            &quot;Cc&quot; + // cedilla
+            &quot;OoUu&quot;; // double acute
+
+    /**
+     * Unicode characters corresponding to various accented letters. For example: \u00DA is U acute etc...
+     */
+    private static final String UNICODE = &quot;\u00C0\u00E0\u00C8\u00E8\u00CC\u00EC\u00D2\u00F2\u00D9\u00F9&quot; +
+            &quot;\u00C1\u00E1\u00C9\u00E9\u00CD\u00ED\u00D3\u00F3\u00DA\u00FA\u00DD\u00FD&quot; +
+            &quot;\u00C2\u00E2\u00CA\u00EA\u00CE\u00EE\u00D4\u00F4\u00DB\u00FB\u0176\u0177&quot; +
+            &quot;\u00C3\u00E3\u00D5\u00F5\u00D1\u00F1&quot; +
+            &quot;\u00C4\u00E4\u00CB\u00EB\u00CF\u00EF\u00D6\u00F6\u00DC\u00FC\u0178\u00FF&quot; +
+            &quot;\u00C5\u00E5&quot; + &quot;\u00C7\u00E7&quot; + &quot;\u0150\u0151\u0170\u0171&quot;;
+
+<span class="fc" id="L61">    private static final String[] DOUBLE_CONSONANT =</span>
+            { &quot;BB&quot;, &quot;CC&quot;, &quot;DD&quot;, &quot;FF&quot;, &quot;GG&quot;, &quot;HH&quot;, &quot;JJ&quot;, &quot;KK&quot;, &quot;LL&quot;, &quot;MM&quot;, &quot;NN&quot;, &quot;PP&quot;, &quot;QQ&quot;, &quot;RR&quot;, &quot;SS&quot;,
+                   &quot;TT&quot;, &quot;VV&quot;, &quot;WW&quot;, &quot;XX&quot;, &quot;YY&quot;, &quot;ZZ&quot; };
+
+    /**
+     * Cleans up a name: 1. Upper-cases everything 2. Removes some common punctuation 3. Removes accents 4. Removes any
+     * spaces.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param name
+     *            The name to be cleaned
+     * @return The cleaned name
+     */
+    String cleanName(final String name) {
+<span class="fc" id="L79">        String upperName = name.toUpperCase(Locale.ENGLISH);</span>
+
+<span class="fc" id="L81">        final String[] charsToTrim = { &quot;\\-&quot;, &quot;[&amp;]&quot;, &quot;\\'&quot;, &quot;\\.&quot;, &quot;[\\,]&quot; };</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (final String str : charsToTrim) {</span>
+<span class="fc" id="L83">            upperName = upperName.replaceAll(str, EMPTY);</span>
+        }
+
+<span class="fc" id="L86">        upperName = removeAccents(upperName);</span>
+<span class="fc" id="L87">        return upperName.replaceAll(&quot;\\s+&quot;, EMPTY);</span>
+    }
+
+    /**
+     * Encodes an Object using the Match Rating Approach algorithm. Method is here to satisfy the requirements of the
+     * Encoder interface Throws an EncoderException if input object is not of type {@link String}.
+     *
+     * @param pObject
+     *            Object to encode
+     * @return An object (or type {@link String}) containing the Match Rating Approach code which corresponds to the
+     *         String supplied.
+     * @throws EncoderException
+     *             if the parameter supplied is not of type {@link String}
+     */
+    @Override
+    public final Object encode(final Object pObject) throws EncoderException {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!(pObject instanceof String)) {</span>
+<span class="fc" id="L104">            throw new EncoderException(</span>
+                    &quot;Parameter supplied to Match Rating Approach encoder is not of type java.lang.String&quot;);
+        }
+<span class="fc" id="L107">        return encode((String) pObject);</span>
+    }
+
+    /**
+     * Encodes a String using the Match Rating Approach (MRA) algorithm.
+     *
+     * @param name
+     *            String object to encode
+     * @return The MRA code corresponding to the String supplied
+     */
+    @Override
+    public final String encode(String name) {
+        // Bulletproof for trivial input - NINO
+<span class="fc bfc" id="L120" title="All 8 branches covered.">        if (name == null || EMPTY.equalsIgnoreCase(name) || SPACE.equalsIgnoreCase(name) || name.length() == 1) {</span>
+<span class="fc" id="L121">            return EMPTY;</span>
+        }
+
+        // Preprocessing
+<span class="fc" id="L125">        name = cleanName(name);</span>
+
+        // Bulletproof if name becomes empty after cleanName(name)
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if (SPACE.equals(name) || name.isEmpty()) {</span>
+<span class="fc" id="L129">            return EMPTY;</span>
+        }
+
+        // BEGIN: Actual encoding part of the algorithm...
+        // 1. Delete all vowels unless the vowel begins the word
+<span class="fc" id="L134">        name = removeVowels(name);</span>
+
+        // Bulletproof if name becomes empty after removeVowels(name)
+<span class="pc bpc" id="L137" title="2 of 4 branches missed.">        if (SPACE.equals(name) || name.isEmpty()) {</span>
+<span class="nc" id="L138">            return EMPTY;</span>
+        }
+
+        // 2. Remove second consonant from any double consonant
+<span class="fc" id="L142">        name = removeDoubleConsonants(name);</span>
+
+<span class="fc" id="L144">        return getFirst3Last3(name);</span>
+    }
+
+    /**
+     * Gets the first and last 3 letters of a name (if &amp;gt; 6 characters) Else just returns the name.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param name
+     *            The string to get the substrings from
+     * @return Annexed first and last 3 letters of input word.
+     */
+    String getFirst3Last3(final String name) {
+<span class="fc" id="L160">        final int nameLength = name.length();</span>
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (nameLength &gt; 6) {</span>
+<span class="fc" id="L163">            final String firstThree = name.substring(0, 3);</span>
+<span class="fc" id="L164">            final String lastThree = name.substring(nameLength - 3, nameLength);</span>
+<span class="fc" id="L165">            return firstThree + lastThree;</span>
+        }
+<span class="fc" id="L167">        return name;</span>
+    }
+
+    /**
+     * Obtains the min rating of the length sum of the 2 names. In essence the larger the sum length the smaller the
+     * min rating. Values strictly from documentation.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param sumLength
+     *            The length of 2 strings sent down
+     * @return The min rating value
+     */
+    int getMinRating(final int sumLength) {
+<span class="fc" id="L184">        int minRating = 0;</span>
+
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (sumLength &lt;= 4) {</span>
+<span class="fc" id="L187">            minRating = 5;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        } else if (sumLength &lt;= 7) { // already know it is at least 5</span>
+<span class="fc" id="L189">            minRating = 4;</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        } else if (sumLength &lt;= 11) { // already know it is at least 8</span>
+<span class="fc" id="L191">            minRating = 3;</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        } else if (sumLength == 12) {</span>
+<span class="fc" id="L193">            minRating = 2;</span>
+        } else {
+<span class="fc" id="L195">            minRating = 1; // docs said little here.</span>
+        }
+
+<span class="fc" id="L198">        return minRating;</span>
+    }
+
+    /**
+     * Determines if two names are homophonous via Match Rating Approach (MRA) algorithm. It should be noted that the
+     * strings are cleaned in the same way as {@link #encode(String)}.
+     *
+     * @param name1
+     *            First of the 2 strings (names) to compare
+     * @param name2
+     *            Second of the 2 names to compare
+     * @return {@code true} if the encodings are identical {@code false} otherwise.
+     */
+    public boolean isEncodeEquals(String name1, String name2) {
+        // Bulletproof for trivial input - NINO
+<span class="fc bfc" id="L213" title="All 6 branches covered.">        if (name1 == null || EMPTY.equalsIgnoreCase(name1) || SPACE.equalsIgnoreCase(name1)) {</span>
+<span class="fc" id="L214">            return false;</span>
+        }
+<span class="fc bfc" id="L216" title="All 6 branches covered.">        if (name2 == null || EMPTY.equalsIgnoreCase(name2) || SPACE.equalsIgnoreCase(name2)) {</span>
+<span class="fc" id="L217">            return false;</span>
+        }
+<span class="fc bfc" id="L219" title="All 4 branches covered.">        if (name1.length() == 1 || name2.length() == 1) {</span>
+<span class="fc" id="L220">            return false;</span>
+        }
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (name1.equalsIgnoreCase(name2)) {</span>
+<span class="fc" id="L223">            return true;</span>
+        }
+
+        // Preprocessing
+<span class="fc" id="L227">        name1 = cleanName(name1);</span>
+<span class="fc" id="L228">        name2 = cleanName(name2);</span>
+
+        // Actual MRA Algorithm
+
+        // 1. Remove vowels
+<span class="fc" id="L233">        name1 = removeVowels(name1);</span>
+<span class="fc" id="L234">        name2 = removeVowels(name2);</span>
+
+        // 2. Remove double consonants
+<span class="fc" id="L237">        name1 = removeDoubleConsonants(name1);</span>
+<span class="fc" id="L238">        name2 = removeDoubleConsonants(name2);</span>
+
+        // 3. Reduce down to 3 letters
+<span class="fc" id="L241">        name1 = getFirst3Last3(name1);</span>
+<span class="fc" id="L242">        name2 = getFirst3Last3(name2);</span>
+
+        // 4. Check for length difference - if 3 or greater, then no similarity
+        // comparison is done
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        if (Math.abs(name1.length() - name2.length()) &gt;= 3) {</span>
+<span class="fc" id="L247">            return false;</span>
+        }
+
+        // 5. Obtain the minimum rating value by calculating the length sum of the
+        // encoded Strings and sending it down.
+<span class="fc" id="L252">        final int sumLength = Math.abs(name1.length() + name2.length());</span>
+<span class="fc" id="L253">        final int minRating = getMinRating(sumLength);</span>
+
+        // 6. Process the encoded Strings from left to right and remove any
+        // identical characters found from both Strings respectively.
+<span class="fc" id="L257">        final int count = leftToRightThenRightToLeftProcessing(name1, name2);</span>
+
+        // 7. Each PNI item that has a similarity rating equal to or greater than
+        // the min is considered to be a good candidate match
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        return count &gt;= minRating;</span>
+
+    }
+
+    /**
+     * Determines if a letter is a vowel.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param letter
+     *            The letter under investigation
+     * @return True if a vowel, else false
+     */
+    boolean isVowel(final String letter) {
+<span class="fc bfc" id="L278" title="All 6 branches covered.">        return letter.equalsIgnoreCase(&quot;E&quot;) || letter.equalsIgnoreCase(&quot;A&quot;) || letter.equalsIgnoreCase(&quot;O&quot;) ||</span>
+<span class="fc bfc" id="L279" title="All 4 branches covered.">               letter.equalsIgnoreCase(&quot;I&quot;) || letter.equalsIgnoreCase(&quot;U&quot;);</span>
+    }
+
+    /**
+     * Processes the names from left to right (first) then right to left removing identical letters in same positions.
+     * Then subtracts the longer string that remains from 6 and returns this.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param name1
+     *            name2
+     * @return the length as above
+     */
+    int leftToRightThenRightToLeftProcessing(final String name1, final String name2) {
+<span class="fc" id="L296">        final char[] name1Char = name1.toCharArray();</span>
+<span class="fc" id="L297">        final char[] name2Char = name2.toCharArray();</span>
+
+<span class="fc" id="L299">        final int name1Size = name1.length() - 1;</span>
+<span class="fc" id="L300">        final int name2Size = name2.length() - 1;</span>
+
+<span class="fc" id="L302">        String name1LtRStart = EMPTY;</span>
+<span class="fc" id="L303">        String name1LtREnd = EMPTY;</span>
+
+<span class="fc" id="L305">        String name2RtLStart = EMPTY;</span>
+<span class="fc" id="L306">        String name2RtLEnd = EMPTY;</span>
+
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        for (int i = 0; i &lt; name1Char.length; i++) {</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">            if (i &gt; name2Size) {</span>
+<span class="fc" id="L310">                break;</span>
+            }
+
+<span class="fc" id="L313">            name1LtRStart = name1.substring(i, i + 1);</span>
+<span class="fc" id="L314">            name1LtREnd = name1.substring(name1Size - i, name1Size - i + 1);</span>
+
+<span class="fc" id="L316">            name2RtLStart = name2.substring(i, i + 1);</span>
+<span class="fc" id="L317">            name2RtLEnd = name2.substring(name2Size - i, name2Size - i + 1);</span>
+
+            // Left to right...
+<span class="fc bfc" id="L320" title="All 2 branches covered.">            if (name1LtRStart.equals(name2RtLStart)) {</span>
+<span class="fc" id="L321">                name1Char[i] = ' ';</span>
+<span class="fc" id="L322">                name2Char[i] = ' ';</span>
+            }
+
+            // Right to left...
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            if (name1LtREnd.equals(name2RtLEnd)) {</span>
+<span class="fc" id="L327">                name1Char[name1Size - i] = ' ';</span>
+<span class="fc" id="L328">                name2Char[name2Size - i] = ' ';</span>
+            }
+        }
+
+        // Char arrays -&gt; string &amp; remove extraneous space
+<span class="fc" id="L333">        final String strA = new String(name1Char).replaceAll(&quot;\\s+&quot;, EMPTY);</span>
+<span class="fc" id="L334">        final String strB = new String(name2Char).replaceAll(&quot;\\s+&quot;, EMPTY);</span>
+
+        // Final bit - subtract the longest string from 6 and return this int value
+<span class="fc bfc" id="L337" title="All 2 branches covered.">        if (strA.length() &gt; strB.length()) {</span>
+<span class="fc" id="L338">            return Math.abs(6 - strA.length());</span>
+        }
+<span class="fc" id="L340">        return Math.abs(6 - strB.length());</span>
+    }
+
+    /**
+     * Removes accented letters and replaces with non-accented ASCII equivalent Case is preserved.
+     * http://www.codecodex.com/wiki/Remove_accent_from_letters_%28ex_.%C3%A9_to_e%29
+     *
+     * @param accentedWord
+     *            The word that may have accents in it.
+     * @return De-accented word
+     */
+    String removeAccents(final String accentedWord) {
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (accentedWord == null) {</span>
+<span class="fc" id="L353">            return null;</span>
+        }
+
+<span class="fc" id="L356">        final StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L357">        final int n = accentedWord.length();</span>
+
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L360">            final char c = accentedWord.charAt(i);</span>
+<span class="fc" id="L361">            final int pos = UNICODE.indexOf(c);</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">            if (pos &gt; -1) {</span>
+<span class="fc" id="L363">                sb.append(PLAIN_ASCII.charAt(pos));</span>
+            } else {
+<span class="fc" id="L365">                sb.append(c);</span>
+            }
+        }
+
+<span class="fc" id="L369">        return sb.toString();</span>
+    }
+
+    /**
+     * Replaces any double consonant pair with the single letter equivalent.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param name
+     *            String to have double consonants removed
+     * @return Single consonant word
+     */
+    String removeDoubleConsonants(final String name) {
+<span class="fc" id="L385">        String replacedName = name.toUpperCase(Locale.ENGLISH);</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">        for (final String dc : DOUBLE_CONSONANT) {</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">            if (replacedName.contains(dc)) {</span>
+<span class="fc" id="L388">                final String singleLetter = dc.substring(0, 1);</span>
+<span class="fc" id="L389">                replacedName = replacedName.replace(dc, singleLetter);</span>
+            }
+        }
+<span class="fc" id="L392">        return replacedName;</span>
+    }
+
+    /**
+     * Deletes all vowels unless the vowel begins the word.
+     *
+     * &lt;h2&gt;API Usage&lt;/h2&gt;
+     * &lt;p&gt;
+     * Consider this method private, it is package protected for unit testing only.
+     * &lt;/p&gt;
+     *
+     * @param name
+     *            The name to have vowels removed
+     * @return De-voweled word
+     */
+    String removeVowels(String name) {
+        // Extract first letter
+<span class="fc" id="L409">        final String firstLetter = name.substring(0, 1);</span>
+
+<span class="fc" id="L411">        name = name.replace(&quot;A&quot;, EMPTY);</span>
+<span class="fc" id="L412">        name = name.replace(&quot;E&quot;, EMPTY);</span>
+<span class="fc" id="L413">        name = name.replace(&quot;I&quot;, EMPTY);</span>
+<span class="fc" id="L414">        name = name.replace(&quot;O&quot;, EMPTY);</span>
+<span class="fc" id="L415">        name = name.replace(&quot;U&quot;, EMPTY);</span>
+
+<span class="fc" id="L417">        name = name.replaceAll(&quot;\\s{2,}\\b&quot;, SPACE);</span>
+
+        // return isVowel(firstLetter) ? (firstLetter + name) : name;
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        if (isVowel(firstLetter)) {</span>
+<span class="fc" id="L421">            return firstLetter + name;</span>
+        }
+<span class="fc" id="L423">        return name;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

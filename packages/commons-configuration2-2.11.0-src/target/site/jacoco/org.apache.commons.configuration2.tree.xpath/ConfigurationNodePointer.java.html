@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationNodePointer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree.xpath</a> &gt; <span class="el_source">ConfigurationNodePointer.java</span></div><h1>ConfigurationNodePointer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree.xpath;
+
+import java.util.Locale;
+
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.jxpath.ri.Compiler;
+import org.apache.commons.jxpath.ri.QName;
+import org.apache.commons.jxpath.ri.compiler.NodeTest;
+import org.apache.commons.jxpath.ri.compiler.NodeTypeTest;
+import org.apache.commons.jxpath.ri.model.NodeIterator;
+import org.apache.commons.jxpath.ri.model.NodePointer;
+
+/**
+ * &lt;p&gt;
+ * A specific {@code NodePointer} implementation for configuration nodes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This is needed for queries using JXPath.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ * @param &lt;T&gt; the type of the nodes this pointer deals with
+ */
+final class ConfigurationNodePointer&lt;T&gt; extends NodePointer {
+    /**
+     * The serial version UID.
+     */
+    private static final long serialVersionUID = -1087475639680007713L;
+
+    /** The node handler. */
+    private final NodeHandler&lt;T&gt; handler;
+
+    /** Stores the associated node. */
+    private final T node;
+
+    /**
+     * Creates a new instance of {@code ConfigurationNodePointer} and initializes it with its parent pointer.
+     *
+     * @param parent the parent pointer
+     * @param node the associated node
+     * @param handler the {@code NodeHandler}
+     */
+    public ConfigurationNodePointer(final ConfigurationNodePointer&lt;T&gt; parent, final T node, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L60">        super(parent);</span>
+<span class="fc" id="L61">        this.node = node;</span>
+<span class="fc" id="L62">        this.handler = handler;</span>
+<span class="fc" id="L63">    }</span>
+
+    /**
+     * Creates a new instance of {@code ConfigurationNodePointer} pointing to the specified node.
+     *
+     * @param node the wrapped node
+     * @param locale the locale
+     * @param handler the {@code NodeHandler}
+     */
+    public ConfigurationNodePointer(final T node, final Locale locale, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L73">        super(null, locale);</span>
+<span class="fc" id="L74">        this.node = node;</span>
+<span class="fc" id="L75">        this.handler = handler;</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Returns an iterator for the attributes that match the given name.
+     *
+     * @param name the attribute name
+     * @return the iterator for the attributes
+     */
+    @Override
+    public NodeIterator attributeIterator(final QName name) {
+<span class="fc" id="L86">        return new ConfigurationNodeIteratorAttribute&lt;&gt;(this, name);</span>
+    }
+
+    /**
+     * Casts the given child pointer to a node pointer of this type. This is a bit dangerous. However, in a typical setup,
+     * child node pointers can only be created by this instance which ensures that they are of the correct type. Therefore,
+     * this cast is safe.
+     *
+     * @param p the {@code NodePointer} to cast
+     * @return the resulting {@code ConfigurationNodePointer}
+     */
+    private ConfigurationNodePointer&lt;T&gt; castPointer(final NodePointer p) {
+        @SuppressWarnings(&quot;unchecked&quot;) // see method comment
+<span class="fc" id="L99">        final ConfigurationNodePointer&lt;T&gt; result = (ConfigurationNodePointer&lt;T&gt;) p;</span>
+<span class="fc" id="L100">        return result;</span>
+    }
+
+    /**
+     * Returns an iterator for the children of this pointer that match the given test object.
+     *
+     * @param test the test object
+     * @param reverse the reverse flag
+     * @param startWith the start value of the iteration
+     */
+    @Override
+    public NodeIterator childIterator(final NodeTest test, final boolean reverse, final NodePointer startWith) {
+<span class="fc" id="L112">        return new ConfigurationNodeIteratorChildren&lt;&gt;(this, test, reverse, castPointer(startWith));</span>
+    }
+
+    /**
+     * Compares two child node pointers.
+     *
+     * @param pointer1 one pointer
+     * @param pointer2 another pointer
+     * @return a flag, which pointer should be sorted first
+     */
+    @Override
+    public int compareChildNodePointers(final NodePointer pointer1, final NodePointer pointer2) {
+<span class="fc" id="L124">        final Object node1 = pointer1.getBaseValue();</span>
+<span class="fc" id="L125">        final Object node2 = pointer2.getBaseValue();</span>
+
+        // sort based on the occurrence in the sub node list
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for (final T child : getNodeHandler().getChildren(node)) {</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            if (child == node1) {</span>
+<span class="fc" id="L130">                return -1;</span>
+            }
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (child == node2) {</span>
+<span class="fc" id="L133">                return 1;</span>
+            }
+<span class="fc" id="L135">        }</span>
+<span class="fc" id="L136">        return 0; // should not happen</span>
+    }
+
+    /**
+     * Gets this node's base value. This is the associated configuration node.
+     *
+     * @return the base value
+     */
+    @Override
+    public Object getBaseValue() {
+<span class="fc" id="L146">        return node;</span>
+    }
+
+    /**
+     * Gets the wrapped configuration node.
+     *
+     * @return the wrapped node
+     */
+    public T getConfigurationNode() {
+<span class="fc" id="L155">        return node;</span>
+    }
+
+    /**
+     * Gets the immediate node. This is the associated configuration node.
+     *
+     * @return the immediate node
+     */
+    @Override
+    public Object getImmediateNode() {
+<span class="fc" id="L165">        return node;</span>
+    }
+
+    /**
+     * Gets this node's length. This is always 1.
+     *
+     * @return the node's length
+     */
+    @Override
+    public int getLength() {
+<span class="fc" id="L175">        return 1;</span>
+    }
+
+    /**
+     * Gets this node's name.
+     *
+     * @return the name
+     */
+    @Override
+    public QName getName() {
+<span class="fc" id="L185">        return new QName(null, getNodeHandler().nodeName(node));</span>
+    }
+
+    /**
+     * Gets the {@code NodeHandler} used by this instance.
+     *
+     * @return the {@code NodeHandler}
+     */
+    public NodeHandler&lt;T&gt; getNodeHandler() {
+<span class="fc" id="L194">        return handler;</span>
+    }
+
+    /**
+     * Gets the value of this node.
+     *
+     * @return the represented node's value
+     */
+    @Override
+    public Object getValue() {
+<span class="fc" id="L204">        return getNodeHandler().getValue(node);</span>
+    }
+
+    /**
+     * Checks whether this node pointer refers to an attribute node. This is not the case.
+     *
+     * @return the attribute flag
+     */
+    @Override
+    public boolean isAttribute() {
+<span class="fc" id="L214">        return false;</span>
+    }
+
+    /**
+     * Returns a flag if this node is a collection. This is not the case.
+     *
+     * @return the collection flag
+     */
+    @Override
+    public boolean isCollection() {
+<span class="nc" id="L224">        return false;</span>
+    }
+
+    /**
+     * Returns a flag whether this node is a leaf. This is the case if there are no child nodes.
+     *
+     * @return a flag if this node is a leaf
+     */
+    @Override
+    public boolean isLeaf() {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        return getNodeHandler().getChildrenCount(node, null) &lt; 1;</span>
+    }
+
+    /**
+     * Sets the value of this node. This is not supported, so always an exception is thrown.
+     *
+     * @param value the new value
+     */
+    @Override
+    public void setValue(final Object value) {
+<span class="fc" id="L244">        throw new UnsupportedOperationException(&quot;Node value cannot be set!&quot;);</span>
+    }
+
+    /**
+     * Tests if this node matches the given test. Configuration nodes are text nodes, too because they can contain a value.
+     *
+     * @param test the test object
+     * @return a flag if this node corresponds to the test
+     */
+    @Override
+    public boolean testNode(final NodeTest test) {
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">        if (test instanceof NodeTypeTest &amp;&amp; ((NodeTypeTest) test).getNodeType() == Compiler.NODE_TYPE_TEXT) {</span>
+<span class="nc" id="L256">            return true;</span>
+        }
+<span class="fc" id="L258">        return super.testNode(test);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

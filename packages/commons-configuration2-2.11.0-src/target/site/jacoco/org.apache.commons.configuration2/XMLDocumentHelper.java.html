@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XMLDocumentHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">XMLDocumentHelper.java</span></div><h1>XMLDocumentHelper.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Result;
+import javax.xml.transform.Source;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMResult;
+import javax.xml.transform.dom.DOMSource;
+
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+/**
+ * &lt;p&gt;
+ * An internally used helper class for dealing with XML documents.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is used by {@link XMLConfiguration}. It provides some basic functionality for processing DOM documents and
+ * dealing with elements. The main idea is that an instance holds the XML document associated with a XML configuration
+ * object. When the configuration is to be saved the document has to be manipulated according to the changes made on the
+ * configuration. To ensure that this is possible even under concurrent access, a new temporary instance is created as a
+ * copy of the original instance. Then, on this copy, the changes of the configuration are applied. The resulting
+ * document can then be serialized.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Nodes of an {@code XMLConfiguration} that was read from a file are associated with the XML elements they represent.
+ * In order to apply changes on the copied document, it is necessary to establish a mapping between the elements of the
+ * old document and the elements of the copied document. This is also handled by this class.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+final class XMLDocumentHelper {
+    /**
+     * Creates a copy of the specified document.
+     *
+     * @param doc the {@code Document}
+     * @return the copy of this document
+     * @throws ConfigurationException if an error occurs
+     */
+    private static Document copyDocument(final Document doc) throws ConfigurationException {
+<span class="fc" id="L70">        final Transformer transformer = createTransformer();</span>
+<span class="fc" id="L71">        final DOMSource source = new DOMSource(doc);</span>
+<span class="fc" id="L72">        final DOMResult result = new DOMResult();</span>
+<span class="fc" id="L73">        transform(transformer, source, result);</span>
+
+<span class="fc" id="L75">        return (Document) result.getNode();</span>
+    }
+
+    /**
+     * Creates a new {@code DocumentBuilder} using the specified factory. Exceptions are rethrown as
+     * {@code ConfigurationException} exceptions.
+     *
+     * @param factory the {@code DocumentBuilderFactory}
+     * @return the newly created {@code DocumentBuilder}
+     * @throws ConfigurationException if an error occurs
+     */
+    static DocumentBuilder createDocumentBuilder(final DocumentBuilderFactory factory) throws ConfigurationException {
+        try {
+<span class="fc" id="L88">            return factory.newDocumentBuilder();</span>
+<span class="fc" id="L89">        } catch (final ParserConfigurationException pcex) {</span>
+<span class="fc" id="L90">            throw new ConfigurationException(pcex);</span>
+        }
+    }
+
+    /**
+     * Creates a new {@code DocumentBuilderFactory} instance.
+     *
+     * @return the new factory object
+     */
+    private static DocumentBuilderFactory createDocumentBuilderFactory() {
+<span class="fc" id="L100">        return DocumentBuilderFactory.newInstance();</span>
+    }
+
+    /**
+     * Creates the element mapping for the specified documents. For each node in the source document an entry is created
+     * pointing to the corresponding node in the destination object.
+     *
+     * @param doc1 the source document
+     * @param doc2 the destination document
+     * @return the element mapping
+     */
+    private static Map&lt;Node, Node&gt; createElementMapping(final Document doc1, final Document doc2) {
+<span class="fc" id="L112">        final Map&lt;Node, Node&gt; mapping = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L113">        createElementMappingForNodes(doc1.getDocumentElement(), doc2.getDocumentElement(), mapping);</span>
+<span class="fc" id="L114">        return mapping;</span>
+    }
+
+    /**
+     * Creates the element mapping for the specified nodes and all their child nodes.
+     *
+     * @param n1 node 1
+     * @param n2 node 2
+     * @param mapping the mapping to be filled
+     */
+    private static void createElementMappingForNodes(final Node n1, final Node n2, final Map&lt;Node, Node&gt; mapping) {
+<span class="fc" id="L125">        mapping.put(n1, n2);</span>
+<span class="fc" id="L126">        final NodeList childNodes1 = n1.getChildNodes();</span>
+<span class="fc" id="L127">        final NodeList childNodes2 = n2.getChildNodes();</span>
+<span class="fc" id="L128">        final int count = Math.min(childNodes1.getLength(), childNodes2.getLength());</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for (int i = 0; i &lt; count; i++) {</span>
+<span class="fc" id="L130">            createElementMappingForNodes(childNodes1.item(i), childNodes2.item(i), mapping);</span>
+        }
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Creates a new {@code Transformer} object. No initializations are performed on the new instance.
+     *
+     * @return the new {@code Transformer}
+     * @throws ConfigurationException if the {@code Transformer} could not be created
+     */
+    public static Transformer createTransformer() throws ConfigurationException {
+<span class="fc" id="L141">        return createTransformer(createTransformerFactory());</span>
+    }
+
+    /**
+     * Creates a {@code Transformer} using the specified factory.
+     *
+     * @param factory the {@code TransformerFactory}
+     * @return the newly created {@code Transformer}
+     * @throws ConfigurationException if an error occurs
+     */
+    static Transformer createTransformer(final TransformerFactory factory) throws ConfigurationException {
+        try {
+<span class="fc" id="L153">            return factory.newTransformer();</span>
+<span class="fc" id="L154">        } catch (final TransformerConfigurationException tex) {</span>
+<span class="fc" id="L155">            throw new ConfigurationException(tex);</span>
+        }
+    }
+
+    /**
+     * Creates a new {@code TransformerFactory}.
+     *
+     * @return the {@code TransformerFactory}
+     */
+    static TransformerFactory createTransformerFactory() {
+<span class="fc" id="L165">        return TransformerFactory.newInstance();</span>
+    }
+
+    /**
+     * Creates an empty element mapping.
+     *
+     * @return the empty mapping
+     */
+    private static Map&lt;Node, Node&gt; emptyElementMapping() {
+<span class="fc" id="L174">        return Collections.emptyMap();</span>
+    }
+
+    /**
+     * Creates a new instance of {@code XMLDocumentHelper} and initializes it with a newly created, empty {@code Document}.
+     * The new document has a root element with the given element name. This element has no further child nodes.
+     *
+     * @param rootElementName the name of the root element
+     * @return the newly created instance
+     * @throws ConfigurationException if an error occurs when creating the document
+     */
+    public static XMLDocumentHelper forNewDocument(final String rootElementName) throws ConfigurationException {
+<span class="fc" id="L186">        final Document doc = createDocumentBuilder(createDocumentBuilderFactory()).newDocument();</span>
+<span class="fc" id="L187">        final Element rootElem = doc.createElement(rootElementName);</span>
+<span class="fc" id="L188">        doc.appendChild(rootElem);</span>
+<span class="fc" id="L189">        return new XMLDocumentHelper(doc, emptyElementMapping(), null, null);</span>
+    }
+
+    /**
+     * Creates a new instance of {@code XMLDocumentHelper} and initializes it with a source document. This is a document
+     * created from a configuration file. It is kept in memory so that the configuration can be saved with the same format.
+     * Note that already a copy of this document is created. This is done for the following reasons:
+     * &lt;ul&gt;
+     * &lt;li&gt;It is a defensive copy.&lt;/li&gt;
+     * &lt;li&gt;An identity transformation on a document may change certain nodes, e.g. CDATA sections. When later on again
+     * copies of this document are created it has to be ensured that these copies have the same structure than the original
+     * document stored in this instance.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param srcDoc the source document
+     * @return the newly created instance
+     * @throws ConfigurationException if an error occurs
+     */
+    public static XMLDocumentHelper forSourceDocument(final Document srcDoc) throws ConfigurationException {
+        final String pubID;
+        final String sysID;
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (srcDoc.getDoctype() != null) {</span>
+<span class="fc" id="L211">            pubID = srcDoc.getDoctype().getPublicId();</span>
+<span class="fc" id="L212">            sysID = srcDoc.getDoctype().getSystemId();</span>
+        } else {
+<span class="fc" id="L214">            pubID = null;</span>
+<span class="fc" id="L215">            sysID = null;</span>
+        }
+
+<span class="fc" id="L218">        return new XMLDocumentHelper(copyDocument(srcDoc), emptyElementMapping(), pubID, sysID);</span>
+    }
+
+    /**
+     * Performs an XSL transformation on the passed in operands. All possible exceptions are caught and redirected as
+     * {@code ConfigurationException} exceptions.
+     *
+     * @param transformer the transformer
+     * @param source the source
+     * @param result the result
+     * @throws ConfigurationException if an error occurs
+     */
+    public static void transform(final Transformer transformer, final Source source, final Result result) throws ConfigurationException {
+        try {
+<span class="fc" id="L232">            transformer.transform(source, result);</span>
+<span class="fc" id="L233">        } catch (final TransformerException tex) {</span>
+<span class="fc" id="L234">            throw new ConfigurationException(tex);</span>
+<span class="fc" id="L235">        }</span>
+<span class="fc" id="L236">    }</span>
+
+    /** Stores the document managed by this instance. */
+    private final Document document;
+
+    /** The element mapping to the source document. */
+    private final Map&lt;Node, Node&gt; elementMapping;
+
+    /** Stores the public ID of the source document. */
+    private final String sourcePublicID;
+
+    /** Stores the system ID of the source document. */
+    private final String sourceSystemID;
+
+    /**
+     * Creates a new instance of {@code XMLDocumentHelper} and initializes it with the given XML document. Note: This
+     * constructor is package private only for testing purposes. Instances should be created using the static factory
+     * methods.
+     *
+     * @param doc the {@code Document}
+     * @param elemMap the element mapping
+     * @param pubID the public ID of the source document
+     * @param sysID the system ID of the source document
+     */
+<span class="fc" id="L260">    XMLDocumentHelper(final Document doc, final Map&lt;Node, Node&gt; elemMap, final String pubID, final String sysID) {</span>
+<span class="fc" id="L261">        document = doc;</span>
+<span class="fc" id="L262">        elementMapping = elemMap;</span>
+<span class="fc" id="L263">        sourcePublicID = pubID;</span>
+<span class="fc" id="L264">        sourceSystemID = sysID;</span>
+<span class="fc" id="L265">    }</span>
+
+    /**
+     * Creates a copy of this object. This copy contains a copy of the document and an element mapping which allows mapping
+     * elements from the source document to elements of the copied document.
+     *
+     * @return the copy
+     * @throws ConfigurationException if an error occurs
+     */
+    public XMLDocumentHelper createCopy() throws ConfigurationException {
+<span class="fc" id="L275">        final Document docCopy = copyDocument(getDocument());</span>
+<span class="fc" id="L276">        return new XMLDocumentHelper(docCopy, createElementMapping(getDocument(), docCopy), getSourcePublicID(), getSourceSystemID());</span>
+    }
+
+    /**
+     * Gets the {@code Document} managed by this helper.
+     *
+     * @return the wrapped {@code Document}
+     */
+    public Document getDocument() {
+<span class="fc" id="L285">        return document;</span>
+    }
+
+    /**
+     * Gets the element mapping to the source document. This map can be used to obtain elements in the managed document
+     * which correspond to elements in the source document. If this instance has not been created from a source document,
+     * the mapping is empty.
+     *
+     * @return the element mapping to the source document
+     */
+    public Map&lt;Node, Node&gt; getElementMapping() {
+<span class="fc" id="L296">        return elementMapping;</span>
+    }
+
+    /**
+     * Gets the public ID of the source document.
+     *
+     * @return the public ID of the source document
+     */
+    public String getSourcePublicID() {
+<span class="fc" id="L305">        return sourcePublicID;</span>
+    }
+
+    /**
+     * Gets the system ID of the source document.
+     *
+     * @return the system ID of the source document
+     */
+    public String getSourceSystemID() {
+<span class="fc" id="L314">        return sourceSystemID;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

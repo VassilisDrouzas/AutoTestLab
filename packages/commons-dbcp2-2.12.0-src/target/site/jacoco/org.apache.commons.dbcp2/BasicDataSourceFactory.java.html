@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BasicDataSourceFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">BasicDataSourceFactory.java</span></div><h1>BasicDataSourceFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.Hashtable;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.StringTokenizer;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+import javax.naming.Context;
+import javax.naming.Name;
+import javax.naming.RefAddr;
+import javax.naming.Reference;
+import javax.naming.spi.ObjectFactory;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+
+/**
+ * JNDI object factory that creates an instance of {@code BasicDataSource} that has been configured based on the
+ * {@code RefAddr} values of the specified {@code Reference}, which must match the names and data types of the
+ * {@code BasicDataSource} bean properties with the following exceptions:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@code connectionInitSqls} must be passed to this factory as a single String using semicolon to delimit the
+ * statements whereas {@code BasicDataSource} requires a collection of Strings.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 2.0
+ */
+<span class="fc" id="L62">public class BasicDataSourceFactory implements ObjectFactory {</span>
+
+<span class="fc" id="L64">    private static final Log log = LogFactory.getLog(BasicDataSourceFactory.class);</span>
+
+    private static final String PROP_DEFAULT_AUTO_COMMIT = &quot;defaultAutoCommit&quot;;
+    private static final String PROP_DEFAULT_READ_ONLY = &quot;defaultReadOnly&quot;;
+    private static final String PROP_DEFAULT_TRANSACTION_ISOLATION = &quot;defaultTransactionIsolation&quot;;
+    private static final String PROP_DEFAULT_CATALOG = &quot;defaultCatalog&quot;;
+    private static final String PROP_DEFAULT_SCHEMA = &quot;defaultSchema&quot;;
+    private static final String PROP_CACHE_STATE = &quot;cacheState&quot;;
+    private static final String PROP_DRIVER_CLASS_NAME = &quot;driverClassName&quot;;
+    private static final String PROP_LIFO = &quot;lifo&quot;;
+    private static final String PROP_MAX_TOTAL = &quot;maxTotal&quot;;
+    private static final String PROP_MAX_IDLE = &quot;maxIdle&quot;;
+    private static final String PROP_MIN_IDLE = &quot;minIdle&quot;;
+    private static final String PROP_INITIAL_SIZE = &quot;initialSize&quot;;
+    private static final String PROP_MAX_WAIT_MILLIS = &quot;maxWaitMillis&quot;;
+    private static final String PROP_TEST_ON_CREATE = &quot;testOnCreate&quot;;
+    private static final String PROP_TEST_ON_BORROW = &quot;testOnBorrow&quot;;
+    private static final String PROP_TEST_ON_RETURN = &quot;testOnReturn&quot;;
+    private static final String PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS = &quot;timeBetweenEvictionRunsMillis&quot;;
+    private static final String PROP_NUM_TESTS_PER_EVICTION_RUN = &quot;numTestsPerEvictionRun&quot;;
+    private static final String PROP_MIN_EVICTABLE_IDLE_TIME_MILLIS = &quot;minEvictableIdleTimeMillis&quot;;
+    private static final String PROP_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS = &quot;softMinEvictableIdleTimeMillis&quot;;
+    private static final String PROP_EVICTION_POLICY_CLASS_NAME = &quot;evictionPolicyClassName&quot;;
+    private static final String PROP_TEST_WHILE_IDLE = &quot;testWhileIdle&quot;;
+    private static final String PROP_PASSWORD = Constants.KEY_PASSWORD;
+    private static final String PROP_URL = &quot;url&quot;;
+    private static final String PROP_USER_NAME = &quot;username&quot;;
+    private static final String PROP_VALIDATION_QUERY = &quot;validationQuery&quot;;
+    private static final String PROP_VALIDATION_QUERY_TIMEOUT = &quot;validationQueryTimeout&quot;;
+    private static final String PROP_JMX_NAME = &quot;jmxName&quot;;
+    private static final String PROP_REGISTER_CONNECTION_MBEAN = &quot;registerConnectionMBean&quot;;
+    private static final String PROP_CONNECTION_FACTORY_CLASS_NAME = &quot;connectionFactoryClassName&quot;;
+
+    /**
+     * The property name for connectionInitSqls. The associated value String must be of the form [query;]*
+     */
+    private static final String PROP_CONNECTION_INIT_SQLS = &quot;connectionInitSqls&quot;;
+    private static final String PROP_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED = &quot;accessToUnderlyingConnectionAllowed&quot;;
+    private static final String PROP_REMOVE_ABANDONED_ON_BORROW = &quot;removeAbandonedOnBorrow&quot;;
+    private static final String PROP_REMOVE_ABANDONED_ON_MAINTENANCE = &quot;removeAbandonedOnMaintenance&quot;;
+    private static final String PROP_REMOVE_ABANDONED_TIMEOUT = &quot;removeAbandonedTimeout&quot;;
+    private static final String PROP_LOG_ABANDONED = &quot;logAbandoned&quot;;
+    private static final String PROP_ABANDONED_USAGE_TRACKING = &quot;abandonedUsageTracking&quot;;
+    private static final String PROP_POOL_PREPARED_STATEMENTS = &quot;poolPreparedStatements&quot;;
+    private static final String PROP_CLEAR_STATEMENT_POOL_ON_RETURN = &quot;clearStatementPoolOnReturn&quot;;
+    private static final String PROP_MAX_OPEN_PREPARED_STATEMENTS = &quot;maxOpenPreparedStatements&quot;;
+    private static final String PROP_CONNECTION_PROPERTIES = &quot;connectionProperties&quot;;
+    private static final String PROP_MAX_CONN_LIFETIME_MILLIS = &quot;maxConnLifetimeMillis&quot;;
+    private static final String PROP_LOG_EXPIRED_CONNECTIONS = &quot;logExpiredConnections&quot;;
+    private static final String PROP_ROLLBACK_ON_RETURN = &quot;rollbackOnReturn&quot;;
+    private static final String PROP_ENABLE_AUTO_COMMIT_ON_RETURN = &quot;enableAutoCommitOnReturn&quot;;
+    private static final String PROP_DEFAULT_QUERY_TIMEOUT = &quot;defaultQueryTimeout&quot;;
+    private static final String PROP_FAST_FAIL_VALIDATION = &quot;fastFailValidation&quot;;
+
+    /**
+     * Value string must be of the form [STATE_CODE,]*
+     */
+    private static final String PROP_DISCONNECTION_SQL_CODES = &quot;disconnectionSqlCodes&quot;;
+
+    /*
+     * Block with obsolete properties from DBCP 1.x. Warn users that these are ignored and they should use the 2.x
+     * properties.
+     */
+    private static final String NUPROP_MAX_ACTIVE = &quot;maxActive&quot;;
+    private static final String NUPROP_REMOVE_ABANDONED = &quot;removeAbandoned&quot;;
+    private static final String NUPROP_MAXWAIT = &quot;maxWait&quot;;
+
+    /*
+     * Block with properties expected in a DataSource This props will not be listed as ignored - we know that they may
+     * appear in Resource, and not listing them as ignored.
+     */
+    private static final String SILENT_PROP_FACTORY = &quot;factory&quot;;
+    private static final String SILENT_PROP_SCOPE = &quot;scope&quot;;
+    private static final String SILENT_PROP_SINGLETON = &quot;singleton&quot;;
+    private static final String SILENT_PROP_AUTH = &quot;auth&quot;;
+
+<span class="fc" id="L140">    private static final List&lt;String&gt; ALL_PROPERTY_NAMES = Arrays.asList(PROP_DEFAULT_AUTO_COMMIT, PROP_DEFAULT_READ_ONLY,</span>
+            PROP_DEFAULT_TRANSACTION_ISOLATION, PROP_DEFAULT_CATALOG, PROP_DEFAULT_SCHEMA, PROP_CACHE_STATE,
+            PROP_DRIVER_CLASS_NAME, PROP_LIFO, PROP_MAX_TOTAL, PROP_MAX_IDLE, PROP_MIN_IDLE, PROP_INITIAL_SIZE,
+            PROP_MAX_WAIT_MILLIS, PROP_TEST_ON_CREATE, PROP_TEST_ON_BORROW, PROP_TEST_ON_RETURN,
+            PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS, PROP_NUM_TESTS_PER_EVICTION_RUN, PROP_MIN_EVICTABLE_IDLE_TIME_MILLIS,
+            PROP_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS, PROP_EVICTION_POLICY_CLASS_NAME, PROP_TEST_WHILE_IDLE, PROP_PASSWORD,
+            PROP_URL, PROP_USER_NAME, PROP_VALIDATION_QUERY, PROP_VALIDATION_QUERY_TIMEOUT, PROP_CONNECTION_INIT_SQLS,
+            PROP_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED, PROP_REMOVE_ABANDONED_ON_BORROW, PROP_REMOVE_ABANDONED_ON_MAINTENANCE,
+            PROP_REMOVE_ABANDONED_TIMEOUT, PROP_LOG_ABANDONED, PROP_ABANDONED_USAGE_TRACKING, PROP_POOL_PREPARED_STATEMENTS,
+            PROP_CLEAR_STATEMENT_POOL_ON_RETURN,
+            PROP_MAX_OPEN_PREPARED_STATEMENTS, PROP_CONNECTION_PROPERTIES, PROP_MAX_CONN_LIFETIME_MILLIS,
+            PROP_LOG_EXPIRED_CONNECTIONS, PROP_ROLLBACK_ON_RETURN, PROP_ENABLE_AUTO_COMMIT_ON_RETURN,
+            PROP_DEFAULT_QUERY_TIMEOUT, PROP_FAST_FAIL_VALIDATION, PROP_DISCONNECTION_SQL_CODES, PROP_JMX_NAME,
+            PROP_REGISTER_CONNECTION_MBEAN, PROP_CONNECTION_FACTORY_CLASS_NAME);
+
+    /**
+     * Obsolete properties from DBCP 1.x. with warning strings suggesting new properties. LinkedHashMap will guarantee
+     * that properties will be listed to output in order of insertion into map.
+     */
+<span class="fc" id="L159">    private static final Map&lt;String, String&gt; NUPROP_WARNTEXT = new LinkedHashMap&lt;&gt;();</span>
+
+    static {
+<span class="fc" id="L162">        NUPROP_WARNTEXT.put(NUPROP_MAX_ACTIVE,</span>
+                &quot;Property &quot; + NUPROP_MAX_ACTIVE + &quot; is not used in DBCP2, use &quot; + PROP_MAX_TOTAL + &quot; instead. &quot;
+                        + PROP_MAX_TOTAL + &quot; default value is &quot; + GenericObjectPoolConfig.DEFAULT_MAX_TOTAL + &quot;.&quot;);
+<span class="fc" id="L165">        NUPROP_WARNTEXT.put(NUPROP_REMOVE_ABANDONED,</span>
+                &quot;Property &quot; + NUPROP_REMOVE_ABANDONED + &quot; is not used in DBCP2,&quot; + &quot; use one or both of &quot;
+                        + PROP_REMOVE_ABANDONED_ON_BORROW + &quot; or &quot; + PROP_REMOVE_ABANDONED_ON_MAINTENANCE + &quot; instead. &quot;
+                        + &quot;Both have default value set to false.&quot;);
+<span class="fc" id="L169">        NUPROP_WARNTEXT.put(NUPROP_MAXWAIT,</span>
+                &quot;Property &quot; + NUPROP_MAXWAIT + &quot; is not used in DBCP2&quot; + &quot; , use &quot; + PROP_MAX_WAIT_MILLIS + &quot; instead. &quot;
+                        + PROP_MAX_WAIT_MILLIS + &quot; default value is &quot; + BaseObjectPoolConfig.DEFAULT_MAX_WAIT
+                        + &quot;.&quot;);
+    }
+
+    /**
+     * Silent Properties. These properties will not be listed as ignored - we know that they may appear in JDBC Resource
+     * references, and we will not list them as ignored.
+     */
+<span class="fc" id="L179">    private static final List&lt;String&gt; SILENT_PROPERTIES = new ArrayList&lt;&gt;();</span>
+
+    static {
+<span class="fc" id="L182">        SILENT_PROPERTIES.add(SILENT_PROP_FACTORY);</span>
+<span class="fc" id="L183">        SILENT_PROPERTIES.add(SILENT_PROP_SCOPE);</span>
+<span class="fc" id="L184">        SILENT_PROPERTIES.add(SILENT_PROP_SINGLETON);</span>
+<span class="fc" id="L185">        SILENT_PROPERTIES.add(SILENT_PROP_AUTH);</span>
+
+<span class="fc" id="L187">    }</span>
+
+    private static &lt;V&gt; void accept(final Properties properties, final String name, final Function&lt;String, V&gt; parser, final Consumer&lt;V&gt; consumer) {
+<span class="fc" id="L190">        getOptional(properties, name).ifPresent(v -&gt; consumer.accept(parser.apply(v)));</span>
+<span class="fc" id="L191">    }</span>
+
+    private static void acceptBoolean(final Properties properties, final String name, final Consumer&lt;Boolean&gt; consumer) {
+<span class="fc" id="L194">        accept(properties, name, Boolean::parseBoolean, consumer);</span>
+<span class="fc" id="L195">    }</span>
+
+    private static void acceptDurationOfMillis(final Properties properties, final String name, final Consumer&lt;Duration&gt; consumer) {
+<span class="fc" id="L198">        accept(properties, name, s -&gt; Duration.ofMillis(Long.parseLong(s)), consumer);</span>
+<span class="fc" id="L199">    }</span>
+
+    private static void acceptDurationOfSeconds(final Properties properties, final String name, final Consumer&lt;Duration&gt; consumer) {
+<span class="fc" id="L202">        accept(properties, name, s -&gt; Duration.ofSeconds(Long.parseLong(s)), consumer);</span>
+<span class="fc" id="L203">    }</span>
+
+    private static void acceptInt(final Properties properties, final String name, final Consumer&lt;Integer&gt; consumer) {
+<span class="fc" id="L206">        accept(properties, name, Integer::parseInt, consumer);</span>
+<span class="fc" id="L207">    }</span>
+
+    private static void acceptString(final Properties properties, final String name, final Consumer&lt;String&gt; consumer) {
+<span class="fc" id="L210">        accept(properties, name, Function.identity(), consumer);</span>
+<span class="fc" id="L211">    }</span>
+
+    /**
+     * Creates and configures a {@link BasicDataSource} instance based on the given properties.
+     *
+     * @param properties
+     *            The data source configuration properties.
+     * @return A new a {@link BasicDataSource} instance based on the given properties.
+     * @throws SQLException
+     *             Thrown when an error occurs creating the data source.
+     */
+    public static BasicDataSource createDataSource(final Properties properties) throws SQLException {
+<span class="fc" id="L223">        final BasicDataSource dataSource = new BasicDataSource();</span>
+<span class="fc" id="L224">        acceptBoolean(properties, PROP_DEFAULT_AUTO_COMMIT, dataSource::setDefaultAutoCommit);</span>
+<span class="fc" id="L225">        acceptBoolean(properties, PROP_DEFAULT_READ_ONLY, dataSource::setDefaultReadOnly);</span>
+
+<span class="fc" id="L227">        getOptional(properties, PROP_DEFAULT_TRANSACTION_ISOLATION).ifPresent(value -&gt; {</span>
+<span class="fc" id="L228">            value = value.toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L229">            int level = PoolableConnectionFactory.UNKNOWN_TRANSACTION_ISOLATION;</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            if (&quot;NONE&quot;.equals(value)) {</span>
+<span class="nc" id="L231">                level = Connection.TRANSACTION_NONE;</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">            } else if (&quot;READ_COMMITTED&quot;.equals(value)) {</span>
+<span class="fc" id="L233">                level = Connection.TRANSACTION_READ_COMMITTED;</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            } else if (&quot;READ_UNCOMMITTED&quot;.equals(value)) {</span>
+<span class="nc" id="L235">                level = Connection.TRANSACTION_READ_UNCOMMITTED;</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">            } else if (&quot;REPEATABLE_READ&quot;.equals(value)) {</span>
+<span class="nc" id="L237">                level = Connection.TRANSACTION_REPEATABLE_READ;</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            } else if (&quot;SERIALIZABLE&quot;.equals(value)) {</span>
+<span class="nc" id="L239">                level = Connection.TRANSACTION_SERIALIZABLE;</span>
+            } else {
+                try {
+<span class="nc" id="L242">                    level = Integer.parseInt(value);</span>
+<span class="nc" id="L243">                } catch (final NumberFormatException e) {</span>
+<span class="nc" id="L244">                    System.err.println(&quot;Could not parse defaultTransactionIsolation: &quot; + value);</span>
+<span class="nc" id="L245">                    System.err.println(&quot;WARNING: defaultTransactionIsolation not set&quot;);</span>
+<span class="nc" id="L246">                    System.err.println(&quot;using default value of database driver&quot;);</span>
+<span class="nc" id="L247">                    level = PoolableConnectionFactory.UNKNOWN_TRANSACTION_ISOLATION;</span>
+<span class="nc" id="L248">                }</span>
+            }
+<span class="fc" id="L250">            dataSource.setDefaultTransactionIsolation(level);</span>
+<span class="fc" id="L251">        });</span>
+
+<span class="fc" id="L253">        acceptString(properties, PROP_DEFAULT_SCHEMA, dataSource::setDefaultSchema);</span>
+<span class="fc" id="L254">        acceptString(properties, PROP_DEFAULT_CATALOG, dataSource::setDefaultCatalog);</span>
+<span class="fc" id="L255">        acceptBoolean(properties, PROP_CACHE_STATE, dataSource::setCacheState);</span>
+<span class="fc" id="L256">        acceptString(properties, PROP_DRIVER_CLASS_NAME, dataSource::setDriverClassName);</span>
+<span class="fc" id="L257">        acceptBoolean(properties, PROP_LIFO, dataSource::setLifo);</span>
+<span class="fc" id="L258">        acceptInt(properties, PROP_MAX_TOTAL, dataSource::setMaxTotal);</span>
+<span class="fc" id="L259">        acceptInt(properties, PROP_MAX_IDLE, dataSource::setMaxIdle);</span>
+<span class="fc" id="L260">        acceptInt(properties, PROP_MIN_IDLE, dataSource::setMinIdle);</span>
+<span class="fc" id="L261">        acceptInt(properties, PROP_INITIAL_SIZE, dataSource::setInitialSize);</span>
+<span class="fc" id="L262">        acceptDurationOfMillis(properties, PROP_MAX_WAIT_MILLIS, dataSource::setMaxWait);</span>
+<span class="fc" id="L263">        acceptBoolean(properties, PROP_TEST_ON_CREATE, dataSource::setTestOnCreate);</span>
+<span class="fc" id="L264">        acceptBoolean(properties, PROP_TEST_ON_BORROW, dataSource::setTestOnBorrow);</span>
+<span class="fc" id="L265">        acceptBoolean(properties, PROP_TEST_ON_RETURN, dataSource::setTestOnReturn);</span>
+<span class="fc" id="L266">        acceptDurationOfMillis(properties, PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS, dataSource::setDurationBetweenEvictionRuns);</span>
+<span class="fc" id="L267">        acceptInt(properties, PROP_NUM_TESTS_PER_EVICTION_RUN, dataSource::setNumTestsPerEvictionRun);</span>
+<span class="fc" id="L268">        acceptDurationOfMillis(properties, PROP_MIN_EVICTABLE_IDLE_TIME_MILLIS, dataSource::setMinEvictableIdle);</span>
+<span class="fc" id="L269">        acceptDurationOfMillis(properties, PROP_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS, dataSource::setSoftMinEvictableIdle);</span>
+<span class="fc" id="L270">        acceptString(properties, PROP_EVICTION_POLICY_CLASS_NAME, dataSource::setEvictionPolicyClassName);</span>
+<span class="fc" id="L271">        acceptBoolean(properties, PROP_TEST_WHILE_IDLE, dataSource::setTestWhileIdle);</span>
+<span class="fc" id="L272">        acceptString(properties, PROP_PASSWORD, dataSource::setPassword);</span>
+<span class="fc" id="L273">        acceptString(properties, PROP_URL, dataSource::setUrl);</span>
+<span class="fc" id="L274">        acceptString(properties, PROP_USER_NAME, dataSource::setUsername);</span>
+<span class="fc" id="L275">        acceptString(properties, PROP_VALIDATION_QUERY, dataSource::setValidationQuery);</span>
+<span class="fc" id="L276">        acceptDurationOfSeconds(properties, PROP_VALIDATION_QUERY_TIMEOUT, dataSource::setValidationQueryTimeout);</span>
+<span class="fc" id="L277">        acceptBoolean(properties, PROP_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED, dataSource::setAccessToUnderlyingConnectionAllowed);</span>
+<span class="fc" id="L278">        acceptBoolean(properties, PROP_REMOVE_ABANDONED_ON_BORROW, dataSource::setRemoveAbandonedOnBorrow);</span>
+<span class="fc" id="L279">        acceptBoolean(properties, PROP_REMOVE_ABANDONED_ON_MAINTENANCE, dataSource::setRemoveAbandonedOnMaintenance);</span>
+<span class="fc" id="L280">        acceptDurationOfSeconds(properties, PROP_REMOVE_ABANDONED_TIMEOUT, dataSource::setRemoveAbandonedTimeout);</span>
+<span class="fc" id="L281">        acceptBoolean(properties, PROP_LOG_ABANDONED, dataSource::setLogAbandoned);</span>
+<span class="fc" id="L282">        acceptBoolean(properties, PROP_ABANDONED_USAGE_TRACKING, dataSource::setAbandonedUsageTracking);</span>
+<span class="fc" id="L283">        acceptBoolean(properties, PROP_POOL_PREPARED_STATEMENTS, dataSource::setPoolPreparedStatements);</span>
+<span class="fc" id="L284">        acceptBoolean(properties, PROP_CLEAR_STATEMENT_POOL_ON_RETURN, dataSource::setClearStatementPoolOnReturn);</span>
+<span class="fc" id="L285">        acceptInt(properties, PROP_MAX_OPEN_PREPARED_STATEMENTS, dataSource::setMaxOpenPreparedStatements);</span>
+<span class="fc" id="L286">        getOptional(properties, PROP_CONNECTION_INIT_SQLS).ifPresent(v -&gt; dataSource.setConnectionInitSqls(parseList(v, ';')));</span>
+
+<span class="fc" id="L288">        final String value = properties.getProperty(PROP_CONNECTION_PROPERTIES);</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        if (value != null) {</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">            for (final Object key : getProperties(value).keySet()) {</span>
+<span class="nc" id="L291">                final String propertyName = Objects.toString(key, null);</span>
+<span class="nc" id="L292">                dataSource.addConnectionProperty(propertyName, getProperties(value).getProperty(propertyName));</span>
+<span class="nc" id="L293">            }</span>
+        }
+
+<span class="fc" id="L296">        acceptDurationOfMillis(properties, PROP_MAX_CONN_LIFETIME_MILLIS, dataSource::setMaxConn);</span>
+<span class="fc" id="L297">        acceptBoolean(properties, PROP_LOG_EXPIRED_CONNECTIONS, dataSource::setLogExpiredConnections);</span>
+<span class="fc" id="L298">        acceptString(properties, PROP_JMX_NAME, dataSource::setJmxName);</span>
+<span class="fc" id="L299">        acceptBoolean(properties, PROP_REGISTER_CONNECTION_MBEAN, dataSource::setRegisterConnectionMBean);</span>
+<span class="fc" id="L300">        acceptBoolean(properties, PROP_ENABLE_AUTO_COMMIT_ON_RETURN, dataSource::setAutoCommitOnReturn);</span>
+<span class="fc" id="L301">        acceptBoolean(properties, PROP_ROLLBACK_ON_RETURN, dataSource::setRollbackOnReturn);</span>
+<span class="fc" id="L302">        acceptDurationOfSeconds(properties, PROP_DEFAULT_QUERY_TIMEOUT, dataSource::setDefaultQueryTimeout);</span>
+<span class="fc" id="L303">        acceptBoolean(properties, PROP_FAST_FAIL_VALIDATION, dataSource::setFastFailValidation);</span>
+<span class="fc" id="L304">        getOptional(properties, PROP_DISCONNECTION_SQL_CODES).ifPresent(v -&gt; dataSource.setDisconnectionSqlCodes(parseList(v, ',')));</span>
+<span class="fc" id="L305">        acceptString(properties, PROP_CONNECTION_FACTORY_CLASS_NAME, dataSource::setConnectionFactoryClassName);</span>
+
+        // DBCP-215
+        // Trick to make sure that initialSize connections are created
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (dataSource.getInitialSize() &gt; 0) {</span>
+<span class="fc" id="L310">            dataSource.getLogWriter();</span>
+        }
+
+        // Return the configured DataSource instance
+<span class="fc" id="L314">        return dataSource;</span>
+    }
+
+    private static Optional&lt;String&gt; getOptional(final Properties properties, final String name) {
+<span class="fc" id="L318">        return Optional.ofNullable(properties.getProperty(name));</span>
+    }
+
+    /**
+     * Parse properties from the string. Format of the string must be [propertyName=property;]*
+     *
+     * @param propText The source text
+     * @return Properties A new Properties instance
+     * @throws SQLException When a paring exception occurs
+     */
+    private static Properties getProperties(final String propText) throws SQLException {
+<span class="nc" id="L329">        final Properties p = new Properties();</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (propText != null) {</span>
+            try {
+<span class="nc" id="L332">                p.load(new ByteArrayInputStream(propText.replace(';', '\n').getBytes(StandardCharsets.ISO_8859_1)));</span>
+<span class="nc" id="L333">            } catch (final IOException e) {</span>
+<span class="nc" id="L334">                throw new SQLException(propText, e);</span>
+<span class="nc" id="L335">            }</span>
+        }
+<span class="nc" id="L337">        return p;</span>
+    }
+
+    /**
+     * Parses list of property values from a delimited string
+     *
+     * @param value
+     *            delimited list of values
+     * @param delimiter
+     *            character used to separate values in the list
+     * @return String Collection of values
+     */
+    private static List&lt;String&gt; parseList(final String value, final char delimiter) {
+<span class="fc" id="L350">        final StringTokenizer tokenizer = new StringTokenizer(value, Character.toString(delimiter));</span>
+<span class="fc" id="L351">        final List&lt;String&gt; tokens = new ArrayList&lt;&gt;(tokenizer.countTokens());</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        while (tokenizer.hasMoreTokens()) {</span>
+<span class="fc" id="L353">            tokens.add(tokenizer.nextToken());</span>
+        }
+<span class="fc" id="L355">        return tokens;</span>
+    }
+
+    /**
+     * Creates and return a new {@code BasicDataSource} instance. If no instance can be created, return
+     * {@code null} instead.
+     *
+     * @param obj
+     *            The possibly null object containing location or reference information that can be used in creating an
+     *            object
+     * @param name
+     *            The name of this object relative to {@code nameCtx}
+     * @param nameCtx
+     *            The context relative to which the {@code name} parameter is specified, or {@code null} if
+     *            {@code name} is relative to the default initial context
+     * @param environment
+     *            The possibly null environment that is used in creating this object
+     *
+     * @throws SQLException
+     *             if an exception occurs creating the instance
+     */
+    @Override
+    public Object getObjectInstance(final Object obj, final Name name, final Context nameCtx,
+            final Hashtable&lt;?, ?&gt; environment) throws SQLException {
+
+        // We only know how to deal with {@code javax.naming.Reference}s
+        // that specify a class name of &quot;javax.sql.DataSource&quot;
+<span class="pc bpc" id="L382" title="2 of 4 branches missed.">        if (obj == null || !(obj instanceof Reference)) {</span>
+<span class="nc" id="L383">            return null;</span>
+        }
+<span class="fc" id="L385">        final Reference ref = (Reference) obj;</span>
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">        if (!&quot;javax.sql.DataSource&quot;.equals(ref.getClassName())) {</span>
+<span class="nc" id="L387">            return null;</span>
+        }
+
+        // Check property names and log warnings about obsolete and / or unknown properties
+<span class="fc" id="L391">        final List&lt;String&gt; warnMessages = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L392">        final List&lt;String&gt; infoMessages = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L393">        validatePropertyNames(ref, name, warnMessages, infoMessages);</span>
+<span class="fc" id="L394">        warnMessages.forEach(log::warn);</span>
+<span class="fc" id="L395">        infoMessages.forEach(log::info);</span>
+
+<span class="fc" id="L397">        final Properties properties = new Properties();</span>
+<span class="fc" id="L398">        ALL_PROPERTY_NAMES.forEach(propertyName -&gt; {</span>
+<span class="fc" id="L399">            final RefAddr ra = ref.get(propertyName);</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">            if (ra != null) {</span>
+<span class="fc" id="L401">                properties.setProperty(propertyName, Objects.toString(ra.getContent(), null));</span>
+            }
+<span class="fc" id="L403">        });</span>
+
+<span class="fc" id="L405">        return createDataSource(properties);</span>
+    }
+
+    /**
+     * Collects warnings and info messages. Warnings are generated when an obsolete property is set. Unknown properties
+     * generate info messages.
+     *
+     * @param ref
+     *            Reference to check properties of
+     * @param name
+     *            Name provided to getObject
+     * @param warnMessages
+     *            container for warning messages
+     * @param infoMessages
+     *            container for info messages
+     */
+    private void validatePropertyNames(final Reference ref, final Name name, final List&lt;String&gt; warnMessages,
+            final List&lt;String&gt; infoMessages) {
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">        final String nameString = name != null ? &quot;Name = &quot; + name.toString() + &quot; &quot; : &quot;&quot;;</span>
+<span class="fc" id="L424">        NUPROP_WARNTEXT.forEach((propertyName, value) -&gt; {</span>
+<span class="fc" id="L425">            final RefAddr ra = ref.get(propertyName);</span>
+<span class="pc bpc" id="L426" title="1 of 4 branches missed.">            if (ra != null &amp;&amp; !ALL_PROPERTY_NAMES.contains(ra.getType())) {</span>
+<span class="fc" id="L427">                final StringBuilder stringBuilder = new StringBuilder(nameString);</span>
+<span class="fc" id="L428">                final String propertyValue = Objects.toString(ra.getContent(), null);</span>
+<span class="fc" id="L429">                stringBuilder.append(value).append(&quot; You have set value of \&quot;&quot;).append(propertyValue).append(&quot;\&quot; for \&quot;&quot;).append(propertyName)</span>
+<span class="fc" id="L430">                        .append(&quot;\&quot; property, which is being ignored.&quot;);</span>
+<span class="fc" id="L431">                warnMessages.add(stringBuilder.toString());</span>
+            }
+<span class="fc" id="L433">        });</span>
+
+<span class="fc" id="L435">        final Enumeration&lt;RefAddr&gt; allRefAddrs = ref.getAll();</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        while (allRefAddrs.hasMoreElements()) {</span>
+<span class="fc" id="L437">            final RefAddr ra = allRefAddrs.nextElement();</span>
+<span class="fc" id="L438">            final String propertyName = ra.getType();</span>
+            // If property name is not in the properties list, we haven't warned on it
+            // and it is not in the &quot;silent&quot; list, tell user we are ignoring it.
+<span class="pc bpc" id="L441" title="1 of 6 branches missed.">            if (!(ALL_PROPERTY_NAMES.contains(propertyName) || NUPROP_WARNTEXT.containsKey(propertyName) || SILENT_PROPERTIES.contains(propertyName))) {</span>
+<span class="fc" id="L442">                final String propertyValue = Objects.toString(ra.getContent(), null);</span>
+<span class="fc" id="L443">                final StringBuilder stringBuilder = new StringBuilder(nameString);</span>
+<span class="fc" id="L444">                stringBuilder.append(&quot;Ignoring unknown property: &quot;).append(&quot;value of \&quot;&quot;).append(propertyValue).append(&quot;\&quot; for \&quot;&quot;).append(propertyName)</span>
+<span class="fc" id="L445">                        .append(&quot;\&quot; property&quot;);</span>
+<span class="fc" id="L446">                infoMessages.add(stringBuilder.toString());</span>
+            }
+<span class="fc" id="L448">        }</span>
+<span class="fc" id="L449">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

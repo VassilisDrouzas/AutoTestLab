@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Failable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.function</a> &gt; <span class="el_source">Failable.java</span></div><h1>Failable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.function;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.lang.reflect.UndeclaredThrowableException;
+import java.util.Collection;
+import java.util.Objects;
+import java.util.concurrent.Callable;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.lang3.stream.Streams;
+import org.apache.commons.lang3.stream.Streams.FailableStream;
+
+/**
+ * This class provides utility functions, and classes for working with the {@code java.util.function} package, or more
+ * generally, with Java 8 lambdas. More specifically, it attempts to address the fact that lambdas are supposed not to
+ * throw Exceptions, at least not checked Exceptions, AKA instances of {@link Exception}. This enforces the use of
+ * constructs like:
+ *
+ * &lt;pre&gt;{@code
+ * Consumer&lt;java.lang.reflect.Method&gt; consumer = m -&amp;gt; {
+ *     try {
+ *         m.invoke(o, args);
+ *     } catch (Throwable t) {
+ *         throw Failable.rethrow(t);
+ *     }
+ * };
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * By replacing a {@link java.util.function.Consumer Consumer&amp;lt;O&amp;gt;} with a {@link FailableConsumer
+ * FailableConsumer&amp;lt;O,? extends Throwable&amp;gt;}, this can be written like follows:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * Functions.accept((m) -&amp;gt; m.invoke(o, args));
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * Obviously, the second version is much more concise and the spirit of Lambda expressions is met better than the second
+ * version.
+ * &lt;/p&gt;
+ *
+ * @since 3.11
+ */
+public class Failable {
+
+    /**
+     * Consumes a consumer and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param consumer the consumer to consume
+     * @param object1 the first object to consume by {@code consumer}
+     * @param object2 the second object to consume by {@code consumer}
+     * @param &lt;T&gt; the type of the first argument the consumer accepts
+     * @param &lt;U&gt; the type of the second argument the consumer accepts
+     * @param &lt;E&gt; the type of checked exception the consumer may throw
+     */
+    public static &lt;T, U, E extends Throwable&gt; void accept(final FailableBiConsumer&lt;T, U, E&gt; consumer, final T object1,
+        final U object2) {
+<span class="fc" id="L86">        run(() -&gt; consumer.accept(object1, object2));</span>
+<span class="fc" id="L87">    }</span>
+
+    /**
+     * Consumes a consumer and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param consumer the consumer to consume
+     * @param object the object to consume by {@code consumer}
+     * @param &lt;T&gt; the type the consumer accepts
+     * @param &lt;E&gt; the type of checked exception the consumer may throw
+     */
+    public static &lt;T, E extends Throwable&gt; void accept(final FailableConsumer&lt;T, E&gt; consumer, final T object) {
+<span class="fc" id="L98">        run(() -&gt; consumer.accept(object));</span>
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * Consumes a consumer and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param consumer the consumer to consume
+     * @param value the value to consume by {@code consumer}
+     * @param &lt;E&gt; the type of checked exception the consumer may throw
+     */
+    public static &lt;E extends Throwable&gt; void accept(final FailableDoubleConsumer&lt;E&gt; consumer, final double value) {
+<span class="fc" id="L109">        run(() -&gt; consumer.accept(value));</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Consumes a consumer and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param consumer the consumer to consume
+     * @param value the value to consume by {@code consumer}
+     * @param &lt;E&gt; the type of checked exception the consumer may throw
+     */
+    public static &lt;E extends Throwable&gt; void accept(final FailableIntConsumer&lt;E&gt; consumer, final int value) {
+<span class="fc" id="L120">        run(() -&gt; consumer.accept(value));</span>
+<span class="fc" id="L121">    }</span>
+
+    /**
+     * Consumes a consumer and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param consumer the consumer to consume
+     * @param value the value to consume by {@code consumer}
+     * @param &lt;E&gt; the type of checked exception the consumer may throw
+     */
+    public static &lt;E extends Throwable&gt; void accept(final FailableLongConsumer&lt;E&gt; consumer, final long value) {
+<span class="fc" id="L131">        run(() -&gt; consumer.accept(value));</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Applies a function and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param function the function to apply
+     * @param input1 the first input to apply {@code function} on
+     * @param input2 the second input to apply {@code function} on
+     * @param &lt;T&gt; the type of the first argument the function accepts
+     * @param &lt;U&gt; the type of the second argument the function accepts
+     * @param &lt;R&gt; the return type of the function
+     * @param &lt;E&gt; the type of checked exception the function may throw
+     * @return the value returned from the function
+     */
+    public static &lt;T, U, R, E extends Throwable&gt; R apply(final FailableBiFunction&lt;T, U, R, E&gt; function, final T input1,
+        final U input2) {
+<span class="fc" id="L148">        return get(() -&gt; function.apply(input1, input2));</span>
+    }
+
+    /**
+     * Applies a function and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param function the function to apply
+     * @param input the input to apply {@code function} on
+     * @param &lt;T&gt; the type of the argument the function accepts
+     * @param &lt;R&gt; the return type of the function
+     * @param &lt;E&gt; the type of checked exception the function may throw
+     * @return the value returned from the function
+     */
+    public static &lt;T, R, E extends Throwable&gt; R apply(final FailableFunction&lt;T, R, E&gt; function, final T input) {
+<span class="fc" id="L162">        return get(() -&gt; function.apply(input));</span>
+    }
+
+    /**
+     * Applies a function and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param function the function to apply
+     * @param left the first input to apply {@code function} on
+     * @param right the second input to apply {@code function} on
+     * @param &lt;E&gt; the type of checked exception the function may throw
+     * @return the value returned from the function
+     */
+    public static &lt;E extends Throwable&gt; double applyAsDouble(final FailableDoubleBinaryOperator&lt;E&gt; function,
+        final double left, final double right) {
+<span class="fc" id="L176">        return getAsDouble(() -&gt; function.applyAsDouble(left, right));</span>
+    }
+
+    /**
+     * Converts the given {@link FailableBiConsumer} into a standard {@link BiConsumer}.
+     *
+     * @param &lt;T&gt; the type of the first argument of the consumers
+     * @param &lt;U&gt; the type of the second argument of the consumers
+     * @param consumer a failable {@link BiConsumer}
+     * @return a standard {@link BiConsumer}
+     */
+    public static &lt;T, U&gt; BiConsumer&lt;T, U&gt; asBiConsumer(final FailableBiConsumer&lt;T, U, ?&gt; consumer) {
+<span class="fc" id="L188">        return (input1, input2) -&gt; accept(consumer, input1, input2);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableBiFunction} into a standard {@link BiFunction}.
+     *
+     * @param &lt;T&gt; the type of the first argument of the input of the functions
+     * @param &lt;U&gt; the type of the second argument of the input of the functions
+     * @param &lt;R&gt; the type of the output of the functions
+     * @param function a {@link FailableBiFunction}
+     * @return a standard {@link BiFunction}
+     */
+    public static &lt;T, U, R&gt; BiFunction&lt;T, U, R&gt; asBiFunction(final FailableBiFunction&lt;T, U, R, ?&gt; function) {
+<span class="fc" id="L201">        return (input1, input2) -&gt; apply(function, input1, input2);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableBiPredicate} into a standard {@link BiPredicate}.
+     *
+     * @param &lt;T&gt; the type of the first argument used by the predicates
+     * @param &lt;U&gt; the type of the second argument used by the predicates
+     * @param predicate a {@link FailableBiPredicate}
+     * @return a standard {@link BiPredicate}
+     */
+    public static &lt;T, U&gt; BiPredicate&lt;T, U&gt; asBiPredicate(final FailableBiPredicate&lt;T, U, ?&gt; predicate) {
+<span class="fc" id="L213">        return (input1, input2) -&gt; test(predicate, input1, input2);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableCallable} into a standard {@link Callable}.
+     *
+     * @param &lt;V&gt; the type used by the callables
+     * @param callable a {@link FailableCallable}
+     * @return a standard {@link Callable}
+     */
+    public static &lt;V&gt; Callable&lt;V&gt; asCallable(final FailableCallable&lt;V, ?&gt; callable) {
+<span class="fc" id="L224">        return () -&gt; call(callable);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableConsumer} into a standard {@link Consumer}.
+     *
+     * @param &lt;T&gt; the type used by the consumers
+     * @param consumer a {@link FailableConsumer}
+     * @return a standard {@link Consumer}
+     */
+    public static &lt;T&gt; Consumer&lt;T&gt; asConsumer(final FailableConsumer&lt;T, ?&gt; consumer) {
+<span class="fc" id="L235">        return input -&gt; accept(consumer, input);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableFunction} into a standard {@link Function}.
+     *
+     * @param &lt;T&gt; the type of the input of the functions
+     * @param &lt;R&gt; the type of the output of the functions
+     * @param function a {code FailableFunction}
+     * @return a standard {@link Function}
+     */
+    public static &lt;T, R&gt; Function&lt;T, R&gt; asFunction(final FailableFunction&lt;T, R, ?&gt; function) {
+<span class="fc" id="L247">        return input -&gt; apply(function, input);</span>
+    }
+
+    /**
+     * Converts the given {@link FailablePredicate} into a standard {@link Predicate}.
+     *
+     * @param &lt;T&gt; the type used by the predicates
+     * @param predicate a {@link FailablePredicate}
+     * @return a standard {@link Predicate}
+     */
+    public static &lt;T&gt; Predicate&lt;T&gt; asPredicate(final FailablePredicate&lt;T, ?&gt; predicate) {
+<span class="fc" id="L258">        return input -&gt; test(predicate, input);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableRunnable} into a standard {@link Runnable}.
+     *
+     * @param runnable a {@link FailableRunnable}
+     * @return a standard {@link Runnable}
+     */
+    public static Runnable asRunnable(final FailableRunnable&lt;?&gt; runnable) {
+<span class="fc" id="L268">        return () -&gt; run(runnable);</span>
+    }
+
+    /**
+     * Converts the given {@link FailableSupplier} into a standard {@link Supplier}.
+     *
+     * @param &lt;T&gt; the type supplied by the suppliers
+     * @param supplier a {@link FailableSupplier}
+     * @return a standard {@link Supplier}
+     */
+    public static &lt;T&gt; Supplier&lt;T&gt; asSupplier(final FailableSupplier&lt;T, ?&gt; supplier) {
+<span class="fc" id="L279">        return () -&gt; get(supplier);</span>
+    }
+
+    /**
+     * Calls a callable and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param callable the callable to call
+     * @param &lt;V&gt; the return type of the callable
+     * @param &lt;E&gt; the type of checked exception the callable may throw
+     * @return the value returned from the callable
+     */
+    public static &lt;V, E extends Throwable&gt; V call(final FailableCallable&lt;V, E&gt; callable) {
+<span class="fc" id="L291">        return get(callable::call);</span>
+    }
+
+    /**
+     * Invokes a supplier, and returns the result.
+     *
+     * @param supplier The supplier to invoke.
+     * @param &lt;T&gt; The suppliers output type.
+     * @param &lt;E&gt; The type of checked exception, which the supplier can throw.
+     * @return The object, which has been created by the supplier
+     */
+    public static &lt;T, E extends Throwable&gt; T get(final FailableSupplier&lt;T, E&gt; supplier) {
+        try {
+<span class="fc" id="L304">            return supplier.get();</span>
+<span class="fc" id="L305">        } catch (final Throwable t) {</span>
+<span class="nc" id="L306">            throw rethrow(t);</span>
+        }
+    }
+
+    /**
+     * Invokes a boolean supplier, and returns the result.
+     *
+     * @param supplier The boolean supplier to invoke.
+     * @param &lt;E&gt; The type of checked exception, which the supplier can throw.
+     * @return The boolean, which has been created by the supplier
+     */
+    public static &lt;E extends Throwable&gt; boolean getAsBoolean(final FailableBooleanSupplier&lt;E&gt; supplier) {
+        try {
+<span class="fc" id="L319">            return supplier.getAsBoolean();</span>
+<span class="fc" id="L320">        } catch (final Throwable t) {</span>
+<span class="nc" id="L321">            throw rethrow(t);</span>
+        }
+    }
+
+    /**
+     * Invokes a double supplier, and returns the result.
+     *
+     * @param supplier The double supplier to invoke.
+     * @param &lt;E&gt; The type of checked exception, which the supplier can throw.
+     * @return The double, which has been created by the supplier
+     */
+    public static &lt;E extends Throwable&gt; double getAsDouble(final FailableDoubleSupplier&lt;E&gt; supplier) {
+        try {
+<span class="fc" id="L334">            return supplier.getAsDouble();</span>
+<span class="fc" id="L335">        } catch (final Throwable t) {</span>
+<span class="nc" id="L336">            throw rethrow(t);</span>
+        }
+    }
+
+    /**
+     * Invokes an int supplier, and returns the result.
+     *
+     * @param supplier The int supplier to invoke.
+     * @param &lt;E&gt; The type of checked exception, which the supplier can throw.
+     * @return The int, which has been created by the supplier
+     */
+    public static &lt;E extends Throwable&gt; int getAsInt(final FailableIntSupplier&lt;E&gt; supplier) {
+        try {
+<span class="fc" id="L349">            return supplier.getAsInt();</span>
+<span class="fc" id="L350">        } catch (final Throwable t) {</span>
+<span class="nc" id="L351">            throw rethrow(t);</span>
+        }
+    }
+
+    /**
+     * Invokes a long supplier, and returns the result.
+     *
+     * @param supplier The long supplier to invoke.
+     * @param &lt;E&gt; The type of checked exception, which the supplier can throw.
+     * @return The long, which has been created by the supplier
+     */
+    public static &lt;E extends Throwable&gt; long getAsLong(final FailableLongSupplier&lt;E&gt; supplier) {
+        try {
+<span class="fc" id="L364">            return supplier.getAsLong();</span>
+<span class="fc" id="L365">        } catch (final Throwable t) {</span>
+<span class="nc" id="L366">            throw rethrow(t);</span>
+        }
+    }
+
+    /**
+     * Invokes a short supplier, and returns the result.
+     *
+     * @param supplier The short supplier to invoke.
+     * @param &lt;E&gt; The type of checked exception, which the supplier can throw.
+     * @return The short, which has been created by the supplier
+     */
+    public static &lt;E extends Throwable&gt; short getAsShort(final FailableShortSupplier&lt;E&gt; supplier) {
+        try {
+<span class="fc" id="L379">            return supplier.getAsShort();</span>
+<span class="fc" id="L380">        } catch (final Throwable t) {</span>
+<span class="nc" id="L381">            throw rethrow(t);</span>
+        }
+    }
+
+    /**
+     * Rethrows a {@link Throwable} as an unchecked exception. If the argument is already unchecked, namely a
+     * {@link RuntimeException} or {@link Error} then the argument will be rethrown without modification. If the
+     * exception is {@link IOException} then it will be wrapped into a {@link UncheckedIOException}. In every other
+     * cases the exception will be wrapped into a {@code
+     * UndeclaredThrowableException}
+     *
+     * &lt;p&gt;
+     * Note that there is a declared return type for this method, even though it never returns. The reason for that is
+     * to support the usual pattern:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * throw rethrow(myUncheckedException);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;
+     * instead of just calling the method. This pattern may help the Java compiler to recognize that at that point an
+     * exception will be thrown and the code flow analysis will not demand otherwise mandatory commands that could
+     * follow the method call, like a {@code return} statement from a value returning method.
+     * &lt;/p&gt;
+     *
+     * @param throwable The throwable to rethrow possibly wrapped into an unchecked exception
+     * @return Never returns anything, this method never terminates normally.
+     */
+    public static RuntimeException rethrow(final Throwable throwable) {
+<span class="fc" id="L411">        Objects.requireNonNull(throwable, &quot;throwable&quot;);</span>
+<span class="fc" id="L412">        ExceptionUtils.throwUnchecked(throwable);</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        if (throwable instanceof IOException) {</span>
+<span class="fc" id="L414">            throw new UncheckedIOException((IOException) throwable);</span>
+        }
+<span class="fc" id="L416">        throw new UndeclaredThrowableException(throwable);</span>
+    }
+
+    /**
+     * Runs a runnable and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param runnable The runnable to run
+     * @param &lt;E&gt; the type of checked exception the runnable may throw
+     */
+    public static &lt;E extends Throwable&gt; void run(final FailableRunnable&lt;E&gt; runnable) {
+        try {
+<span class="fc" id="L427">            runnable.run();</span>
+<span class="fc" id="L428">        } catch (final Throwable t) {</span>
+<span class="nc" id="L429">            throw rethrow(t);</span>
+<span class="fc" id="L430">        }</span>
+<span class="fc" id="L431">    }</span>
+
+    /**
+     * Converts the given collection into a {@link FailableStream}. The {@link FailableStream} consists of the
+     * collections elements. Shortcut for
+     *
+     * &lt;pre&gt;
+     * Functions.stream(collection.stream());
+     * &lt;/pre&gt;
+     *
+     * @param collection The collection, which is being converted into a {@link FailableStream}.
+     * @param &lt;E&gt; The collections element type. (In turn, the result streams element type.)
+     * @return The created {@link FailableStream}.
+     */
+    public static &lt;E&gt; FailableStream&lt;E&gt; stream(final Collection&lt;E&gt; collection) {
+<span class="fc" id="L446">        return new FailableStream&lt;&gt;(collection.stream());</span>
+    }
+
+    /**
+     * Converts the given stream into a {@link FailableStream}. The {@link FailableStream} consists of the same
+     * elements, than the input stream. However, failable lambdas, like {@link FailablePredicate},
+     * {@link FailableFunction}, and {@link FailableConsumer} may be applied, rather than {@link Predicate},
+     * {@link Function}, {@link Consumer}, etc.
+     *
+     * @param stream The stream, which is being converted into a {@link FailableStream}.
+     * @param &lt;T&gt; The streams element type.
+     * @return The created {@link FailableStream}.
+     */
+    public static &lt;T&gt; FailableStream&lt;T&gt; stream(final Stream&lt;T&gt; stream) {
+<span class="nc" id="L460">        return new FailableStream&lt;&gt;(stream);</span>
+    }
+
+    /**
+     * Tests a predicate and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param predicate the predicate to test
+     * @param object1 the first input to test by {@code predicate}
+     * @param object2 the second input to test by {@code predicate}
+     * @param &lt;T&gt; the type of the first argument the predicate tests
+     * @param &lt;U&gt; the type of the second argument the predicate tests
+     * @param &lt;E&gt; the type of checked exception the predicate may throw
+     * @return the boolean value returned by the predicate
+     */
+    public static &lt;T, U, E extends Throwable&gt; boolean test(final FailableBiPredicate&lt;T, U, E&gt; predicate,
+        final T object1, final U object2) {
+<span class="fc" id="L476">        return getAsBoolean(() -&gt; predicate.test(object1, object2));</span>
+    }
+
+    /**
+     * Tests a predicate and rethrows any exception as a {@link RuntimeException}.
+     *
+     * @param predicate the predicate to test
+     * @param object the input to test by {@code predicate}
+     * @param &lt;T&gt; the type of argument the predicate tests
+     * @param &lt;E&gt; the type of checked exception the predicate may throw
+     * @return the boolean value returned by the predicate
+     */
+    public static &lt;T, E extends Throwable&gt; boolean test(final FailablePredicate&lt;T, E&gt; predicate, final T object) {
+<span class="fc" id="L489">        return getAsBoolean(() -&gt; predicate.test(object));</span>
+    }
+
+    /**
+     * A simple try-with-resources implementation, that can be used, if your objects do not implement the
+     * {@link AutoCloseable} interface. The method executes the {@code action}. The method guarantees, that &lt;em&gt;all&lt;/em&gt;
+     * the {@code resources} are being executed, in the given order, afterwards, and regardless of success, or failure.
+     * If either the original action, or any of the resource action fails, then the &lt;em&gt;first&lt;/em&gt; failure (AKA
+     * {@link Throwable}) is rethrown. Example use:
+     *
+     * &lt;pre&gt;{@code
+     * final FileInputStream fis = new FileInputStream(&quot;my.file&quot;);
+     * Functions.tryWithResources(useInputStream(fis), null, () -&gt; fis.close());
+     * }&lt;/pre&gt;
+     *
+     * @param action The action to execute. This object &lt;em&gt;will&lt;/em&gt; always be invoked.
+     * @param errorHandler An optional error handler, which will be invoked finally, if any error occurred. The error
+     *        handler will receive the first error, AKA {@link Throwable}.
+     * @param resources The resource actions to execute. &lt;em&gt;All&lt;/em&gt; resource actions will be invoked, in the given
+     *        order. A resource action is an instance of {@link FailableRunnable}, which will be executed.
+     * @see #tryWithResources(FailableRunnable, FailableRunnable...)
+     */
+    @SafeVarargs
+    public static void tryWithResources(final FailableRunnable&lt;? extends Throwable&gt; action,
+        final FailableConsumer&lt;Throwable, ? extends Throwable&gt; errorHandler,
+        final FailableRunnable&lt;? extends Throwable&gt;... resources) {
+        final FailableConsumer&lt;Throwable, ? extends Throwable&gt; actualErrorHandler;
+<span class="pc bpc" id="L516" title="1 of 2 branches missed.">        if (errorHandler == null) {</span>
+<span class="fc" id="L517">            actualErrorHandler = Failable::rethrow;</span>
+        } else {
+<span class="nc" id="L519">            actualErrorHandler = errorHandler;</span>
+        }
+<span class="fc" id="L521">        Streams.of(resources).forEach(r -&gt; Objects.requireNonNull(r, &quot;runnable&quot;));</span>
+<span class="fc" id="L522">        Throwable th = null;</span>
+        try {
+<span class="fc" id="L524">            action.run();</span>
+<span class="fc" id="L525">        } catch (final Throwable t) {</span>
+<span class="fc" id="L526">            th = t;</span>
+<span class="fc" id="L527">        }</span>
+<span class="pc bpc" id="L528" title="1 of 2 branches missed.">        if (resources != null) {</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">            for (final FailableRunnable&lt;?&gt; runnable : resources) {</span>
+                try {
+<span class="fc" id="L531">                    runnable.run();</span>
+<span class="nc" id="L532">                } catch (final Throwable t) {</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">                    if (th == null) {</span>
+<span class="nc" id="L534">                        th = t;</span>
+                    }
+<span class="fc" id="L536">                }</span>
+            }
+        }
+<span class="fc bfc" id="L539" title="All 2 branches covered.">        if (th != null) {</span>
+            try {
+<span class="nc" id="L541">                actualErrorHandler.accept(th);</span>
+<span class="fc" id="L542">            } catch (final Throwable t) {</span>
+<span class="nc" id="L543">                throw rethrow(t);</span>
+<span class="nc" id="L544">            }</span>
+        }
+<span class="fc" id="L546">    }</span>
+
+    /**
+     * A simple try-with-resources implementation, that can be used, if your objects do not implement the
+     * {@link AutoCloseable} interface. The method executes the {@code action}. The method guarantees, that &lt;em&gt;all&lt;/em&gt;
+     * the {@code resources} are being executed, in the given order, afterwards, and regardless of success, or failure.
+     * If either the original action, or any of the resource action fails, then the &lt;em&gt;first&lt;/em&gt; failure (AKA
+     * {@link Throwable}) is rethrown. Example use:
+     *
+     * &lt;pre&gt;{@code
+     * final FileInputStream fis = new FileInputStream(&quot;my.file&quot;);
+     * Functions.tryWithResources(useInputStream(fis), () -&gt; fis.close());
+     * }&lt;/pre&gt;
+     *
+     * @param action The action to execute. This object &lt;em&gt;will&lt;/em&gt; always be invoked.
+     * @param resources The resource actions to execute. &lt;em&gt;All&lt;/em&gt; resource actions will be invoked, in the given
+     *        order. A resource action is an instance of {@link FailableRunnable}, which will be executed.
+     * @see #tryWithResources(FailableRunnable, FailableConsumer, FailableRunnable...)
+     */
+    @SafeVarargs
+    public static void tryWithResources(final FailableRunnable&lt;? extends Throwable&gt; action, final FailableRunnable&lt;? extends Throwable&gt;... resources) {
+<span class="fc" id="L567">        tryWithResources(action, null, resources);</span>
+<span class="fc" id="L568">    }</span>
+
+    private Failable() {
+        // empty
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

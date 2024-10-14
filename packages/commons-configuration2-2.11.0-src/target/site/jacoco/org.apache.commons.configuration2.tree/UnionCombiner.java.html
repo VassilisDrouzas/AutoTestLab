@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnionCombiner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">UnionCombiner.java</span></div><h1>UnionCombiner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * &lt;p&gt;
+ * A specialized implementation of the {@code NodeCombiner} interface that constructs a union from two passed in node
+ * hierarchies.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The given source hierarchies are traversed, and their nodes are added to the resulting structure. Under some
+ * circumstances two nodes can be combined rather than adding both. This is the case if both nodes are single children
+ * (no lists) of their parents and do not have values. The corresponding check is implemented in the
+ * {@code findCombineNode()} method.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Sometimes it is not possible for this combiner to detect whether two nodes can be combined or not. Consider the
+ * following two node hierarchies:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * Hierarchy 1:
+ *
+ * Database
+ *   +--Tables
+ *        +--Table
+ *             +--name [users]
+ *             +--fields
+ *                   +--field
+ *                   |    +--name [uid]
+ *                   +--field
+ *                   |    +--name [usrname]
+ *                     ...
+ * &lt;/pre&gt;
+ *
+ * &lt;pre&gt;
+ * Hierarchy 2:
+ *
+ * Database
+ *   +--Tables
+ *        +--Table
+ *             +--name [documents]
+ *             +--fields
+ *                   +--field
+ *                   |    +--name [docid]
+ *                   +--field
+ *                   |    +--name [docname]
+ *                     ...
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * Both hierarchies contain data about database tables. Each describes a single table. If these hierarchies are to be
+ * combined, the result should probably look like the following:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * Database
+ *   +--Tables
+ *        +--Table
+ *        |    +--name [users]
+ *        |    +--fields
+ *        |          +--field
+ *        |          |    +--name [uid]
+ *        |            ...
+ *        +--Table
+ *             +--name [documents]
+ *             +--fields
+ *                   +--field
+ *                   |    +--name [docid]
+ *                     ...
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * i.e. the {@code Tables} nodes should be combined, while the {@code Table} nodes should both be added to the resulting
+ * tree. From the combiner's point of view there is no difference between the {@code Tables} and the {@code Table} nodes
+ * in the source trees, so the developer has to help out and give a hint that the {@code Table} nodes belong to a list
+ * structure. This can be done using the {@code addListNode()} method; this method expects the name of a node, which
+ * should be treated as a list node. So if {@code addListNode(&quot;Table&quot;);} was called, the combiner knows that it must not
+ * combine the {@code Table} nodes, but add it both to the resulting tree.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Another limitation is the handling of attributes: Attributes can only have a single value. So if two nodes are to be
+ * combined which both have an attribute with the same name, it is not possible to construct a proper union attribute.
+ * In this case, the attribute value from the first node is used.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ */
+<span class="fc" id="L106">public class UnionCombiner extends NodeCombiner {</span>
+    /**
+     * Combines the given nodes to a new union node.
+     *
+     * @param node1 the first source node
+     * @param node2 the second source node
+     * @return the union node
+     */
+    @Override
+    public ImmutableNode combine(final ImmutableNode node1, final ImmutableNode node2) {
+<span class="fc" id="L116">        final ImmutableNode.Builder result = new ImmutableNode.Builder();</span>
+<span class="fc" id="L117">        result.name(node1.getNodeName());</span>
+
+        // attributes of the first node take precedence
+<span class="fc" id="L120">        result.addAttributes(node2.getAttributes());</span>
+<span class="fc" id="L121">        result.addAttributes(node1.getAttributes());</span>
+
+        // Check if nodes can be combined
+<span class="fc" id="L124">        final List&lt;ImmutableNode&gt; children2 = new LinkedList&lt;&gt;(node2.getChildren());</span>
+<span class="fc" id="L125">        node1.forEach(child1 -&gt; {</span>
+<span class="fc" id="L126">            final ImmutableNode child2 = findCombineNode(node1, node2, child1);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (child2 != null) {</span>
+<span class="fc" id="L128">                result.addChild(combine(child1, child2));</span>
+<span class="fc" id="L129">                children2.remove(child2);</span>
+            } else {
+<span class="fc" id="L131">                result.addChild(child1);</span>
+            }
+<span class="fc" id="L133">        });</span>
+
+        // Add remaining children of node 2
+<span class="fc" id="L136">        children2.forEach(result::addChild);</span>
+
+<span class="fc" id="L138">        return result.create();</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Tries to find a child node of the second source node, with which a child of the first source node can be combined.
+     * During combining of the source nodes an iteration over the first source node's children is performed. For each child
+     * node it is checked whether a corresponding child node in the second source node exists. If this is the case, these
+     * corresponding child nodes are recursively combined and the result is added to the combined node. This method
+     * implements the checks whether such a recursive combination is possible. The actual implementation tests the following
+     * conditions:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;In both the first and the second source node there is only one child node with the given name (no list
+     * structures).&lt;/li&gt;
+     * &lt;li&gt;The given name is not in the list of known list nodes, i.e. it was not passed to the {@code addListNode()}
+     * method.&lt;/li&gt;
+     * &lt;li&gt;None of these matching child nodes has a value.&lt;/li&gt;
+     * &lt;/ul&gt;
+     * &lt;p&gt;
+     * If all of these tests are successful, the matching child node of the second source node is returned. Otherwise the
+     * result is &lt;b&gt;null&lt;/b&gt;.
+     * &lt;/p&gt;
+     *
+     * @param node1 the first source node
+     * @param node2 the second source node
+     * @param child the child node of the first source node to be checked
+     * @return the matching child node of the second source node or &lt;b&gt;null&lt;/b&gt; if there is none
+     */
+    protected ImmutableNode findCombineNode(final ImmutableNode node1, final ImmutableNode node2, final ImmutableNode child) {
+<span class="fc bfc" id="L168" title="All 6 branches covered.">        if (child.getValue() == null &amp;&amp; !isListNode(child) &amp;&amp; HANDLER.getChildrenCount(node1, child.getNodeName()) == 1</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            &amp;&amp; HANDLER.getChildrenCount(node2, child.getNodeName()) == 1) {</span>
+<span class="fc" id="L170">            final ImmutableNode child2 = HANDLER.getChildren(node2, child.getNodeName()).get(0);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (child2.getValue() == null) {</span>
+<span class="fc" id="L172">                return child2;</span>
+            }
+        }
+<span class="fc" id="L175">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

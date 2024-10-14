@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstanceKeyDataSourceFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.datasources</a> &gt; <span class="el_source">InstanceKeyDataSourceFactory.java</span></div><h1>InstanceKeyDataSourceFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.datasources;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.naming.Context;
+import javax.naming.Name;
+import javax.naming.RefAddr;
+import javax.naming.Reference;
+import javax.naming.spi.ObjectFactory;
+
+import org.apache.commons.dbcp2.ListException;
+import org.apache.commons.dbcp2.Utils;
+
+/**
+ * A JNDI ObjectFactory which creates {@code SharedPoolDataSource}s or {@code PerUserPoolDataSource}s
+ *
+ * @since 2.0
+ */
+<span class="fc" id="L44">abstract class InstanceKeyDataSourceFactory implements ObjectFactory {</span>
+
+<span class="fc" id="L46">    private static final Map&lt;String, InstanceKeyDataSource&gt; INSTANCE_MAP = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /**
+     * Closes all pools associated with this class.
+     *
+     * @throws ListException
+     *             a {@link ListException} containing all exceptions thrown by {@link InstanceKeyDataSource#close()}
+     * @see InstanceKeyDataSource#close()
+     * @since 2.4.0 throws a {@link ListException} instead of, in 2.3.0 and before, the first exception thrown by
+     *        {@link InstanceKeyDataSource#close()}.
+     */
+    public static void closeAll() throws ListException {
+        // Get iterator to loop over all instances of this data source.
+<span class="nc" id="L59">        final List&lt;Throwable&gt; exceptionList = new ArrayList&lt;&gt;(INSTANCE_MAP.size());</span>
+<span class="nc" id="L60">        INSTANCE_MAP.entrySet().forEach(entry -&gt; {</span>
+            // Bullet-proof to avoid anything else but problems from InstanceKeyDataSource#close().
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (entry != null) {</span>
+                @SuppressWarnings(&quot;resource&quot;)
+<span class="nc" id="L64">                final InstanceKeyDataSource value = entry.getValue();</span>
+<span class="nc" id="L65">                Utils.close(value, exceptionList::add);</span>
+            }
+<span class="nc" id="L67">        });</span>
+<span class="nc" id="L68">        INSTANCE_MAP.clear();</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (!exceptionList.isEmpty()) {</span>
+<span class="nc" id="L70">            throw new ListException(&quot;Could not close all InstanceKeyDataSource instances.&quot;, exceptionList);</span>
+        }
+<span class="nc" id="L72">    }</span>
+
+    /**
+     * Deserializes the provided byte array to create an object.
+     *
+     * @param data
+     *            Data to deserialize to create the configuration parameter.
+     *
+     * @return The Object created by deserializing the data.
+     *
+     * @throws ClassNotFoundException
+     *            If a class cannot be found during the deserialization of a configuration parameter.
+     * @throws IOException
+     *            If an I/O error occurs during the deserialization of a configuration parameter.
+     */
+    protected static final Object deserialize(final byte[] data) throws IOException, ClassNotFoundException {
+<span class="nc" id="L88">        ObjectInputStream in = null;</span>
+        try {
+<span class="nc" id="L90">            in = new ObjectInputStream(new ByteArrayInputStream(data));</span>
+<span class="nc" id="L91">            return in.readObject();</span>
+        } finally {
+<span class="nc" id="L93">            Utils.closeQuietly(in);</span>
+        }
+    }
+
+    static synchronized String registerNewInstance(final InstanceKeyDataSource ds) {
+<span class="fc" id="L98">        int max = 0;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        for (final String s : INSTANCE_MAP.keySet()) {</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (s != null) {</span>
+                try {
+<span class="fc" id="L102">                    max = Math.max(max, Integer.parseInt(s));</span>
+<span class="fc" id="L103">                } catch (final NumberFormatException ignored) {</span>
+                    // no sweat, ignore those keys
+<span class="fc" id="L105">                }</span>
+            }
+<span class="fc" id="L107">        }</span>
+<span class="fc" id="L108">        final String instanceKey = String.valueOf(max + 1);</span>
+        // Put a placeholder here for now, so other instances will not
+        // take our key. We will replace with a pool when ready.
+<span class="fc" id="L111">        INSTANCE_MAP.put(instanceKey, ds);</span>
+<span class="fc" id="L112">        return instanceKey;</span>
+    }
+
+    static void removeInstance(final String key) {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (key != null) {</span>
+<span class="fc" id="L117">            INSTANCE_MAP.remove(key);</span>
+        }
+<span class="fc" id="L119">    }</span>
+
+    /**
+     * Creates an instance of the subclass and sets any properties contained in the Reference.
+     *
+     * @param ref
+     *            The properties to be set on the created DataSource
+     *
+     * @return A configured DataSource of the appropriate type.
+     *
+     * @throws ClassNotFoundException
+     *            If a class cannot be found during the deserialization of a configuration parameter.
+     * @throws IOException
+     *            If an I/O error occurs during the deserialization of a configuration parameter.
+     */
+    protected abstract InstanceKeyDataSource getNewInstance(Reference ref) throws IOException, ClassNotFoundException;
+
+    /**
+     * Implements ObjectFactory to create an instance of SharedPoolDataSource or PerUserPoolDataSource
+     */
+    @Override
+    public Object getObjectInstance(final Object refObj, final Name name, final Context context,
+            final Hashtable&lt;?, ?&gt; env) throws IOException, ClassNotFoundException {
+        // The spec says to return null if we can't create an instance
+        // of the reference
+<span class="fc" id="L144">        Object obj = null;</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (refObj instanceof Reference) {</span>
+<span class="fc" id="L146">            final Reference ref = (Reference) refObj;</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (isCorrectClass(ref.getClassName())) {</span>
+<span class="fc" id="L148">                final RefAddr refAddr = ref.get(&quot;instanceKey&quot;);</span>
+<span class="fc bfc" id="L149" title="All 4 branches covered.">                if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+                    // object was bound to JNDI via Referenceable API.
+<span class="fc" id="L151">                    obj = INSTANCE_MAP.get(refAddr.getContent());</span>
+                } else {
+                    // Tomcat JNDI creates a Reference out of server.xml
+                    // &lt;ResourceParam&gt; configuration and passes it to an
+                    // instance of the factory given in server.xml.
+<span class="fc" id="L156">                    String key = null;</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">                    if (name != null) {</span>
+<span class="fc" id="L158">                        key = name.toString();</span>
+<span class="fc" id="L159">                        obj = INSTANCE_MAP.get(key);</span>
+                    }
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                    if (obj == null) {</span>
+<span class="fc" id="L162">                        final InstanceKeyDataSource ds = getNewInstance(ref);</span>
+<span class="fc" id="L163">                        setCommonProperties(ref, ds);</span>
+<span class="fc" id="L164">                        obj = ds;</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                        if (key != null) {</span>
+<span class="fc" id="L166">                            INSTANCE_MAP.put(key, ds);</span>
+                        }
+                    }
+                }
+            }
+        }
+<span class="fc" id="L172">        return obj;</span>
+    }
+
+    /**
+     * Tests if className is the value returned from getClass().getName().toString().
+     *
+     * @param className
+     *            The class name to test.
+     *
+     * @return true if and only if className is the value returned from getClass().getName().toString()
+     */
+    protected abstract boolean isCorrectClass(String className);
+
+    boolean parseBoolean(final RefAddr refAddr) {
+<span class="nc" id="L186">        return Boolean.parseBoolean(toString(refAddr));</span>
+    }
+
+    int parseInt(final RefAddr refAddr) {
+<span class="nc" id="L190">        return Integer.parseInt(toString(refAddr));</span>
+    }
+
+    long parseLong(final RefAddr refAddr) {
+<span class="nc" id="L194">        return Long.parseLong(toString(refAddr));</span>
+    }
+
+    private void setCommonProperties(final Reference ref, final InstanceKeyDataSource ikds)
+            throws IOException, ClassNotFoundException {
+
+<span class="fc" id="L200">        RefAddr refAddr = ref.get(&quot;dataSourceName&quot;);</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="fc" id="L202">            ikds.setDataSourceName(toString(refAddr));</span>
+        }
+
+<span class="fc" id="L205">        refAddr = ref.get(&quot;description&quot;);</span>
+<span class="pc bpc" id="L206" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L207">            ikds.setDescription(toString(refAddr));</span>
+        }
+
+<span class="fc" id="L210">        refAddr = ref.get(&quot;jndiEnvironment&quot;);</span>
+<span class="pc bpc" id="L211" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L212">            final byte[] serialized = (byte[]) refAddr.getContent();</span>
+<span class="nc" id="L213">            ikds.setJndiEnvironment((Properties) deserialize(serialized));</span>
+        }
+
+<span class="fc" id="L216">        refAddr = ref.get(&quot;loginTimeout&quot;);</span>
+<span class="pc bpc" id="L217" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L218">            ikds.setLoginTimeout(Duration.ofSeconds(parseInt(refAddr)));</span>
+        }
+
+        // Pool properties
+<span class="fc" id="L222">        refAddr = ref.get(&quot;blockWhenExhausted&quot;);</span>
+<span class="pc bpc" id="L223" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L224">            ikds.setDefaultBlockWhenExhausted(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L227">        refAddr = ref.get(&quot;evictionPolicyClassName&quot;);</span>
+<span class="pc bpc" id="L228" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L229">            ikds.setDefaultEvictionPolicyClassName(toString(refAddr));</span>
+        }
+
+        // Pool properties
+<span class="fc" id="L233">        refAddr = ref.get(&quot;lifo&quot;);</span>
+<span class="pc bpc" id="L234" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L235">            ikds.setDefaultLifo(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L238">        refAddr = ref.get(&quot;maxIdlePerKey&quot;);</span>
+<span class="pc bpc" id="L239" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L240">            ikds.setDefaultMaxIdle(parseInt(refAddr));</span>
+        }
+
+<span class="fc" id="L243">        refAddr = ref.get(&quot;maxTotalPerKey&quot;);</span>
+<span class="pc bpc" id="L244" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L245">            ikds.setDefaultMaxTotal(parseInt(refAddr));</span>
+        }
+
+<span class="fc" id="L248">        refAddr = ref.get(&quot;maxWaitMillis&quot;);</span>
+<span class="pc bpc" id="L249" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L250">            ikds.setDefaultMaxWait(Duration.ofMillis(parseLong(refAddr)));</span>
+        }
+
+<span class="fc" id="L253">        refAddr = ref.get(&quot;minEvictableIdleTimeMillis&quot;);</span>
+<span class="pc bpc" id="L254" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L255">            ikds.setDefaultMinEvictableIdle(Duration.ofMillis(parseLong(refAddr)));</span>
+        }
+
+<span class="fc" id="L258">        refAddr = ref.get(&quot;minIdlePerKey&quot;);</span>
+<span class="pc bpc" id="L259" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L260">            ikds.setDefaultMinIdle(parseInt(refAddr));</span>
+        }
+
+<span class="fc" id="L263">        refAddr = ref.get(&quot;numTestsPerEvictionRun&quot;);</span>
+<span class="pc bpc" id="L264" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L265">            ikds.setDefaultNumTestsPerEvictionRun(parseInt(refAddr));</span>
+        }
+
+<span class="fc" id="L268">        refAddr = ref.get(&quot;softMinEvictableIdleTimeMillis&quot;);</span>
+<span class="pc bpc" id="L269" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L270">            ikds.setDefaultSoftMinEvictableIdle(Duration.ofMillis(parseLong(refAddr)));</span>
+        }
+
+<span class="fc" id="L273">        refAddr = ref.get(&quot;testOnCreate&quot;);</span>
+<span class="pc bpc" id="L274" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L275">            ikds.setDefaultTestOnCreate(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L278">        refAddr = ref.get(&quot;testOnBorrow&quot;);</span>
+<span class="pc bpc" id="L279" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L280">            ikds.setDefaultTestOnBorrow(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L283">        refAddr = ref.get(&quot;testOnReturn&quot;);</span>
+<span class="pc bpc" id="L284" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L285">            ikds.setDefaultTestOnReturn(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L288">        refAddr = ref.get(&quot;testWhileIdle&quot;);</span>
+<span class="pc bpc" id="L289" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L290">            ikds.setDefaultTestWhileIdle(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L293">        refAddr = ref.get(&quot;timeBetweenEvictionRunsMillis&quot;);</span>
+<span class="pc bpc" id="L294" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L295">            ikds.setDefaultDurationBetweenEvictionRuns(Duration.ofMillis(parseLong(refAddr)));</span>
+        }
+
+        // Connection factory properties
+
+<span class="fc" id="L300">        refAddr = ref.get(&quot;validationQuery&quot;);</span>
+<span class="pc bpc" id="L301" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L302">            ikds.setValidationQuery(toString(refAddr));</span>
+        }
+
+<span class="fc" id="L305">        refAddr = ref.get(&quot;validationQueryTimeout&quot;);</span>
+<span class="pc bpc" id="L306" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L307">            ikds.setValidationQueryTimeout(Duration.ofSeconds(parseInt(refAddr)));</span>
+        }
+
+<span class="fc" id="L310">        refAddr = ref.get(&quot;rollbackAfterValidation&quot;);</span>
+<span class="pc bpc" id="L311" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L312">            ikds.setRollbackAfterValidation(parseBoolean(refAddr));</span>
+        }
+
+<span class="fc" id="L315">        refAddr = ref.get(&quot;maxConnLifetimeMillis&quot;);</span>
+<span class="pc bpc" id="L316" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L317">            ikds.setMaxConnLifetime(Duration.ofMillis(parseLong(refAddr)));</span>
+        }
+
+        // Connection properties
+
+<span class="fc" id="L322">        refAddr = ref.get(&quot;defaultAutoCommit&quot;);</span>
+<span class="pc bpc" id="L323" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L324">            ikds.setDefaultAutoCommit(Boolean.valueOf(toString(refAddr)));</span>
+        }
+
+<span class="fc" id="L327">        refAddr = ref.get(&quot;defaultTransactionIsolation&quot;);</span>
+<span class="pc bpc" id="L328" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L329">            ikds.setDefaultTransactionIsolation(parseInt(refAddr));</span>
+        }
+
+<span class="fc" id="L332">        refAddr = ref.get(&quot;defaultReadOnly&quot;);</span>
+<span class="pc bpc" id="L333" title="3 of 4 branches missed.">        if (refAddr != null &amp;&amp; refAddr.getContent() != null) {</span>
+<span class="nc" id="L334">            ikds.setDefaultReadOnly(Boolean.valueOf(toString(refAddr)));</span>
+        }
+<span class="fc" id="L336">    }</span>
+
+    String toString(final RefAddr refAddr) {
+<span class="fc" id="L339">        return refAddr.getContent().toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EnhancedDoubleHasher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">EnhancedDoubleHasher.java</span></div><h1>EnhancedDoubleHasher.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Objects;
+import java.util.function.IntPredicate;
+
+/**
+ * A Hasher that implements combinatorial hashing as described by
+ * &lt;a href=&quot;https://www.eecs.harvard.edu/~michaelm/postscripts/tr-02-05.pdf&quot;&gt;Krisch and Mitzenmacher&lt;/a&gt; using the enhanced double hashing technique
+ * described in the wikipedia article  &lt;a href=&quot;https://en.wikipedia.org/wiki/Double_hashing#Enhanced_double_hashing&quot;&gt;Double Hashing&lt;/a&gt;.
+ * &lt;p&gt;
+ * Common use for this hasher is to generate bit indices from a byte array output of a hashing
+ * or MessageDigest algorithm.&lt;/p&gt;
+ *
+ * &lt;h2&gt;Thoughts on the hasher input&lt;/h2&gt;
+ *
+ *&lt;p&gt;Note that it is worse to create smaller numbers for the {@code initial} and {@code increment}. If the {@code initial} is smaller than
+ * the number of bits in a filter then hashing will start at the same point when the size increases; likewise the {@code increment} will be
+ * the same if it remains smaller than the number of bits in the filter and so the first few indices will be the same if the number of bits
+ * changes (but is still larger than the {@code increment}). In a worse case scenario with small {@code initial} and {@code increment} for
+ * all items, hashing may not create indices that fill the full region within a much larger filter. Imagine hashers created with {@code initial}
+ * and {@code increment} values less than 255 with a filter size of 30000 and number of hash functions as 5. Ignoring the
+ * tetrahedral addition (a maximum of 20 for k=5) the max index is 255 * 4 + 255 = 1275, this covers 4.25% of the filter. This also
+ * ignores the negative wrapping but the behavior is the same, some bits cannot be reached.
+ * &lt;/p&gt;&lt;p&gt;
+ * So this needs to be avoided as the filter probability assumptions will be void. If the {@code initial} and {@code increment} are larger
+ * than the number of bits then the modulus will create a 'random' position and increment within the size.
+ * &lt;/p&gt;
+ *
+ * @since 4.5
+ */
+public class EnhancedDoubleHasher implements Hasher {
+
+    /**
+     * Convert bytes to big-endian long filling with zero bytes as necessary..
+     * @param byteArray the byte array to extract the values from.
+     * @param offset the offset to start extraction from.
+     * @param len the length of the extraction, may be longer than 8.
+     * @return
+     */
+    private static long toLong(final byte[] byteArray, final int offset, final int len) {
+<span class="fc" id="L57">        long val = 0;</span>
+<span class="fc" id="L58">        int shift = Long.SIZE;</span>
+<span class="fc" id="L59">        final int end = offset + Math.min(len, Long.BYTES);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (int i = offset; i &lt; end; i++) {</span>
+<span class="fc" id="L61">            shift -= Byte.SIZE;</span>
+<span class="fc" id="L62">            val |= (long) (byteArray[i] &amp; 0xFF) &lt;&lt; shift;</span>
+        }
+<span class="fc" id="L64">        return val;</span>
+    }
+
+    /**
+     * The initial hash value.
+     */
+    private final long initial;
+
+    /**
+     * The value to increment the hash value by.
+     */
+    private final long increment;
+
+    /**
+     * Constructs the EnhancedDoubleHasher from a byte array.
+     * &lt;p&gt;
+     * This method simplifies the conversion from a Digest or hasher algorithm output
+     * to the two values used by the EnhancedDoubleHasher.&lt;/p&gt;
+     * &lt;p&gt;The byte array is split in 2 and the first 8 bytes of each half are interpreted as a big-endian long value.
+     * Excess bytes are ignored.
+     * If there are fewer than 16 bytes the following conversions are made.
+     *&lt;/p&gt;
+     * &lt;ol&gt;
+     * &lt;li&gt;If there is an odd number of bytes the excess byte is assigned to the increment value&lt;/li&gt;
+     * &lt;li&gt;The bytes alloted are read in big-endian order any byte not populated is set to zero.&lt;/li&gt;
+     * &lt;/ol&gt;
+     * &lt;p&gt;
+     * This ensures that small arrays generate the largest possible increment and initial values.
+     * &lt;/p&gt;
+     * @param buffer the buffer to extract the longs from.
+     * @throws IllegalArgumentException is buffer length is zero.
+     */
+<span class="fc" id="L96">    public EnhancedDoubleHasher(final byte[] buffer) {</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (buffer.length == 0) {</span>
+<span class="fc" id="L98">            throw new IllegalArgumentException(&quot;buffer length must be greater than 0&quot;);</span>
+        }
+        // divide by 2
+<span class="fc" id="L101">        final int segment = buffer.length / 2;</span>
+<span class="fc" id="L102">        this.initial = toLong(buffer, 0, segment);</span>
+<span class="fc" id="L103">        this.increment = toLong(buffer, segment, buffer.length - segment);</span>
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * Constructs the EnhancedDoubleHasher from 2 longs. The long values will be interpreted as unsigned values.
+     * @param initial The initial value for the hasher.
+     * @param increment The value to increment the hash by on each iteration.
+     */
+<span class="fc" id="L111">    public EnhancedDoubleHasher(final long initial, final long increment) {</span>
+<span class="fc" id="L112">        this.initial = initial;</span>
+<span class="fc" id="L113">        this.increment = increment;</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Gets the increment value for the hash calculation.
+     * @return the increment value for the hash calculation.
+     */
+    long getIncrement() {
+<span class="fc" id="L121">        return increment;</span>
+    }
+
+    /**
+     * Gets the initial value for the hash calculation.
+     * @return the initial value for the hash calculation.
+     */
+    long getInitial() {
+<span class="fc" id="L129">        return initial;</span>
+    }
+
+    @Override
+    public IndexExtractor indices(final Shape shape) {
+<span class="fc" id="L134">        Objects.requireNonNull(shape, &quot;shape&quot;);</span>
+
+<span class="fc" id="L136">        return new IndexExtractor() {</span>
+
+            @Override
+            public int[] asIndexArray() {
+<span class="fc" id="L140">                final int[] result = new int[shape.getNumberOfHashFunctions()];</span>
+<span class="fc" id="L141">                final int[] idx = new int[1];</span>
+
+                // This method needs to return duplicate indices
+
+<span class="fc" id="L145">                processIndices(i -&gt; {</span>
+<span class="fc" id="L146">                    result[idx[0]++] = i;</span>
+<span class="fc" id="L147">                    return true;</span>
+                });
+<span class="fc" id="L149">                return result;</span>
+            }
+
+            @Override
+            public boolean processIndices(final IntPredicate consumer) {
+<span class="fc" id="L154">                Objects.requireNonNull(consumer, &quot;consumer&quot;);</span>
+<span class="fc" id="L155">                final int bits = shape.getNumberOfBits();</span>
+                // Enhanced double hashing:
+                // hash[i] = ( h1(x) + i*h2(x) + (i*i*i - i)/6 ) mod bits
+                // See: https://en.wikipedia.org/wiki/Double_hashing#Enhanced_double_hashing
+                //
+                // Essentially this is computing a wrapped modulus from a start point and an
+                // increment and an additional term as a tetrahedral number.
+                // You only need two modulus operations before the loop. Within the loop
+                // the modulus is handled using the sign bit to detect wrapping to ensure:
+                // 0 &lt;= index &lt; bits
+                // 0 &lt;= inc &lt; bits
+                // The final hash is:
+                // hash[i] = ( h1(x) - i*h2(x) - (i*i*i - i)/6 ) wrapped in [0, bits)
+
+<span class="fc" id="L169">                int index = BitMaps.mod(initial, bits);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                if (!consumer.test(index)) {</span>
+<span class="fc" id="L171">                    return false;</span>
+                }
+<span class="fc" id="L173">                int inc = BitMaps.mod(increment, bits);</span>
+
+<span class="fc" id="L175">                final int k = shape.getNumberOfHashFunctions();</span>
+
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                if (k &gt;= bits) {</span>
+                    // the tetraheadral incrementer.  We need to ensure that this
+                    // number does not exceed bits-1 or we may end up with an index &gt; bits.
+<span class="fc" id="L180">                    int tet = 1;</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                    for (int i = 1; i &lt; k; i++) {</span>
+                        // Update index and handle wrapping
+<span class="fc" id="L183">                        index -= inc;</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                        index = index &lt; 0 ? index + bits : index;</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                        if (!consumer.test(index)) {</span>
+<span class="nc" id="L186">                            return false;</span>
+                        }
+
+                        // Incorporate the counter into the increment to create a
+                        // tetrahedral number additional term, and handle wrapping.
+<span class="fc" id="L191">                        inc -= tet;</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                        inc = inc &lt; 0 ? inc + bits : inc;</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                        if (++tet == bits) {</span>
+<span class="fc" id="L194">                            tet = 0;</span>
+                        }
+                    }
+<span class="fc" id="L197">                } else {</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                    for (int i = 1; i &lt; k; i++) {</span>
+                        // Update index and handle wrapping
+<span class="fc" id="L200">                        index -= inc;</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                        index = index &lt; 0 ? index + bits : index;</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">                        if (!consumer.test(index)) {</span>
+<span class="nc" id="L203">                            return false;</span>
+                        }
+
+                        // Incorporate the counter into the increment to create a
+                        // tetrahedral number additional term, and handle wrapping.
+<span class="fc" id="L208">                        inc -= i;</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                        inc = inc &lt; 0 ? inc + bits : inc;</span>
+                    }
+
+                }
+<span class="fc" id="L213">                return true;</span>
+            }
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

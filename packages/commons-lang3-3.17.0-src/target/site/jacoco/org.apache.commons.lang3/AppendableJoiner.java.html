@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AppendableJoiner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">AppendableJoiner.java</span></div><h1>AppendableJoiner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.StringJoiner;
+import java.util.function.Supplier;
+
+import org.apache.commons.lang3.exception.UncheckedException;
+import org.apache.commons.lang3.function.FailableBiConsumer;
+
+/**
+ * Joins an array or {@link Iterable} into an existing {@link Appendable} like a {@link StringBuilder}; with the goal for call sites to avoid creating
+ * intermediary Strings. This is like {@link String#join(CharSequence, CharSequence...)}, {@link String#join(CharSequence, Iterable)}, and {@link StringJoiner}.
+ * &lt;p&gt;
+ * Keep an instance in a (static) variable for efficient joining into an {@link Appendable} or {@link StringBuilder} without creating temporary Strings.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Use the builder and instance methods to reuse the same kind of joining prefix, suffix, delimiter, and string conversion.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For example:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * // A reuseable instance
+ * private static final AppendableJoiner&lt;Object&gt; JOINER = AppendableJoiner.builder()
+ *     .setPrefix(&quot;[&quot;)
+ *     .setSuffix(&quot;]&quot;)
+ *     .setDelimiter(&quot;, &quot;)
+ *     .get();
+ * }
+ * ...
+ * // Builds straight into a StringBuilder:
+ * StringBuilder sbuilder = new StringBuilder(&quot;1&quot;);
+ * JOINER.join(sbuilder, &quot;A&quot;, &quot;B&quot;);
+ * sbuilder.append(&quot;2&quot;);
+ * JOINER.join(sbuilder, &quot;C&quot;, &quot;D&quot;);
+ * sbuilder.append(&quot;3&quot;);
+ * // Returns &quot;1[A, B]2[C, D]3&quot;
+ * return sbuilder.toString();
+ * }&lt;/pre&gt;
+ * &lt;p&gt;
+ * To provide a custom Object element to {@link CharSequence} converter, call {@link Builder#setElementAppender(FailableBiConsumer)}, for example:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * private static final AppendableJoiner&lt;Item&gt; JOINER = AppendableJoiner.builder()
+ *     .setElementAppender(e -&gt; (a, e) -&gt; a.append(e.getFoo())
+ *                                        a.append(e.getBar())
+ *                                        a.append('!'))
+ *     ...
+ *     .get();
+ * }
+ * }&lt;/pre&gt;
+ * &lt;p&gt;
+ * This class is immutable and thread-safe.
+ * &lt;/p&gt;
+ *
+ * @param &lt;T&gt; the type of elements to join.
+ * @see Appendable
+ * @see StringBuilder
+ * @see String#join(CharSequence, CharSequence...)
+ * @see String#join(CharSequence, Iterable)
+ * @see StringJoiner
+ * @since 3.15.0
+ */
+public final class AppendableJoiner&lt;T&gt; {
+
+    /**
+     * Builds instances of {@link AppendableJoiner}.
+     *
+     * @param &lt;T&gt; the type of elements to join.
+     */
+    public static final class Builder&lt;T&gt; implements Supplier&lt;AppendableJoiner&lt;T&gt;&gt; {
+
+        /** The sequence of characters to be used at the beginning. */
+        private CharSequence prefix;
+
+        /** The sequence of characters to be used at the end. */
+        private CharSequence suffix;
+
+        /** The delimiter that separates each element. */
+        private CharSequence delimiter;
+
+        /** The consumer used to render each element of type {@code T} onto an {@link Appendable}. */
+        private FailableBiConsumer&lt;Appendable, T, IOException&gt; appender;
+
+        /**
+         * Constructs a new instance.
+         */
+<span class="fc" id="L108">        Builder() {</span>
+            // empty
+<span class="fc" id="L110">        }</span>
+
+        /**
+         * Gets a new instance of {@link AppendableJoiner}.
+         */
+        @Override
+        public AppendableJoiner&lt;T&gt; get() {
+<span class="fc" id="L117">            return new AppendableJoiner&lt;&gt;(prefix, suffix, delimiter, appender);</span>
+        }
+
+        /**
+         * Sets the delimiter that separates each element.
+         *
+         * @param delimiter The delimiter that separates each element.
+         * @return this instance.
+         */
+        public Builder&lt;T&gt; setDelimiter(final CharSequence delimiter) {
+<span class="fc" id="L127">            this.delimiter = delimiter;</span>
+<span class="fc" id="L128">            return this;</span>
+        }
+
+        /**
+         * Sets the consumer used to render each element of type {@code T} onto an {@link Appendable}.
+         *
+         * @param appender The consumer used to render each element of type {@code T} onto an {@link Appendable}.
+         * @return this instance.
+         */
+        public Builder&lt;T&gt; setElementAppender(final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender) {
+<span class="fc" id="L138">            this.appender = appender;</span>
+<span class="fc" id="L139">            return this;</span>
+        }
+
+        /**
+         * Sets the sequence of characters to be used at the beginning.
+         *
+         * @param prefix The sequence of characters to be used at the beginning.
+         * @return this instance.
+         */
+        public Builder&lt;T&gt; setPrefix(final CharSequence prefix) {
+<span class="fc" id="L149">            this.prefix = prefix;</span>
+<span class="fc" id="L150">            return this;</span>
+        }
+
+        /**
+         * Sets the sequence of characters to be used at the end.
+         *
+         * @param suffix The sequence of characters to be used at the end.
+         * @return this instance.
+         */
+        public Builder&lt;T&gt; setSuffix(final CharSequence suffix) {
+<span class="fc" id="L160">            this.suffix = suffix;</span>
+<span class="fc" id="L161">            return this;</span>
+        }
+
+    }
+
+    /**
+     * Creates a new builder.
+     *
+     * @param &lt;T&gt; The type of elements.
+     * @return a new builder.
+     */
+    public static &lt;T&gt; Builder&lt;T&gt; builder() {
+<span class="fc" id="L173">        return new Builder&lt;&gt;();</span>
+    }
+
+    /** Could be public in the future, in some form. */
+    @SafeVarargs
+    static &lt;A extends Appendable, T&gt; A joinA(final A appendable, final CharSequence prefix, final CharSequence suffix, final CharSequence delimiter,
+            final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender, final T... elements) throws IOException {
+<span class="fc" id="L180">        return joinArray(appendable, prefix, suffix, delimiter, appender, elements);</span>
+    }
+
+    private static &lt;A extends Appendable, T&gt; A joinArray(final A appendable, final CharSequence prefix, final CharSequence suffix, final CharSequence delimiter,
+            final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender, final T[] elements) throws IOException {
+<span class="fc" id="L185">        appendable.append(prefix);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        if (elements != null) {</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            if (elements.length &gt; 0) {</span>
+<span class="fc" id="L188">                appender.accept(appendable, elements[0]);</span>
+            }
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            for (int i = 1; i &lt; elements.length; i++) {</span>
+<span class="fc" id="L191">                appendable.append(delimiter);</span>
+<span class="fc" id="L192">                appender.accept(appendable, elements[i]);</span>
+            }
+        }
+<span class="fc" id="L195">        appendable.append(suffix);</span>
+<span class="fc" id="L196">        return appendable;</span>
+    }
+
+    /** Could be public in the future, in some form. */
+    static &lt;T&gt; StringBuilder joinI(final StringBuilder stringBuilder, final CharSequence prefix, final CharSequence suffix, final CharSequence delimiter,
+            final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender, final Iterable&lt;T&gt; elements) {
+        try {
+<span class="fc" id="L203">            return joinIterable(stringBuilder, prefix, suffix, delimiter, appender, elements);</span>
+<span class="nc" id="L204">        } catch (final IOException e) {</span>
+            // Cannot happen with a StringBuilder.
+<span class="nc" id="L206">            throw new UncheckedException(e);</span>
+        }
+    }
+
+    private static &lt;A extends Appendable, T&gt; A joinIterable(final A appendable, final CharSequence prefix, final CharSequence suffix,
+            final CharSequence delimiter, final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender, final Iterable&lt;T&gt; elements) throws IOException {
+<span class="fc" id="L212">        appendable.append(prefix);</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (elements != null) {</span>
+<span class="fc" id="L214">            final Iterator&lt;T&gt; iterator = elements.iterator();</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">            if (iterator.hasNext()) {</span>
+<span class="fc" id="L216">                appender.accept(appendable, iterator.next());</span>
+            }
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            while (iterator.hasNext()) {</span>
+<span class="fc" id="L219">                appendable.append(delimiter);</span>
+<span class="fc" id="L220">                appender.accept(appendable, iterator.next());</span>
+            }
+        }
+<span class="fc" id="L223">        appendable.append(suffix);</span>
+<span class="fc" id="L224">        return appendable;</span>
+    }
+
+    /** Could be public in the future, in some form. */
+    @SafeVarargs
+    static &lt;T&gt; StringBuilder joinSB(final StringBuilder stringBuilder, final CharSequence prefix, final CharSequence suffix, final CharSequence delimiter,
+            final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender, final T... elements) {
+        try {
+<span class="fc" id="L232">            return joinArray(stringBuilder, prefix, suffix, delimiter, appender, elements);</span>
+<span class="nc" id="L233">        } catch (final IOException e) {</span>
+            // Cannot happen with a StringBuilder.
+<span class="nc" id="L235">            throw new UncheckedException(e);</span>
+        }
+    }
+
+    private static CharSequence nonNull(final CharSequence value) {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        return value != null ? value : StringUtils.EMPTY;</span>
+    }
+
+    /** The sequence of characters to be used at the beginning. */
+    private final CharSequence prefix;
+
+    /** The sequence of characters to be used at the end. */
+    private final CharSequence suffix;
+
+    /** The delimiter that separates each element. */
+    private final CharSequence delimiter;
+
+    private final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender;
+
+    /**
+     * Constructs a new instance.
+     */
+    private AppendableJoiner(final CharSequence prefix, final CharSequence suffix, final CharSequence delimiter,
+<span class="fc" id="L258">            final FailableBiConsumer&lt;Appendable, T, IOException&gt; appender) {</span>
+<span class="fc" id="L259">        this.prefix = nonNull(prefix);</span>
+<span class="fc" id="L260">        this.suffix = nonNull(suffix);</span>
+<span class="fc" id="L261">        this.delimiter = nonNull(delimiter);</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        this.appender = appender != null ? appender : (a, e) -&gt; a.append(String.valueOf(e));</span>
+<span class="fc" id="L263">    }</span>
+
+    /**
+     * Joins stringified objects from the given Iterable into a StringBuilder.
+     *
+     * @param stringBuilder The target.
+     * @param elements      The source.
+     * @return The given StringBuilder.
+     */
+    public StringBuilder join(final StringBuilder stringBuilder, final Iterable&lt;T&gt; elements) {
+<span class="fc" id="L273">        return joinI(stringBuilder, prefix, suffix, delimiter, appender, elements);</span>
+    }
+
+    /**
+     * Joins stringified objects from the given array into a StringBuilder.
+     *
+     * @param stringBuilder The target.
+     * @param elements      The source.
+     * @return the given target StringBuilder.
+     */
+    public StringBuilder join(final StringBuilder stringBuilder, @SuppressWarnings(&quot;unchecked&quot;) final T... elements) {
+<span class="fc" id="L284">        return joinSB(stringBuilder, prefix, suffix, delimiter, appender, elements);</span>
+    }
+
+    /**
+     * Joins stringified objects from the given Iterable into an Appendable.
+     *
+     * @param &lt;A&gt;        the Appendable type.
+     * @param appendable The target.
+     * @param elements   The source.
+     * @return The given StringBuilder.
+     * @throws IOException If an I/O error occurs
+     */
+    public &lt;A extends Appendable&gt; A joinA(final A appendable, final Iterable&lt;T&gt; elements) throws IOException {
+<span class="fc" id="L297">        return joinIterable(appendable, prefix, suffix, delimiter, appender, elements);</span>
+    }
+
+    /**
+     * Joins stringified objects from the given array into an Appendable.
+     *
+     * @param &lt;A&gt;        the Appendable type.
+     * @param appendable The target.
+     * @param elements   The source.
+     * @return The given StringBuilder.
+     * @throws IOException If an I/O error occurs
+     */
+    public &lt;A extends Appendable&gt; A joinA(final A appendable, @SuppressWarnings(&quot;unchecked&quot;) final T... elements) throws IOException {
+<span class="fc" id="L310">        return joinA(appendable, prefix, suffix, delimiter, appender, elements);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

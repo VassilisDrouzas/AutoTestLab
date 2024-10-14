@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractCircuitBreaker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.concurrent</a> &gt; <span class="el_source">AbstractCircuitBreaker.java</span></div><h1>AbstractCircuitBreaker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.concurrent;
+
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Base class for circuit breakers.
+ *
+ * @param &lt;T&gt; the type of the value monitored by this circuit breaker
+ * @since 3.5
+ */
+public abstract class AbstractCircuitBreaker&lt;T&gt; implements CircuitBreaker&lt;T&gt; {
+
+    /**
+     * An internal enumeration representing the different states of a circuit
+     * breaker. This class also contains some logic for performing state
+     * transitions. This is done to avoid complex if-conditions in the code of
+     * {@link CircuitBreaker}.
+     */
+<span class="fc" id="L37">    protected enum State {</span>
+
+        /** The closed state. */
+<span class="fc" id="L40">        CLOSED {</span>
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public State oppositeState() {
+<span class="fc" id="L46">                return OPEN;</span>
+            }
+        },
+
+        /** The open state. */
+<span class="fc" id="L51">        OPEN {</span>
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public State oppositeState() {
+<span class="fc" id="L57">                return CLOSED;</span>
+            }
+        };
+
+        /**
+         * Returns the opposite state to the represented state. This is useful
+         * for flipping the current state.
+         *
+         * @return the opposite state
+         */
+        public abstract State oppositeState();
+    }
+
+    /**
+     * The name of the &lt;em&gt;open&lt;/em&gt; property as it is passed to registered
+     * change listeners.
+     */
+    public static final String PROPERTY_NAME = &quot;open&quot;;
+
+    /**
+     * Converts the given state value to a boolean &lt;em&gt;open&lt;/em&gt; property.
+     *
+     * @param state the state to be converted
+     * @return the boolean open flag
+     */
+    protected static boolean isOpen(final State state) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        return state == State.OPEN;</span>
+    }
+
+    /** The current state of this circuit breaker. */
+<span class="fc" id="L87">    protected final AtomicReference&lt;State&gt; state = new AtomicReference&lt;&gt;(State.CLOSED);</span>
+
+    /** An object for managing change listeners registered at this instance. */
+    private final PropertyChangeSupport changeSupport;
+
+    /**
+     * Creates an {@link AbstractCircuitBreaker}. It also creates an internal {@link PropertyChangeSupport}.
+     */
+<span class="fc" id="L95">    public AbstractCircuitBreaker() {</span>
+<span class="fc" id="L96">        changeSupport = new PropertyChangeSupport(this);</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Adds a change listener to this circuit breaker. This listener is notified whenever
+     * the state of this circuit breaker changes. If the listener is
+     * &lt;strong&gt;null&lt;/strong&gt;, it is silently ignored.
+     *
+     * @param listener the listener to be added
+     */
+    public void addChangeListener(final PropertyChangeListener listener) {
+<span class="fc" id="L107">        changeSupport.addPropertyChangeListener(listener);</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Changes the internal state of this circuit breaker. If there is actually a change
+     * of the state value, all registered change listeners are notified.
+     *
+     * @param newState the new state to be set
+     */
+    protected void changeState(final State newState) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (state.compareAndSet(newState.oppositeState(), newState)) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            changeSupport.firePropertyChange(PROPERTY_NAME, !isOpen(newState), isOpen(newState));</span>
+        }
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public abstract boolean checkState();
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void close() {
+<span class="fc" id="L133">        changeState(State.CLOSED);</span>
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public abstract boolean incrementAndCheckState(T increment);
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isClosed() {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        return !isOpen();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isOpen() {
+<span class="fc" id="L155">        return isOpen(state.get());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void open() {
+<span class="fc" id="L163">        changeState(State.OPEN);</span>
+<span class="fc" id="L164">    }</span>
+
+    /**
+     * Removes the specified change listener from this circuit breaker.
+     *
+     * @param listener the listener to be removed
+     */
+    public void removeChangeListener(final PropertyChangeListener listener) {
+<span class="fc" id="L172">        changeSupport.removePropertyChangeListener(listener);</span>
+<span class="fc" id="L173">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

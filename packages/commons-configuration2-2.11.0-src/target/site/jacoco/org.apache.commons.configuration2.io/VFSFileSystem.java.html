@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VFSFileSystem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.io</a> &gt; <span class="el_source">VFSFileSystem.java</span></div><h1>VFSFileSystem.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.io;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.util.Map;
+
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.vfs2.FileContent;
+import org.apache.commons.vfs2.FileName;
+import org.apache.commons.vfs2.FileObject;
+import org.apache.commons.vfs2.FileSystemConfigBuilder;
+import org.apache.commons.vfs2.FileSystemException;
+import org.apache.commons.vfs2.FileSystemManager;
+import org.apache.commons.vfs2.FileSystemOptions;
+import org.apache.commons.vfs2.VFS;
+import org.apache.commons.vfs2.provider.UriParser;
+
+/**
+ * FileSystem that uses &lt;a href=&quot;https://commons.apache.org/proper/commons-vfs/&quot;&gt;Apache Commons VFS&lt;/a&gt;.
+ *
+ * @since 1.7
+ */
+public class VFSFileSystem extends DefaultFileSystem {
+
+    /**
+     * Stream handler required to create URL.
+     */
+    private static final class VFSURLStreamHandler extends URLStreamHandler {
+
+        @Override
+        protected URLConnection openConnection(final URL url) throws IOException {
+<span class="nc" id="L58">            throw new IOException(&quot;VFS URLs can only be used with VFS APIs&quot;);</span>
+        }
+    }
+
+    /** The logger. */
+<span class="fc" id="L63">    private final Log log = LogFactory.getLog(getClass());</span>
+
+<span class="fc" id="L65">    public VFSFileSystem() {</span>
+        // empty
+<span class="fc" id="L67">    }</span>
+
+    @Override
+    public String getBasePath(final String path) {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        if (UriParser.extractScheme(path) == null) {</span>
+<span class="nc" id="L72">            return super.getBasePath(path);</span>
+        }
+        try {
+<span class="nc" id="L75">            final FileName parent = resolveURI(path).getParent();</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            return parent != null ? parent.getURI() : null;</span>
+<span class="nc" id="L77">        } catch (final FileSystemException fse) {</span>
+<span class="nc" id="L78">            fse.printStackTrace();</span>
+<span class="nc" id="L79">            return null;</span>
+        }
+    }
+
+    @Override
+    public String getFileName(final String path) {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (UriParser.extractScheme(path) == null) {</span>
+<span class="nc" id="L86">            return super.getFileName(path);</span>
+        }
+        try {
+<span class="nc" id="L89">            return resolveURI(path).getBaseName();</span>
+<span class="nc" id="L90">        } catch (final FileSystemException fse) {</span>
+<span class="nc" id="L91">            fse.printStackTrace();</span>
+<span class="nc" id="L92">            return null;</span>
+        }
+    }
+
+    @Override
+    public InputStream getInputStream(final URL url) throws ConfigurationException {
+        final FileObject file;
+        try {
+<span class="fc" id="L100">            final FileSystemOptions opts = getOptions(url.getProtocol());</span>
+<span class="fc" id="L101">            file = getManager().resolveFile(url.toString(), opts);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">            if (!file.exists()) {</span>
+<span class="nc" id="L103">                throw new ConfigurationException(&quot;File not found&quot;);</span>
+            }
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (!file.isFile()) {</span>
+<span class="nc" id="L106">                throw new ConfigurationException(&quot;Cannot load a configuration from a directory&quot;);</span>
+            }
+<span class="fc" id="L108">            final FileContent content = file.getContent();</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">            if (content == null) {</span>
+<span class="nc" id="L110">                final String msg = &quot;Cannot access content of &quot; + file.getName().getFriendlyURI();</span>
+<span class="nc" id="L111">                throw new ConfigurationException(msg);</span>
+            }
+<span class="fc" id="L113">            return content.getInputStream();</span>
+<span class="nc" id="L114">        } catch (final FileSystemException fse) {</span>
+<span class="nc" id="L115">            final String msg = &quot;Unable to access &quot; + url.toString();</span>
+<span class="nc" id="L116">            throw new ConfigurationException(msg, fse);</span>
+        }
+    }
+
+    private FileSystemManager getManager() throws FileSystemException {
+<span class="fc" id="L121">        return VFS.getManager();</span>
+    }
+
+    private FileSystemOptions getOptions(final String scheme) {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (scheme == null) {</span>
+<span class="nc" id="L126">            return null;</span>
+        }
+<span class="fc" id="L128">        final FileSystemOptions opts = new FileSystemOptions();</span>
+        final FileSystemConfigBuilder builder;
+        try {
+<span class="fc" id="L131">            builder = getManager().getFileSystemConfigBuilder(scheme);</span>
+<span class="nc" id="L132">        } catch (final Exception ex) {</span>
+<span class="nc" id="L133">            return null;</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc" id="L135">        final FileOptionsProvider provider = getFileOptionsProvider();</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (provider != null) {</span>
+<span class="nc" id="L137">            final Map&lt;String, Object&gt; map = provider.getOptions();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">            if (map == null) {</span>
+<span class="nc" id="L139">                return null;</span>
+            }
+<span class="nc" id="L141">            int count = 0;</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            for (final Map.Entry&lt;String, Object&gt; entry : map.entrySet()) {</span>
+                try {
+<span class="nc" id="L144">                    String key = entry.getKey();</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">                    if (FileOptionsProvider.CURRENT_USER.equals(key)) {</span>
+<span class="nc" id="L146">                        key = &quot;creatorName&quot;;</span>
+                    }
+<span class="nc" id="L148">                    setProperty(builder, opts, key, entry.getValue());</span>
+<span class="nc" id="L149">                    ++count;</span>
+<span class="nc" id="L150">                } catch (final Exception ex) {</span>
+                    // Ignore an incorrect property.
+<span class="nc" id="L152">                    continue;</span>
+<span class="nc" id="L153">                }</span>
+<span class="nc" id="L154">            }</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (count &gt; 0) {</span>
+<span class="nc" id="L156">                return opts;</span>
+            }
+        }
+<span class="fc" id="L159">        return null;</span>
+
+    }
+
+    @Override
+    public OutputStream getOutputStream(final URL url) throws ConfigurationException {
+        try {
+<span class="nc" id="L166">            final FileSystemOptions opts = getOptions(url.getProtocol());</span>
+<span class="nc" id="L167">            final FileObject file = getManager().resolveFile(url.toString(), opts);</span>
+            // throw an exception if the target URL is a directory
+<span class="nc bnc" id="L169" title="All 4 branches missed.">            if (file == null || file.isFolder()) {</span>
+<span class="nc" id="L170">                throw new ConfigurationException(&quot;Cannot save a configuration to a directory&quot;);</span>
+            }
+<span class="nc" id="L172">            final FileContent content = file.getContent();</span>
+
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            if (content == null) {</span>
+<span class="nc" id="L175">                throw new ConfigurationException(&quot;Cannot access content of &quot; + url);</span>
+            }
+<span class="nc" id="L177">            return content.getOutputStream();</span>
+<span class="nc" id="L178">        } catch (final FileSystemException fse) {</span>
+<span class="nc" id="L179">            throw new ConfigurationException(&quot;Unable to access &quot; + url, fse);</span>
+        }
+    }
+
+    @Override
+    public String getPath(final File file, final URL url, final String basePath, final String fileName) {
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (file != null) {</span>
+<span class="nc" id="L186">            return super.getPath(file, url, basePath, fileName);</span>
+        }
+        try {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (url != null) {</span>
+<span class="fc" id="L190">                final FileName name = resolveURI(url.toString());</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                if (name != null) {</span>
+<span class="fc" id="L192">                    return name.toString();</span>
+                }
+            }
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">            if (UriParser.extractScheme(fileName) != null) {</span>
+<span class="nc" id="L196">                return fileName;</span>
+            }
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">            if (basePath != null) {</span>
+<span class="fc" id="L199">                final FileName base = resolveURI(basePath);</span>
+<span class="fc" id="L200">                return getManager().resolveName(base, fileName).getURI();</span>
+            }
+<span class="nc" id="L202">            final FileName name = resolveURI(fileName);</span>
+<span class="nc" id="L203">            final FileName base = name.getParent();</span>
+<span class="nc" id="L204">            return getManager().resolveName(base, name.getBaseName()).getURI();</span>
+<span class="nc" id="L205">        } catch (final FileSystemException fse) {</span>
+<span class="nc" id="L206">            fse.printStackTrace();</span>
+<span class="nc" id="L207">            return null;</span>
+        }
+    }
+
+    @Override
+    public URL getURL(final String basePath, final String file) throws MalformedURLException {
+<span class="nc bnc" id="L213" title="All 8 branches missed.">        if (basePath != null &amp;&amp; UriParser.extractScheme(basePath) == null || basePath == null &amp;&amp; UriParser.extractScheme(file) == null) {</span>
+<span class="nc" id="L214">            return super.getURL(basePath, file);</span>
+        }
+        try {
+            final FileName path;
+<span class="nc bnc" id="L218" title="All 4 branches missed.">            if (basePath != null &amp;&amp; UriParser.extractScheme(file) == null) {</span>
+<span class="nc" id="L219">                final FileName base = resolveURI(basePath);</span>
+<span class="nc" id="L220">                path = getManager().resolveName(base, file);</span>
+<span class="nc" id="L221">            } else {</span>
+<span class="nc" id="L222">                path = resolveURI(file);</span>
+            }
+
+<span class="nc" id="L225">            final URLStreamHandler handler = new VFSURLStreamHandler();</span>
+<span class="nc" id="L226">            return new URL(null, path.getURI(), handler);</span>
+<span class="nc" id="L227">        } catch (final FileSystemException fse) {</span>
+<span class="nc" id="L228">            throw new ConfigurationRuntimeException(&quot;Could not parse basePath: &quot; + basePath + &quot; and fileName: &quot; + file, fse);</span>
+        }
+    }
+
+    @Override
+    public URL locateFromURL(final String basePath, final String fileName) {
+<span class="fc" id="L234">        final String fileScheme = UriParser.extractScheme(fileName);</span>
+        // Use DefaultFileSystem if basePath and fileName don't have a scheme.
+<span class="pc bpc" id="L236" title="3 of 6 branches missed.">        if ((basePath == null || UriParser.extractScheme(basePath) == null) &amp;&amp; fileScheme == null) {</span>
+<span class="fc" id="L237">            return super.locateFromURL(basePath, fileName);</span>
+        }
+        try {
+            final FileObject file;
+            // Only use the base path if the file name doesn't have a scheme.
+<span class="nc bnc" id="L242" title="All 4 branches missed.">            if (basePath != null &amp;&amp; fileScheme == null) {</span>
+<span class="nc" id="L243">                final String scheme = UriParser.extractScheme(basePath);</span>
+<span class="nc" id="L244">                final FileSystemOptions opts = getOptions(scheme);</span>
+<span class="nc" id="L245">                FileObject base = getManager().resolveFile(basePath, opts);</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">                if (base.isFile()) {</span>
+<span class="nc" id="L247">                    base = base.getParent();</span>
+                }
+
+<span class="nc" id="L250">                file = getManager().resolveFile(base, fileName);</span>
+<span class="nc" id="L251">            } else {</span>
+<span class="nc" id="L252">                final FileSystemOptions opts = getOptions(fileScheme);</span>
+<span class="nc" id="L253">                file = getManager().resolveFile(fileName, opts);</span>
+            }
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            if (!file.exists()) {</span>
+<span class="nc" id="L257">                return null;</span>
+            }
+<span class="nc" id="L259">            final FileName path = file.getName();</span>
+<span class="nc" id="L260">            final URLStreamHandler handler = new VFSURLStreamHandler();</span>
+<span class="nc" id="L261">            return new URL(null, path.getURI(), handler);</span>
+<span class="nc" id="L262">        } catch (final FileSystemException | MalformedURLException fse) {</span>
+<span class="nc" id="L263">            return null;</span>
+        }
+    }
+
+    private FileName resolveURI(final String path) throws FileSystemException {
+<span class="fc" id="L268">        return getManager().resolveURI(path);</span>
+    }
+
+    private void setProperty(final FileSystemConfigBuilder builder, final FileSystemOptions options, final String key, final Object value) {
+<span class="nc" id="L272">        final String methodName = &quot;set&quot; + key.substring(0, 1).toUpperCase() + key.substring(1);</span>
+<span class="nc" id="L273">        final Class&lt;?&gt;[] paramTypes = new Class&lt;?&gt;[2];</span>
+<span class="nc" id="L274">        paramTypes[0] = FileSystemOptions.class;</span>
+<span class="nc" id="L275">        paramTypes[1] = value.getClass();</span>
+        try {
+<span class="nc" id="L277">            final Method method = builder.getClass().getMethod(methodName, paramTypes);</span>
+<span class="nc" id="L278">            final Object[] params = new Object[2];</span>
+<span class="nc" id="L279">            params[0] = options;</span>
+<span class="nc" id="L280">            params[1] = value;</span>
+<span class="nc" id="L281">            method.invoke(builder, params);</span>
+<span class="nc" id="L282">        } catch (final Exception ex) {</span>
+<span class="nc" id="L283">            log.warn(&quot;Cannot access property '&quot; + key + &quot;'! Ignoring.&quot;, ex);</span>
+<span class="nc" id="L284">        }</span>
+<span class="nc" id="L285">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PatternSubtreeConfigurationWrapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">PatternSubtreeConfigurationWrapper.java</span></div><h1>PatternSubtreeConfigurationWrapper.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Properties;
+
+import org.apache.commons.configuration2.event.Event;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.event.EventType;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.FileBased;
+import org.apache.commons.configuration2.tree.ExpressionEngine;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+
+/**
+ * Wraps a BaseHierarchicalConfiguration and allows subtrees to be accessed via a configured path with replaceable
+ * tokens derived from the ConfigurationInterpolator. When used with injection frameworks such as Spring it allows
+ * components to be injected with subtrees of the configuration.
+ *
+ * @since 1.6
+ */
+public class PatternSubtreeConfigurationWrapper extends BaseHierarchicalConfiguration implements FileBasedConfiguration {
+    /** The wrapped configuration */
+    private final HierarchicalConfiguration&lt;ImmutableNode&gt; config;
+
+    /** The path to the subtree */
+    private final String path;
+
+    /** True if the path ends with '/', false otherwise */
+    private final boolean trailing;
+
+    /** True if the constructor has finished */
+    private final boolean init;
+
+    /**
+     * Constructor
+     *
+     * @param config The Configuration to be wrapped.
+     * @param path The base path pattern.
+     */
+<span class="fc" id="L65">    public PatternSubtreeConfigurationWrapper(final HierarchicalConfiguration&lt;ImmutableNode&gt; config, final String path) {</span>
+<span class="fc" id="L66">        this.config = Objects.requireNonNull(config, &quot;config&quot;);</span>
+<span class="fc" id="L67">        this.path = path;</span>
+<span class="fc" id="L68">        this.trailing = path.endsWith(&quot;/&quot;);</span>
+<span class="fc" id="L69">        this.init = true;</span>
+<span class="fc" id="L70">    }</span>
+
+    @Override
+    public &lt;T extends Event&gt; void addEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="nc" id="L74">        getConfig().addEventListener(eventType, listener);</span>
+<span class="nc" id="L75">    }</span>
+
+    @Override
+    protected void addNodesInternal(final String key, final Collection&lt;? extends ImmutableNode&gt; nodes) {
+<span class="nc" id="L79">        getConfig().addNodes(key, nodes);</span>
+<span class="nc" id="L80">    }</span>
+
+    @Override
+    protected void addPropertyInternal(final String key, final Object value) {
+<span class="nc" id="L84">        config.addProperty(makePath(key), value);</span>
+<span class="nc" id="L85">    }</span>
+
+    @Override
+    public void clearErrorListeners() {
+<span class="nc" id="L89">        getConfig().clearErrorListeners();</span>
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public void clearEventListeners() {
+<span class="nc" id="L94">        getConfig().clearEventListeners();</span>
+<span class="nc" id="L95">    }</span>
+
+    @Override
+    protected void clearInternal() {
+<span class="nc" id="L99">        getConfig().clear();</span>
+<span class="nc" id="L100">    }</span>
+
+    @Override
+    protected void clearPropertyDirect(final String key) {
+<span class="nc" id="L104">        config.clearProperty(makePath(key));</span>
+<span class="nc" id="L105">    }</span>
+
+    @Override
+    protected Object clearTreeInternal(final String key) {
+<span class="nc" id="L109">        config.clearTree(makePath(key));</span>
+<span class="nc" id="L110">        return Collections.emptyList();</span>
+    }
+
+    @Override
+    public HierarchicalConfiguration&lt;ImmutableNode&gt; configurationAt(final String key) {
+<span class="nc" id="L115">        return config.configurationAt(makePath(key));</span>
+    }
+
+    @Override
+    public HierarchicalConfiguration&lt;ImmutableNode&gt; configurationAt(final String key, final boolean supportUpdates) {
+<span class="nc" id="L120">        return config.configurationAt(makePath(key), supportUpdates);</span>
+    }
+
+    @Override
+    public List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; configurationsAt(final String key) {
+<span class="nc" id="L125">        return config.configurationsAt(makePath(key));</span>
+    }
+
+    @Override
+    protected boolean containsKeyInternal(final String key) {
+<span class="nc" id="L130">        return config.containsKey(makePath(key));</span>
+    }
+
+    /**
+     * Tests whether this configuration contains one or more matches to this value. This operation stops at first
+     * match but may be more expensive than the containsKey method.
+     * @since 2.11.0
+     */
+    @Override
+    protected boolean containsValueInternal(final Object value) {
+<span class="nc" id="L140">        return config.containsValue(value);</span>
+    }
+
+    /**
+     * Returns the wrapped configuration as a {@code FileBased} object. If this cast is not possible, an exception is
+     * thrown.
+     *
+     * @return the wrapped configuration as {@code FileBased}
+     * @throws ConfigurationException if the wrapped configuration does not implement {@code FileBased}
+     */
+    private FileBased fetchFileBased() throws ConfigurationException {
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (!(config instanceof FileBased)) {</span>
+<span class="fc" id="L152">            throw new ConfigurationException(&quot;Wrapped configuration does not implement FileBased!&quot; + &quot; No I/O operations are supported.&quot;);</span>
+        }
+<span class="nc" id="L154">        return (FileBased) config;</span>
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(final String key) {
+<span class="nc" id="L159">        return config.getBigDecimal(makePath(key));</span>
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(final String key, final BigDecimal defaultValue) {
+<span class="nc" id="L164">        return config.getBigDecimal(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public BigInteger getBigInteger(final String key) {
+<span class="nc" id="L169">        return config.getBigInteger(makePath(key));</span>
+    }
+
+    @Override
+    public BigInteger getBigInteger(final String key, final BigInteger defaultValue) {
+<span class="nc" id="L174">        return config.getBigInteger(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public boolean getBoolean(final String key) {
+<span class="nc" id="L179">        return config.getBoolean(makePath(key));</span>
+    }
+
+    @Override
+    public boolean getBoolean(final String key, final boolean defaultValue) {
+<span class="nc" id="L184">        return config.getBoolean(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Boolean getBoolean(final String key, final Boolean defaultValue) {
+<span class="nc" id="L189">        return config.getBoolean(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public byte getByte(final String key) {
+<span class="nc" id="L194">        return config.getByte(makePath(key));</span>
+    }
+
+    @Override
+    public byte getByte(final String key, final byte defaultValue) {
+<span class="nc" id="L199">        return config.getByte(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Byte getByte(final String key, final Byte defaultValue) {
+<span class="nc" id="L204">        return config.getByte(makePath(key), defaultValue);</span>
+    }
+
+    private BaseHierarchicalConfiguration getConfig() {
+<span class="nc" id="L208">        return (BaseHierarchicalConfiguration) config.configurationAt(makePath());</span>
+    }
+
+    @Override
+    public double getDouble(final String key) {
+<span class="nc" id="L213">        return config.getDouble(makePath(key));</span>
+    }
+
+    @Override
+    public double getDouble(final String key, final double defaultValue) {
+<span class="nc" id="L218">        return config.getDouble(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Double getDouble(final String key, final Double defaultValue) {
+<span class="nc" id="L223">        return config.getDouble(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public &lt;T extends Event&gt; Collection&lt;EventListener&lt;? super T&gt;&gt; getEventListeners(final EventType&lt;T&gt; eventType) {
+<span class="nc" id="L228">        return getConfig().getEventListeners(eventType);</span>
+    }
+
+    @Override
+    public ExpressionEngine getExpressionEngine() {
+<span class="nc" id="L233">        return config.getExpressionEngine();</span>
+    }
+
+    @Override
+    public float getFloat(final String key) {
+<span class="nc" id="L238">        return config.getFloat(makePath(key));</span>
+    }
+
+    @Override
+    public float getFloat(final String key, final float defaultValue) {
+<span class="nc" id="L243">        return config.getFloat(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Float getFloat(final String key, final Float defaultValue) {
+<span class="nc" id="L248">        return config.getFloat(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public int getInt(final String key) {
+<span class="fc" id="L253">        return config.getInt(makePath(key));</span>
+    }
+
+    @Override
+    public int getInt(final String key, final int defaultValue) {
+<span class="nc" id="L258">        return config.getInt(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Integer getInteger(final String key, final Integer defaultValue) {
+<span class="nc" id="L263">        return config.getInteger(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal() {
+<span class="nc" id="L268">        return config.getKeys(makePath());</span>
+    }
+
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal(final String prefix) {
+<span class="nc" id="L273">        return config.getKeys(makePath(prefix));</span>
+    }
+
+    @Override
+    public List&lt;Object&gt; getList(final String key) {
+<span class="nc" id="L278">        return config.getList(makePath(key));</span>
+    }
+
+    @Override
+    public List&lt;Object&gt; getList(final String key, final List&lt;?&gt; defaultValue) {
+<span class="nc" id="L283">        return config.getList(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public long getLong(final String key) {
+<span class="nc" id="L288">        return config.getLong(makePath(key));</span>
+    }
+
+    @Override
+    public long getLong(final String key, final long defaultValue) {
+<span class="nc" id="L293">        return config.getLong(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Long getLong(final String key, final Long defaultValue) {
+<span class="nc" id="L298">        return config.getLong(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    protected int getMaxIndexInternal(final String key) {
+<span class="nc" id="L303">        return config.getMaxIndex(makePath(key));</span>
+    }
+
+    @Override
+    public Properties getProperties(final String key) {
+<span class="nc" id="L308">        return config.getProperties(makePath(key));</span>
+    }
+
+    @Override
+    protected Object getPropertyInternal(final String key) {
+<span class="nc" id="L313">        return config.getProperty(makePath(key));</span>
+    }
+
+    @Override
+    public short getShort(final String key) {
+<span class="nc" id="L318">        return config.getShort(makePath(key));</span>
+    }
+
+    @Override
+    public short getShort(final String key, final short defaultValue) {
+<span class="nc" id="L323">        return config.getShort(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public Short getShort(final String key, final Short defaultValue) {
+<span class="nc" id="L328">        return config.getShort(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public String getString(final String key) {
+<span class="nc" id="L333">        return config.getString(makePath(key));</span>
+    }
+
+    @Override
+    public String getString(final String key, final String defaultValue) {
+<span class="nc" id="L338">        return config.getString(makePath(key), defaultValue);</span>
+    }
+
+    @Override
+    public String[] getStringArray(final String key) {
+<span class="nc" id="L343">        return config.getStringArray(makePath(key));</span>
+    }
+
+    @Override
+    public Configuration interpolatedConfiguration() {
+<span class="nc" id="L348">        return getConfig().interpolatedConfiguration();</span>
+    }
+
+    @Override
+    protected boolean isEmptyInternal() {
+<span class="nc" id="L353">        return getConfig().isEmpty();</span>
+    }
+
+    private String makePath() {
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        final String pathPattern = trailing ? path.substring(0, path.length() - 1) : path;</span>
+<span class="nc" id="L358">        return substitute(pathPattern);</span>
+    }
+
+    /*
+     * Resolve the root expression and then add the item being retrieved. Insert a separator character as required.
+     */
+    private String makePath(final String item) {
+        final String pathPattern;
+<span class="pc bpc" id="L366" title="4 of 6 branches missed.">        if ((item.isEmpty() || item.startsWith(&quot;/&quot;)) &amp;&amp; trailing) {</span>
+<span class="nc" id="L367">            pathPattern = path.substring(0, path.length() - 1);</span>
+<span class="pc bpc" id="L368" title="3 of 4 branches missed.">        } else if (!item.startsWith(&quot;/&quot;) || !trailing) {</span>
+<span class="fc" id="L369">            pathPattern = path + &quot;/&quot;;</span>
+        } else {
+<span class="nc" id="L371">            pathPattern = path;</span>
+        }
+<span class="fc" id="L373">        return substitute(pathPattern) + item;</span>
+    }
+
+    @Override
+    public void read(final Reader reader) throws ConfigurationException, IOException {
+<span class="nc" id="L378">        fetchFileBased().read(reader);</span>
+<span class="nc" id="L379">    }</span>
+
+    @Override
+    public &lt;T extends Event&gt; boolean removeEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="nc" id="L383">        return getConfig().removeEventListener(eventType, listener);</span>
+    }
+
+    @Override
+    public void setExpressionEngine(final ExpressionEngine expressionEngine) {
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">        if (init) {</span>
+<span class="fc" id="L389">            config.setExpressionEngine(expressionEngine);</span>
+        } else {
+<span class="nc" id="L391">            super.setExpressionEngine(expressionEngine);</span>
+        }
+<span class="fc" id="L393">    }</span>
+
+    @Override
+    protected void setPropertyInternal(final String key, final Object value) {
+<span class="nc" id="L397">        getConfig().setProperty(key, value);</span>
+<span class="nc" id="L398">    }</span>
+
+    @Override
+    public Configuration subset(final String prefix) {
+<span class="nc" id="L402">        return getConfig().subset(prefix);</span>
+    }
+
+    /**
+     * Uses this configuration's {@code ConfigurationInterpolator} to perform variable substitution on the given pattern
+     * string.
+     *
+     * @param pattern the pattern string
+     * @return the string with variables replaced
+     */
+    private String substitute(final String pattern) {
+<span class="fc" id="L413">        return Objects.toString(getInterpolator().interpolate(pattern), null);</span>
+    }
+
+    @Override
+    public void write(final Writer writer) throws ConfigurationException, IOException {
+<span class="nc" id="L418">        fetchFileBased().write(writer);</span>
+<span class="nc" id="L419">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

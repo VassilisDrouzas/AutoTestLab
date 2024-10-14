@@ -1,0 +1,752 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ListUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4</a> &gt; <span class="el_source">ListUtils.java</span></div><h1>ListUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4;
+
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
+import org.apache.commons.collections4.bag.HashBag;
+import org.apache.commons.collections4.functors.DefaultEquator;
+import org.apache.commons.collections4.list.FixedSizeList;
+import org.apache.commons.collections4.list.LazyList;
+import org.apache.commons.collections4.list.PredicatedList;
+import org.apache.commons.collections4.list.TransformedList;
+import org.apache.commons.collections4.list.UnmodifiableList;
+import org.apache.commons.collections4.sequence.CommandVisitor;
+import org.apache.commons.collections4.sequence.EditScript;
+import org.apache.commons.collections4.sequence.SequencesComparator;
+
+/**
+ * Provides utility methods and decorators for {@link List} instances.
+ *
+ * @since 1.0
+ */
+public class ListUtils {
+    /**
+     * A simple wrapper to use a CharSequence as List.
+     */
+    private static final class CharSequenceAsList extends AbstractList&lt;Character&gt; {
+        private final CharSequence sequence;
+
+<span class="fc" id="L51">        CharSequenceAsList(final CharSequence sequence) {</span>
+<span class="fc" id="L52">            this.sequence = sequence;</span>
+<span class="fc" id="L53">        }</span>
+
+        @Override
+        public Character get(final int index) {
+<span class="fc" id="L57">            return Character.valueOf(sequence.charAt(index));</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L62">            return sequence.length();</span>
+        }
+    }
+
+    /**
+     * A helper class used to construct the longest common subsequence.
+     */
+    private static final class LcsVisitor&lt;E&gt; implements CommandVisitor&lt;E&gt; {
+        private final ArrayList&lt;E&gt; sequence;
+
+<span class="fc" id="L72">        LcsVisitor() {</span>
+<span class="fc" id="L73">            sequence = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L74">        }</span>
+
+        public List&lt;E&gt; getSubSequence() {
+<span class="fc" id="L77">            return sequence;</span>
+        }
+
+        @Override
+        public void visitDeleteCommand(final E object) {
+            // noop
+<span class="fc" id="L83">        }</span>
+
+        @Override
+        public void visitInsertCommand(final E object) {
+            // noop
+<span class="fc" id="L88">        }</span>
+
+        @Override
+        public void visitKeepCommand(final E object) {
+<span class="fc" id="L92">            sequence.add(object);</span>
+<span class="fc" id="L93">        }</span>
+    }
+
+    /**
+     * Provides a partition view on a {@link List}.
+     * @since 4.0
+     */
+    private static final class Partition&lt;T&gt; extends AbstractList&lt;List&lt;T&gt;&gt; {
+        private final List&lt;T&gt; list;
+        private final int size;
+
+<span class="fc" id="L104">        private Partition(final List&lt;T&gt; list, final int size) {</span>
+<span class="fc" id="L105">            this.list = list;</span>
+<span class="fc" id="L106">            this.size = size;</span>
+<span class="fc" id="L107">        }</span>
+
+        @Override
+        public List&lt;T&gt; get(final int index) {
+<span class="fc" id="L111">            final int listSize = size();</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (index &lt; 0) {</span>
+<span class="nc" id="L113">                throw new IndexOutOfBoundsException(&quot;Index &quot; + index + &quot; must not be negative&quot;);</span>
+            }
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">            if (index &gt;= listSize) {</span>
+<span class="nc" id="L116">                throw new IndexOutOfBoundsException(&quot;Index &quot; + index + &quot; must be less than size &quot; +</span>
+                                                    listSize);
+            }
+<span class="fc" id="L119">            final int start = index * size;</span>
+<span class="fc" id="L120">            final int end = Math.min(start + size, list.size());</span>
+<span class="fc" id="L121">            return list.subList(start, end);</span>
+        }
+
+        @Override
+        public boolean isEmpty() {
+<span class="nc" id="L126">            return list.isEmpty();</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L131">            return (int) Math.ceil((double) list.size() / (double) size);</span>
+        }
+    }
+
+    /**
+     * Returns either the passed in list, or if the list is {@code null},
+     * the value of {@code defaultList}.
+     *
+     * @param &lt;T&gt; the element type
+     * @param list  the list, possibly {@code null}
+     * @param defaultList  the returned values if list is {@code null}
+     * @return an empty list if the argument is {@code null}
+     * @since 4.0
+     */
+    public static &lt;T&gt; List&lt;T&gt; defaultIfNull(final List&lt;T&gt; list, final List&lt;T&gt; defaultList) {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        return list == null ? defaultList : list;</span>
+    }
+
+    /**
+     * Returns an immutable empty list if the argument is {@code null},
+     * or the argument itself otherwise.
+     *
+     * @param &lt;T&gt; the element type
+     * @param list the list, possibly {@code null}
+     * @return an empty list if the argument is {@code null}
+     */
+    public static &lt;T&gt; List&lt;T&gt; emptyIfNull(final List&lt;T&gt; list) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        return list == null ? Collections.&lt;T&gt;emptyList() : list;</span>
+    }
+
+    /**
+     * Returns a fixed-sized list backed by the given list.
+     * Elements may not be added or removed from the returned list, but
+     * existing elements can be changed (for instance, via the
+     * {@link List#set(int, Object)} method).
+     *
+     * @param &lt;E&gt;  the element type
+     * @param list  the list whose size to fix, must not be null
+     * @return a fixed-size list backed by that list
+     * @throws NullPointerException  if the List is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; fixedSizeList(final List&lt;E&gt; list) {
+<span class="nc" id="L173">        return FixedSizeList.fixedSizeList(list);</span>
+    }
+
+    /**
+     * Gets the first element of a list.
+     * &lt;p&gt;
+     * Shorthand for {@code list.get(0)}
+     * &lt;/p&gt;
+     * @param &lt;T&gt; The list type.
+     * @param list The list.
+     * @return the first element of a list.
+     * @see List#get(int)
+     * @since 4.5
+     */
+    public static &lt;T&gt; T getFirst(final List&lt;T&gt; list) {
+<span class="fc" id="L188">        return Objects.requireNonNull(list, &quot;list&quot;).get(0);</span>
+    }
+
+    /**
+     * Gets the last element of a list.
+     * &lt;p&gt;
+     * Shorthand for {@code list.get(list.size() - 1)}
+     * &lt;/p&gt;
+     * @param &lt;T&gt; The list type.
+     * @param list The list.
+     * @return the last element of a list.
+     * @see List#get(int)
+     * @since 4.5
+     */
+    public static &lt;T&gt; T getLast(final List&lt;T&gt; list) {
+<span class="fc" id="L203">        return Objects.requireNonNull(list, &quot;list&quot;).get(list.size() - 1);</span>
+    }
+
+    /**
+     * Generates a hash code using the algorithm specified in
+     * {@link java.util.List#hashCode()}.
+     * &lt;p&gt;
+     * This method is useful for implementing {@code List} when you cannot
+     * extend AbstractList. The method takes Collection instances to enable other
+     * collection types to use the List implementation algorithm.
+     *
+     * @see java.util.List#hashCode()
+     * @param list  the list to generate the hashCode for, may be null
+     * @return the hash code
+     */
+    public static int hashCodeForList(final Collection&lt;?&gt; list) {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (list == null) {</span>
+<span class="fc" id="L220">            return 0;</span>
+        }
+<span class="fc" id="L222">        int hashCode = 1;</span>
+
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (final Object obj : list) {</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">            hashCode = 31 * hashCode + (obj == null ? 0 : obj.hashCode());</span>
+<span class="fc" id="L226">        }</span>
+<span class="fc" id="L227">        return hashCode;</span>
+    }
+
+    /**
+     * Finds the first index in the given List which matches the given predicate.
+     * &lt;p&gt;
+     * If the input List or predicate is null, or no element of the List
+     * matches the predicate, -1 is returned.
+     *
+     * @param &lt;E&gt;  the element type
+     * @param list the List to search, may be null
+     * @param predicate  the predicate to use, may be null
+     * @return the first index of an Object in the List which matches the predicate or -1 if none could be found
+     */
+    public static &lt;E&gt; int indexOf(final List&lt;E&gt; list, final Predicate&lt;E&gt; predicate) {
+<span class="fc bfc" id="L242" title="All 4 branches covered.">        if (list != null &amp;&amp; predicate != null) {</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            for (int i = 0; i &lt; list.size(); i++) {</span>
+<span class="fc" id="L244">                final E item = list.get(i);</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (predicate.evaluate(item)) {</span>
+<span class="fc" id="L246">                    return i;</span>
+                }
+            }
+        }
+<span class="fc" id="L250">        return CollectionUtils.INDEX_NOT_FOUND;</span>
+    }
+
+    /**
+     * Returns a new list containing all elements that are contained in
+     * both given lists.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list1  the first list
+     * @param list2  the second list
+     * @return  the intersection of those two lists
+     * @throws NullPointerException if either list is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; intersection(final List&lt;? extends E&gt; list1, final List&lt;? extends E&gt; list2) {
+<span class="fc" id="L264">        final List&lt;E&gt; result = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L266">        List&lt;? extends E&gt; smaller = list1;</span>
+<span class="fc" id="L267">        List&lt;? extends E&gt; larger = list2;</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (list1.size() &gt; list2.size()) {</span>
+<span class="fc" id="L269">            smaller = list2;</span>
+<span class="fc" id="L270">            larger = list1;</span>
+        }
+
+<span class="fc" id="L273">        final HashSet&lt;E&gt; hashSet = new HashSet&lt;&gt;(smaller);</span>
+
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        for (final E e : larger) {</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            if (hashSet.contains(e)) {</span>
+<span class="fc" id="L277">                result.add(e);</span>
+<span class="fc" id="L278">                hashSet.remove(e);</span>
+            }
+<span class="fc" id="L280">        }</span>
+<span class="fc" id="L281">        return result;</span>
+    }
+
+    /**
+     * Tests two lists for value-equality as per the equality contract in
+     * {@link java.util.List#equals(Object)}.
+     * &lt;p&gt;
+     * This method is useful for implementing {@code List} when you cannot
+     * extend AbstractList. The method takes Collection instances to enable other
+     * collection types to use the List implementation algorithm.
+     * &lt;p&gt;
+     * The relevant text (slightly paraphrased as this is a static method) is:
+     * &lt;blockquote&gt;
+     * Compares the two list objects for equality.  Returns
+     * {@code true} if and only if both
+     * lists have the same size, and all corresponding pairs of elements in
+     * the two lists are &lt;i&gt;equal&lt;/i&gt;.  (Two elements {@code e1} and
+     * {@code e2} are &lt;i&gt;equal&lt;/i&gt; if &lt;code&gt;(e1==null ? e2==null :
+     * e1.equals(e2))&lt;/code&gt;.)  In other words, two lists are defined to be
+     * equal if they contain the same elements in the same order.  This
+     * definition ensures that the equals method works properly across
+     * different implementations of the {@code List} interface.
+     * &lt;/blockquote&gt;
+     *
+     * &lt;b&gt;Note:&lt;/b&gt; The behavior of this method is undefined if the lists are
+     * modified during the equals comparison.
+     *
+     * @see java.util.List
+     * @param list1  the first list, may be null
+     * @param list2  the second list, may be null
+     * @return whether the lists are equal by value comparison
+     */
+    public static boolean isEqualList(final Collection&lt;?&gt; list1, final Collection&lt;?&gt; list2) {
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (list1 == list2) {</span>
+<span class="fc" id="L315">            return true;</span>
+        }
+<span class="fc bfc" id="L317" title="All 6 branches covered.">        if (list1 == null || list2 == null || list1.size() != list2.size()) {</span>
+<span class="fc" id="L318">            return false;</span>
+        }
+
+<span class="fc" id="L321">        final Iterator&lt;?&gt; it1 = list1.iterator();</span>
+<span class="fc" id="L322">        final Iterator&lt;?&gt; it2 = list2.iterator();</span>
+
+<span class="pc bpc" id="L324" title="1 of 4 branches missed.">        while (it1.hasNext() &amp;&amp; it2.hasNext()) {</span>
+<span class="fc" id="L325">            final Object obj1 = it1.next();</span>
+<span class="fc" id="L326">            final Object obj2 = it2.next();</span>
+
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">            if (!Objects.equals(obj1, obj2)) {</span>
+<span class="nc" id="L329">                return false;</span>
+            }
+<span class="fc" id="L331">        }</span>
+
+<span class="pc bpc" id="L333" title="2 of 4 branches missed.">        return !(it1.hasNext() || it2.hasNext());</span>
+    }
+
+    /**
+     * Returns a &quot;lazy&quot; list whose elements will be created on demand.
+     * &lt;p&gt;
+     * When the index passed to the returned list's {@link List#get(int) get}
+     * method is greater than the list's size, then the factory will be used
+     * to create a new object and that object will be inserted at that index.
+     * &lt;p&gt;
+     * For instance:
+     *
+     * &lt;pre&gt;
+     * Factory&amp;lt;Date&amp;gt; factory = new Factory&amp;lt;Date&amp;gt;() {
+     *     public Date create() {
+     *         return new Date();
+     *     }
+     * }
+     * List&amp;lt;Date&amp;gt; lazy = ListUtils.lazyList(new ArrayList&amp;lt;Date&amp;gt;(), factory);
+     * Date date = lazy.get(3);
+     * &lt;/pre&gt;
+     *
+     * After the above code is executed, {@code date} will refer to
+     * a new {@code Date} instance. Furthermore, that {@code Date}
+     * instance is the fourth element in the list.  The first, second,
+     * and third element are all set to {@code null}.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list  the list to make lazy, must not be null
+     * @param factory  the factory for creating new objects, must not be null
+     * @return a lazy list backed by the given list
+     * @throws NullPointerException if the List or Factory is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; lazyList(final List&lt;E&gt; list, final Factory&lt;? extends E&gt; factory) {
+<span class="fc" id="L367">        return LazyList.lazyList(list, factory);</span>
+    }
+
+    /**
+     * Returns a &quot;lazy&quot; list whose elements will be created on demand.
+     * &lt;p&gt;
+     * When the index passed to the returned list's {@link List#get(int) get}
+     * method is greater than the list's size, then the transformer will be used
+     * to create a new object and that object will be inserted at that index.
+     * &lt;p&gt;
+     * For instance:
+     *
+     * &lt;pre&gt;
+     * List&amp;lt;Integer&amp;gt; hours = Arrays.asList(7, 5, 8, 2);
+     * Transformer&amp;lt;Integer,Date&amp;gt; transformer = input -&amp;gt; LocalDateTime.now().withHour(hours.get(input));
+     * List&amp;lt;LocalDateTime&amp;gt; lazy = ListUtils.lazyList(new ArrayList&amp;lt;LocalDateTime&amp;gt;(), transformer);
+     * Date date = lazy.get(3);
+     * &lt;/pre&gt;
+     *
+     * After the above code is executed, {@code date} will refer to
+     * a new {@code Date} instance. Furthermore, that {@code Date}
+     * instance is the fourth element in the list.  The first, second,
+     * and third element are all set to {@code null}.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list  the list to make lazy, must not be null
+     * @param transformer  the transformer for creating new objects, must not be null
+     * @return a lazy list backed by the given list
+     * @throws NullPointerException if the List or Transformer is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; lazyList(final List&lt;E&gt; list, final Transformer&lt;Integer, ? extends E&gt; transformer) {
+<span class="fc" id="L398">        return LazyList.lazyList(list, transformer);</span>
+    }
+
+    /**
+     * Returns the longest common subsequence (LCS) of two {@link CharSequence} objects.
+     * &lt;p&gt;
+     * This is a convenience method for using {@link #longestCommonSubsequence(List, List)}
+     * with {@link CharSequence} instances.
+     *
+     * @param charSequenceA  the first sequence
+     * @param charSequenceB  the second sequence
+     * @return the longest common subsequence as {@link String}
+     * @throws NullPointerException if either sequence is {@code null}
+     * @since 4.0
+     */
+    public static String longestCommonSubsequence(final CharSequence charSequenceA, final CharSequence charSequenceB) {
+<span class="fc" id="L414">        Objects.requireNonNull(charSequenceA, &quot;charSequenceA&quot;);</span>
+<span class="fc" id="L415">        Objects.requireNonNull(charSequenceB, &quot;charSequenceB&quot;);</span>
+<span class="fc" id="L416">        final List&lt;Character&gt; lcs = longestCommonSubsequence(new CharSequenceAsList(charSequenceA),</span>
+                new CharSequenceAsList(charSequenceB));
+<span class="fc" id="L418">        final StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        for (final Character ch : lcs) {</span>
+<span class="fc" id="L420">            sb.append(ch);</span>
+<span class="fc" id="L421">        }</span>
+<span class="fc" id="L422">        return sb.toString();</span>
+    }
+
+    /**
+     * Returns the longest common subsequence (LCS) of two sequences (lists).
+     *
+     * @param &lt;E&gt;  the element type
+     * @param a  the first list
+     * @param b  the second list
+     * @return the longest common subsequence
+     * @throws NullPointerException if either list is {@code null}
+     * @since 4.0
+     */
+    public static &lt;E&gt; List&lt;E&gt; longestCommonSubsequence(final List&lt;E&gt; a, final List&lt;E&gt; b) {
+<span class="fc" id="L436">        return longestCommonSubsequence( a, b, DefaultEquator.defaultEquator() );</span>
+    }
+
+    /**
+     * Returns the longest common subsequence (LCS) of two sequences (lists).
+     *
+     * @param &lt;E&gt;  the element type
+     * @param listA  the first list
+     * @param listB  the second list
+     * @param equator  the equator used to test object equality
+     * @return the longest common subsequence
+     * @throws NullPointerException if either list or the equator is {@code null}
+     * @since 4.0
+     */
+    public static &lt;E&gt; List&lt;E&gt; longestCommonSubsequence(final List&lt;E&gt; listA, final List&lt;E&gt; listB,
+                                                       final Equator&lt;? super E&gt; equator) {
+<span class="fc" id="L452">        Objects.requireNonNull(listA, &quot;listA&quot;);</span>
+<span class="fc" id="L453">        Objects.requireNonNull(listB, &quot;listB&quot;);</span>
+<span class="fc" id="L454">        Objects.requireNonNull(equator, &quot;equator&quot;);</span>
+
+<span class="fc" id="L456">        final SequencesComparator&lt;E&gt; comparator = new SequencesComparator&lt;&gt;(listA, listB, equator);</span>
+<span class="fc" id="L457">        final EditScript&lt;E&gt; script = comparator.getScript();</span>
+<span class="fc" id="L458">        final LcsVisitor&lt;E&gt; visitor = new LcsVisitor&lt;&gt;();</span>
+<span class="fc" id="L459">        script.visit(visitor);</span>
+<span class="fc" id="L460">        return visitor.getSubSequence();</span>
+    }
+
+    /**
+     * Returns consecutive {@link List#subList(int, int) sublists} of a
+     * list, each of the same size (the final list may be smaller). For example,
+     * partitioning a list containing {@code [a, b, c, d, e]} with a partition
+     * size of 3 yields {@code [[a, b, c], [d, e]]} -- an outer list containing
+     * two inner lists of three and two elements, all in the original order.
+     * &lt;p&gt;
+     * The outer list is unmodifiable, but reflects the latest state of the
+     * source list. The inner lists are sublist views of the original list,
+     * produced on demand using {@link List#subList(int, int)}, and are subject
+     * to all the usual caveats about modification as explained in that API.
+     * &lt;p&gt;
+     * Adapted from https://github.com/google/guava
+     *
+     * @param &lt;T&gt; the element type
+     * @param list  the list to return consecutive sublists of
+     * @param size  the desired size of each sublist (the last may be smaller)
+     * @return a list of consecutive sublists
+     * @throws NullPointerException if list is null
+     * @throws IllegalArgumentException if size is not strictly positive
+     * @since 4.0
+     */
+    public static &lt;T&gt; List&lt;List&lt;T&gt;&gt; partition(final List&lt;T&gt; list, final int size) {
+<span class="fc" id="L486">        Objects.requireNonNull(list, &quot;list&quot;);</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">        if (size &lt;= 0) {</span>
+<span class="fc" id="L488">            throw new IllegalArgumentException(&quot;Size must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L490">        return new Partition&lt;&gt;(list, size);</span>
+    }
+
+    /**
+     * Returns a predicated (validating) list backed by the given list.
+     * &lt;p&gt;
+     * Only objects that pass the test in the given predicate can be added to the list.
+     * Trying to add an invalid object results in an IllegalArgumentException.
+     * It is important not to use the original list after invoking this method,
+     * as it is a backdoor for adding invalid objects.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list  the list to predicate, must not be null
+     * @param predicate  the predicate for the list, must not be null
+     * @return a predicated list backed by the given list
+     * @throws NullPointerException if the List or Predicate is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; predicatedList(final List&lt;E&gt; list, final Predicate&lt;E&gt; predicate) {
+<span class="fc" id="L508">        return PredicatedList.predicatedList(list, predicate);</span>
+    }
+
+    /**
+     * Removes the elements in {@code remove} from {@code collection}. That is, this
+     * method returns a list containing all the elements in {@code collection}
+     * that are not in {@code remove}. The cardinality of an element {@code e}
+     * in the returned collection is the same as the cardinality of {@code e}
+     * in {@code collection} unless {@code remove} contains {@code e}, in which
+     * case the cardinality is zero. This method is useful if you do not wish to modify
+     * {@code collection} and thus cannot call {@code collection.removeAll(remove);}.
+     * &lt;p&gt;
+     * This implementation iterates over {@code collection}, checking each element in
+     * turn to see if it's contained in {@code remove}. If it's not contained, it's added
+     * to the returned list. As a consequence, it is advised to use a collection type for
+     * {@code remove} that provides a fast (e.g. O(1)) implementation of
+     * {@link Collection#contains(Object)}.
+     *
+     * @param &lt;E&gt;  the element type
+     * @param collection  the collection from which items are removed (in the returned collection)
+     * @param remove  the items to be removed from the returned {@code collection}
+     * @return a {@code List} containing all the elements of {@code c} except
+     * any elements that also occur in {@code remove}.
+     * @throws NullPointerException if either parameter is null
+     * @since 3.2
+     */
+    public static &lt;E&gt; List&lt;E&gt; removeAll(final Collection&lt;E&gt; collection, final Collection&lt;?&gt; remove) {
+<span class="fc" id="L535">        Objects.requireNonNull(collection, &quot;collection&quot;);</span>
+<span class="fc" id="L536">        Objects.requireNonNull(remove, &quot;remove&quot;);</span>
+<span class="fc" id="L537">        final List&lt;E&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">        for (final E obj : collection) {</span>
+<span class="fc bfc" id="L539" title="All 2 branches covered.">            if (!remove.contains(obj)) {</span>
+<span class="fc" id="L540">                list.add(obj);</span>
+            }
+<span class="fc" id="L542">        }</span>
+<span class="fc" id="L543">        return list;</span>
+    }
+
+    /**
+     * Returns a List containing all the elements in {@code collection}
+     * that are also in {@code retain}. The cardinality of an element {@code e}
+     * in the returned list is the same as the cardinality of {@code e}
+     * in {@code collection} unless {@code retain} does not contain {@code e}, in which
+     * case the cardinality is zero. This method is useful if you do not wish to modify
+     * the collection {@code c} and thus cannot call {@code collection.retainAll(retain);}.
+     * &lt;p&gt;
+     * This implementation iterates over {@code collection}, checking each element in
+     * turn to see if it's contained in {@code retain}. If it's contained, it's added
+     * to the returned list. As a consequence, it is advised to use a collection type for
+     * {@code retain} that provides a fast (e.g. O(1)) implementation of
+     * {@link Collection#contains(Object)}.
+     *
+     * @param &lt;E&gt;  the element type
+     * @param collection  the collection whose contents are the target of the #retailAll operation
+     * @param retain  the collection containing the elements to be retained in the returned collection
+     * @return a {@code List} containing all the elements of {@code c}
+     * that occur at least once in {@code retain}.
+     * @throws NullPointerException if either parameter is null
+     * @since 3.2
+     */
+    public static &lt;E&gt; List&lt;E&gt; retainAll(final Collection&lt;E&gt; collection, final Collection&lt;?&gt; retain) {
+<span class="fc" id="L569">        final List&lt;E&gt; list = new ArrayList&lt;&gt;(Math.min(collection.size(), retain.size()));</span>
+
+<span class="fc bfc" id="L571" title="All 2 branches covered.">        for (final E obj : collection) {</span>
+<span class="fc bfc" id="L572" title="All 2 branches covered.">            if (retain.contains(obj)) {</span>
+<span class="fc" id="L573">                list.add(obj);</span>
+            }
+<span class="fc" id="L575">        }</span>
+<span class="fc" id="L576">        return list;</span>
+    }
+
+    /**
+     * Selects all elements from input collection which match the given
+     * predicate into an output list.
+     * &lt;p&gt;
+     * A {@code null} predicate matches no elements.
+     *
+     * @param &lt;E&gt; the element type
+     * @param inputCollection  the collection to get the input from, may not be null
+     * @param predicate  the predicate to use, may be null
+     * @return the elements matching the predicate (new list)
+     * @throws NullPointerException if the input list is null
+     *
+     * @since 4.0
+     * @see CollectionUtils#select(Iterable, Predicate)
+     */
+    public static &lt;E&gt; List&lt;E&gt; select(final Collection&lt;? extends E&gt; inputCollection,
+            final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L596">        return CollectionUtils.select(inputCollection, predicate, new ArrayList&lt;&gt;(inputCollection.size()));</span>
+    }
+
+    /**
+     * Selects all elements from inputCollection which don't match the given
+     * predicate into an output collection.
+     * &lt;p&gt;
+     * If the input predicate is {@code null}, the result is an empty list.
+     *
+     * @param &lt;E&gt; the element type
+     * @param inputCollection the collection to get the input from, may not be null
+     * @param predicate the predicate to use, may be null
+     * @return the elements &lt;b&gt;not&lt;/b&gt; matching the predicate (new list)
+     * @throws NullPointerException if the input collection is null
+     *
+     * @since 4.0
+     * @see CollectionUtils#selectRejected(Iterable, Predicate)
+     */
+    public static &lt;E&gt; List&lt;E&gt; selectRejected(final Collection&lt;? extends E&gt; inputCollection,
+            final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L616">        return CollectionUtils.selectRejected(inputCollection, predicate, new ArrayList&lt;&gt;(inputCollection.size()));</span>
+    }
+
+    /**
+     * Subtracts all elements in the second list from the first list,
+     * placing the results in a new list.
+     * &lt;p&gt;
+     * This differs from {@link List#removeAll(Collection)} in that
+     * cardinality is respected; if &lt;Code&gt;list1&lt;/Code&gt; contains two
+     * occurrences of &lt;Code&gt;null&lt;/Code&gt; and &lt;Code&gt;list2&lt;/Code&gt; only
+     * contains one occurrence, then the returned list will still contain
+     * one occurrence.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list1  the list to subtract from
+     * @param list2  the list to subtract
+     * @return a new list containing the results
+     * @throws NullPointerException if either list is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; subtract(final List&lt;E&gt; list1, final List&lt;? extends E&gt; list2) {
+<span class="fc" id="L636">        final ArrayList&lt;E&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L637">        final HashBag&lt;E&gt; bag = new HashBag&lt;&gt;(list2);</span>
+<span class="fc bfc" id="L638" title="All 2 branches covered.">        for (final E e : list1) {</span>
+<span class="fc bfc" id="L639" title="All 2 branches covered.">            if (!bag.remove(e, 1)) {</span>
+<span class="fc" id="L640">                result.add(e);</span>
+            }
+<span class="fc" id="L642">        }</span>
+<span class="fc" id="L643">        return result;</span>
+    }
+
+    /**
+     * Returns the sum of the given lists.  This is their intersection
+     * subtracted from their union.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list1  the first list
+     * @param list2  the second list
+     * @return  a new list containing the sum of those lists
+     * @throws NullPointerException if either list is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; sum(final List&lt;? extends E&gt; list1, final List&lt;? extends E&gt; list2) {
+<span class="nc" id="L657">        return subtract(union(list1, list2), intersection(list1, list2));</span>
+    }
+
+    /**
+     * Returns a synchronized list backed by the given list.
+     * &lt;p&gt;
+     * You must manually synchronize on the returned list's iterator to
+     * avoid non-deterministic behavior:
+     *
+     * &lt;pre&gt;
+     * List list = ListUtils.synchronizedList(myList);
+     * synchronized (list) {
+     *     Iterator i = list.iterator();
+     *     while (i.hasNext()) {
+     *         process (i.next());
+     *     }
+     * }
+     * &lt;/pre&gt;
+     *
+     * This method is just a wrapper for {@link Collections#synchronizedList(List)}.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list  the list to synchronize, must not be null
+     * @return a synchronized list backed by the given list
+     * @throws NullPointerException if the list is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; synchronizedList(final List&lt;E&gt; list) {
+<span class="nc" id="L684">        return Collections.synchronizedList(list);</span>
+    }
+
+    /**
+     * Returns a transformed list backed by the given list.
+     * &lt;p&gt;
+     * This method returns a new list (decorating the specified list) that
+     * will transform any new entries added to it.
+     * Existing entries in the specified list will not be transformed.
+     * &lt;p&gt;
+     * Each object is passed through the transformer as it is added to the
+     * List. It is important not to use the original list after invoking this
+     * method, as it is a backdoor for adding untransformed objects.
+     * &lt;p&gt;
+     * Existing entries in the specified list will not be transformed.
+     * If you want that behavior, see {@link TransformedList#transformedList}.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list  the list to predicate, must not be null
+     * @param transformer  the transformer for the list, must not be null
+     * @return a transformed list backed by the given list
+     * @throws NullPointerException if the List or Transformer is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; transformedList(final List&lt;E&gt; list,
+                                              final Transformer&lt;? super E, ? extends E&gt; transformer) {
+<span class="nc" id="L709">        return TransformedList.transformingList(list, transformer);</span>
+    }
+
+    /**
+     * Returns a new list containing the second list appended to the
+     * first list.  The {@link List#addAll(Collection)} operation is
+     * used to append the two given lists into a new list.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list1  the first list
+     * @param list2  the second list
+     * @return a new list containing the union of those lists
+     * @throws NullPointerException if either list is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; union(final List&lt;? extends E&gt; list1, final List&lt;? extends E&gt; list2) {
+<span class="nc" id="L724">        final ArrayList&lt;E&gt; result = new ArrayList&lt;&gt;(list1.size() + list2.size());</span>
+<span class="nc" id="L725">        result.addAll(list1);</span>
+<span class="nc" id="L726">        result.addAll(list2);</span>
+<span class="nc" id="L727">        return result;</span>
+    }
+
+    /**
+     * Returns an unmodifiable list backed by the given list.
+     * &lt;p&gt;
+     * This method uses the implementation in the decorators subpackage.
+     *
+     * @param &lt;E&gt;  the element type
+     * @param list  the list to make unmodifiable, must not be null
+     * @return an unmodifiable list backed by the given list
+     * @throws NullPointerException if the list is null
+     */
+    public static &lt;E&gt; List&lt;E&gt; unmodifiableList(final List&lt;? extends E&gt; list) {
+<span class="fc" id="L741">        return UnmodifiableList.unmodifiableList(list);</span>
+    }
+
+    /**
+     * Don't allow instances.
+     */
+    private ListUtils() {
+        // empty
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

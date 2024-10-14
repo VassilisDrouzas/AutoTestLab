@@ -1,0 +1,1225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MurmurHash3.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.digest</a> &gt; <span class="el_source">MurmurHash3.java</span></div><h1>MurmurHash3.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.digest;
+
+import org.apache.commons.codec.binary.StringUtils;
+
+/**
+ * Implements the MurmurHash3 32-bit and 128-bit hash functions.
+ *
+ * &lt;p&gt;
+ * MurmurHash is a non-cryptographic hash function suitable for general hash-based lookup. The name comes from two basic
+ * operations, multiply (MU) and rotate (R), used in its inner loop. Unlike cryptographic hash functions, it is not
+ * specifically designed to be difficult to reverse by an adversary, making it unsuitable for cryptographic purposes.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * This contains a Java port of the 32-bit hash function {@code MurmurHash3_x86_32} and the 128-bit hash function
+ * {@code MurmurHash3_x64_128} from Austin Appleby's original {@code c++} code in SMHasher.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * This is public domain code with no copyrights. From home page of
+ * &lt;a href=&quot;https://github.com/aappleby/smhasher&quot;&gt;SMHasher&lt;/a&gt;:
+ * &lt;/p&gt;
+ *
+ * &lt;blockquote&gt; &quot;All MurmurHash versions are public domain software, and the author disclaims all copyright to their
+ * code.&quot; &lt;/blockquote&gt;
+ *
+ * &lt;p&gt;
+ * Original adaption from Apache Hive. That adaption contains a {@code hash64} method that is not part of the original
+ * MurmurHash3 code. It is not recommended to use these methods. They will be removed in a future release. To obtain a
+ * 64-bit hash use half of the bits from the {@code hash128x64} methods using the input data converted to bytes.
+ * &lt;/p&gt;
+ *
+ * @see &lt;a href=&quot;https://en.wikipedia.org/wiki/MurmurHash&quot;&gt;MurmurHash&lt;/a&gt;
+ * @see &lt;a href=&quot;https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp&quot;&gt; Original MurmurHash3 c++
+ *      code&lt;/a&gt;
+ * @see &lt;a href=
+ *      &quot;https://github.com/apache/hive/blob/master/storage-api/src/java/org/apache/hive/common/util/Murmur3.java&quot;&gt;
+ *      Apache Hive Murmer3&lt;/a&gt;
+ * @since 1.13
+ */
+public final class MurmurHash3 {
+
+    /**
+     * Generates 32-bit hash from input bytes. Bytes can be added incrementally and the new
+     * hash computed.
+     *
+     * &lt;p&gt;This is an implementation of the 32-bit hash function {@code MurmurHash3_x86_32}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+     * any bytes left over from dividing the length by 4. This manifests if any of these
+     * bytes are negative.&lt;/p&gt;
+     *
+     * @deprecated Use IncrementalHash32x86. This corrects the processing of trailing bytes.
+     */
+    @Deprecated
+<span class="fc" id="L74">    public static class IncrementalHash32 extends IncrementalHash32x86 {</span>
+
+        /**
+         * {@inheritDoc}
+         *
+         * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+         * any bytes left over from dividing the length by 4. This manifests if any of these
+         * bytes are negative.&lt;p&gt;
+         *
+         * @deprecated Use IncrementalHash32x86. This corrects the processing of trailing bytes.
+         */
+        @Override
+        @Deprecated
+        int finalise(final int hash, final int unprocessedLength, final byte[] unprocessed, final int totalLen) {
+<span class="fc" id="L88">            int result = hash;</span>
+            // ************
+            // Note: This fails to apply masking using 0xff to the 3 remaining bytes.
+            // ************
+<span class="fc" id="L92">            int k1 = 0;</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">            switch (unprocessedLength) {</span>
+            case 3:
+<span class="fc" id="L95">                k1 ^= unprocessed[2] &lt;&lt; 16;</span>
+            case 2:
+<span class="fc" id="L97">                k1 ^= unprocessed[1] &lt;&lt; 8;</span>
+            case 1:
+<span class="fc" id="L99">                k1 ^= unprocessed[0];</span>
+
+                // mix functions
+<span class="fc" id="L102">                k1 *= C1_32;</span>
+<span class="fc" id="L103">                k1 = Integer.rotateLeft(k1, R1_32);</span>
+<span class="fc" id="L104">                k1 *= C2_32;</span>
+<span class="fc" id="L105">                result ^= k1;</span>
+            }
+
+            // finalization
+<span class="fc" id="L109">            result ^= totalLen;</span>
+<span class="fc" id="L110">            return fmix32(result);</span>
+        }
+    }
+
+    /**
+     * Generates 32-bit hash from input bytes. Bytes can be added incrementally and the new
+     * hash computed.
+     *
+     * &lt;p&gt;This is an implementation of the 32-bit hash function {@code MurmurHash3_x86_32}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * @since 1.14
+     */
+<span class="fc" id="L123">    public static class IncrementalHash32x86 {</span>
+
+        /** The size of byte blocks that are processed together. */
+        private static final int BLOCK_SIZE = 4;
+
+        /**
+         * Combines the bytes using an Or operation ({@code | } in a little-endian representation
+         * of a 32-bit integer; byte 1 will be the least significant byte, byte 4 the most
+         * significant.
+         *
+         * @param b1 The first byte
+         * @param b2 The second byte
+         * @param b3 The third byte
+         * @param b4 The fourth byte
+         * @return The 32-bit integer
+         */
+        private static int orBytes(final byte b1, final byte b2, final byte b3, final byte b4) {
+<span class="fc" id="L140">            return b1 &amp; 0xff | (b2 &amp; 0xff) &lt;&lt; 8 | (b3 &amp; 0xff) &lt;&lt; 16 | (b4 &amp; 0xff) &lt;&lt; 24;</span>
+        }
+
+        /** Up to 3 unprocessed bytes from input data. */
+<span class="fc" id="L144">        private final byte[] unprocessed = new byte[3];</span>
+
+        /** The number of unprocessed bytes in the tail data. */
+        private int unprocessedLength;
+
+        /** The total number of input bytes added since the start. */
+        private int totalLen;
+
+        /**
+         * The current running hash.
+         * This must be finalised to generate the 32-bit hash value.
+         */
+        private int hash;
+
+        /**
+         * Adds the byte array to the current incremental hash.
+         *
+         * @param data The input byte array
+         * @param offset The offset of data
+         * @param length The length of array
+         */
+        public final void add(final byte[] data, final int offset, final int length) {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (length &lt;= 0) {</span>
+                // Nothing to add
+<span class="fc" id="L168">                return;</span>
+            }
+<span class="fc" id="L170">            totalLen += length;</span>
+
+            // Process the bytes in blocks of 4.
+            // New bytes must be added to any current unprocessed bytes,
+            // then processed in blocks of 4 and the remaining bytes saved:
+            //
+            //    |--|---------------------------|--|
+            // unprocessed
+            //                main block
+            //                                remaining
+
+            // Check if the unprocessed bytes and new bytes can fill a block of 4.
+            // Make this overflow safe in the event that length is Integer.MAX_VALUE.
+            // Equivalent to: (unprocessedLength + length &lt; BLOCK_SIZE)
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            if (unprocessedLength + length - BLOCK_SIZE &lt; 0) {</span>
+                // Not enough so add to the unprocessed bytes
+<span class="fc" id="L186">                System.arraycopy(data, offset, unprocessed, unprocessedLength, length);</span>
+<span class="fc" id="L187">                unprocessedLength += length;</span>
+<span class="fc" id="L188">                return;</span>
+            }
+
+            // Combine unprocessed bytes with new bytes.
+            final int newOffset;
+            final int newLength;
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (unprocessedLength &gt; 0) {</span>
+<span class="fc" id="L195">                int k = -1;</span>
+<span class="pc bpc" id="L196" title="1 of 4 branches missed.">                switch (unprocessedLength) {</span>
+                case 1:
+<span class="fc" id="L198">                    k = orBytes(unprocessed[0], data[offset], data[offset + 1], data[offset + 2]);</span>
+<span class="fc" id="L199">                    break;</span>
+                case 2:
+<span class="fc" id="L201">                    k = orBytes(unprocessed[0], unprocessed[1], data[offset], data[offset + 1]);</span>
+<span class="fc" id="L202">                    break;</span>
+                case 3:
+<span class="fc" id="L204">                    k = orBytes(unprocessed[0], unprocessed[1], unprocessed[2], data[offset]);</span>
+<span class="fc" id="L205">                    break;</span>
+                default:
+<span class="nc" id="L207">                    throw new IllegalStateException(&quot;Unprocessed length should be 1, 2, or 3: &quot; + unprocessedLength);</span>
+                }
+<span class="fc" id="L209">                hash = mix32(k, hash);</span>
+                // Update the offset and length
+<span class="fc" id="L211">                final int consumed = BLOCK_SIZE - unprocessedLength;</span>
+<span class="fc" id="L212">                newOffset = offset + consumed;</span>
+<span class="fc" id="L213">                newLength = length - consumed;</span>
+<span class="fc" id="L214">            } else {</span>
+<span class="fc" id="L215">                newOffset = offset;</span>
+<span class="fc" id="L216">                newLength = length;</span>
+            }
+
+            // Main processing of blocks of 4 bytes
+<span class="fc" id="L220">            final int nblocks = newLength &gt;&gt; 2;</span>
+
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L223">                final int index = newOffset + (i &lt;&lt; 2);</span>
+<span class="fc" id="L224">                final int k = getLittleEndianInt(data, index);</span>
+<span class="fc" id="L225">                hash = mix32(k, hash);</span>
+            }
+
+            // Save left-over unprocessed bytes
+<span class="fc" id="L229">            final int consumed = nblocks &lt;&lt; 2;</span>
+<span class="fc" id="L230">            unprocessedLength = newLength - consumed;</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (unprocessedLength != 0) {</span>
+<span class="fc" id="L232">                System.arraycopy(data, newOffset + consumed, unprocessed, 0, unprocessedLength);</span>
+            }
+<span class="fc" id="L234">        }</span>
+
+        /**
+         * Generates the 32-bit hash value. Repeat calls to this method with no additional data
+         * will generate the same hash value.
+         *
+         * @return The 32-bit hash
+         */
+        public final int end() {
+            // Allow calling end() again after adding no data to return the same result.
+<span class="fc" id="L244">            return finalise(hash, unprocessedLength, unprocessed, totalLen);</span>
+        }
+
+        /**
+         * Finalizes the running hash to the output 32-bit hash by processing remaining bytes
+         * and performing final mixing.
+         *
+         * @param hash The running hash
+         * @param unprocessedLength The number of unprocessed bytes in the tail data.
+         * @param unprocessed Up to 3 unprocessed bytes from input data.
+         * @param totalLen The total number of input bytes added since the start.
+         * @return The 32-bit hash
+         */
+        int finalise(final int hash, final int unprocessedLength, final byte[] unprocessed, final int totalLen) {
+<span class="fc" id="L258">            int result = hash;</span>
+<span class="fc" id="L259">            int k1 = 0;</span>
+<span class="fc bfc" id="L260" title="All 4 branches covered.">            switch (unprocessedLength) {</span>
+            case 3:
+<span class="fc" id="L262">                k1 ^= (unprocessed[2] &amp; 0xff) &lt;&lt; 16;</span>
+            case 2:
+<span class="fc" id="L264">                k1 ^= (unprocessed[1] &amp; 0xff) &lt;&lt; 8;</span>
+            case 1:
+<span class="fc" id="L266">                k1 ^= unprocessed[0] &amp; 0xff;</span>
+
+                // mix functions
+<span class="fc" id="L269">                k1 *= C1_32;</span>
+<span class="fc" id="L270">                k1 = Integer.rotateLeft(k1, R1_32);</span>
+<span class="fc" id="L271">                k1 *= C2_32;</span>
+<span class="fc" id="L272">                result ^= k1;</span>
+            }
+
+            // finalization
+<span class="fc" id="L276">            result ^= totalLen;</span>
+<span class="fc" id="L277">            return fmix32(result);</span>
+        }
+
+        /**
+         * Starts a new incremental hash.
+         *
+         * @param seed The initial seed value
+         */
+        public final void start(final int seed) {
+            // Reset
+<span class="fc" id="L287">            unprocessedLength = totalLen = 0;</span>
+<span class="fc" id="L288">            this.hash = seed;</span>
+<span class="fc" id="L289">        }</span>
+    }
+
+    /**
+     * A random number to use for a hash code.
+     *
+     * @deprecated This is not used internally and will be removed in a future release.
+     */
+    @Deprecated
+    public static final long NULL_HASHCODE = 2862933555777941757L;
+    /**
+     * A default seed to use for the murmur hash algorithm.
+     * Has the value {@code 104729}.
+     */
+    public static final int DEFAULT_SEED = 104729;
+    // Constants for 32-bit variant
+    private static final int C1_32 = 0xcc9e2d51;
+    private static final int C2_32 = 0x1b873593;
+    private static final int R1_32 = 15;
+    private static final int R2_32 = 13;
+
+    private static final int M_32 = 5;
+    private static final int N_32 = 0xe6546b64;
+    // Constants for 128-bit variant
+    private static final long C1 = 0x87c37b91114253d5L;
+    private static final long C2 = 0x4cf5ad432745937fL;
+    private static final int R1 = 31;
+    private static final int R2 = 27;
+    private static final int R3 = 33;
+    private static final int M = 5;
+
+    private static final int N1 = 0x52dce729;
+
+    private static final int N2 = 0x38495ab5;
+
+    /**
+     * Performs the final avalanche mix step of the 32-bit hash function {@code MurmurHash3_x86_32}.
+     *
+     * @param hash The current hash
+     * @return The final hash
+     */
+    private static int fmix32(int hash) {
+<span class="fc" id="L331">        hash ^= hash &gt;&gt;&gt; 16;</span>
+<span class="fc" id="L332">        hash *= 0x85ebca6b;</span>
+<span class="fc" id="L333">        hash ^= hash &gt;&gt;&gt; 13;</span>
+<span class="fc" id="L334">        hash *= 0xc2b2ae35;</span>
+<span class="fc" id="L335">        hash ^= hash &gt;&gt;&gt; 16;</span>
+<span class="fc" id="L336">        return hash;</span>
+    }
+
+    /**
+     * Performs the final avalanche mix step of the 64-bit hash function {@code MurmurHash3_x64_128}.
+     *
+     * @param hash The current hash
+     * @return The final hash
+     */
+    private static long fmix64(long hash) {
+<span class="fc" id="L346">        hash ^= hash &gt;&gt;&gt; 33;</span>
+<span class="fc" id="L347">        hash *= 0xff51afd7ed558ccdL;</span>
+<span class="fc" id="L348">        hash ^= hash &gt;&gt;&gt; 33;</span>
+<span class="fc" id="L349">        hash *= 0xc4ceb9fe1a85ec53L;</span>
+<span class="fc" id="L350">        hash ^= hash &gt;&gt;&gt; 33;</span>
+<span class="fc" id="L351">        return hash;</span>
+    }
+
+    /**
+     * Gets the little-endian int from 4 bytes starting at the specified index.
+     *
+     * @param data The data
+     * @param index The index
+     * @return The little-endian int
+     */
+    private static int getLittleEndianInt(final byte[] data, final int index) {
+<span class="fc" id="L362">        return data[index    ] &amp; 0xff |</span>
+               (data[index + 1] &amp; 0xff) &lt;&lt;  8 |
+               (data[index + 2] &amp; 0xff) &lt;&lt; 16 |
+               (data[index + 3] &amp; 0xff) &lt;&lt; 24;
+    }
+
+    /**
+     * Gets the little-endian long from 8 bytes starting at the specified index.
+     *
+     * @param data The data
+     * @param index The index
+     * @return The little-endian long
+     */
+    private static long getLittleEndianLong(final byte[] data, final int index) {
+<span class="fc" id="L376">        return (long) data[index    ] &amp; 0xff |</span>
+               ((long) data[index + 1] &amp; 0xff) &lt;&lt;  8 |
+               ((long) data[index + 2] &amp; 0xff) &lt;&lt; 16 |
+               ((long) data[index + 3] &amp; 0xff) &lt;&lt; 24 |
+               ((long) data[index + 4] &amp; 0xff) &lt;&lt; 32 |
+               ((long) data[index + 5] &amp; 0xff) &lt;&lt; 40 |
+               ((long) data[index + 6] &amp; 0xff) &lt;&lt; 48 |
+               ((long) data[index + 7] &amp; 0xff) &lt;&lt; 56;
+    }
+
+    /**
+     * Generates 128-bit hash from the byte array with a default seed.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * int hash = MurmurHash3.hash128(data, offset, data.length, seed);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash128(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @return The 128-bit hash (2 longs)
+     * @see #hash128(byte[], int, int, int)
+     */
+    public static long[] hash128(final byte[] data) {
+<span class="fc" id="L404">        return hash128(data, 0, data.length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 128-bit hash from the byte array with the given offset, length and seed.
+     *
+     * &lt;p&gt;This is an implementation of the 128-bit hash function {@code MurmurHash3_x64_128}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the seed initialization.
+     * This manifests if the seed is negative.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param offset The first element of array
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 128-bit hash (2 longs)
+     * @deprecated Use {@link #hash128x64(byte[], int, int, int)}. This corrects the seed initialization.
+     */
+    @Deprecated
+    public static long[] hash128(final byte[] data, final int offset, final int length, final int seed) {
+        // ************
+        // Note: This deliberately fails to apply masking using 0xffffffffL to the seed
+        // to maintain behavioral compatibility with the original version.
+        // The implicit conversion to a long will extend a negative sign
+        // bit through the upper 32-bits of the long seed. These should be zero.
+        // ************
+<span class="fc" id="L431">        return hash128x64Internal(data, offset, length, seed);</span>
+    }
+
+    /**
+     * Generates 128-bit hash from a string with a default seed.
+     * &lt;p&gt;
+     * Before 1.14 the string was converted using default encoding.
+     * Since 1.14 the string is converted to bytes using UTF-8 encoding.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This is a helper method that will produce the same result as:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+     * int hash = MurmurHash3.hash128(bytes, offset, bytes.length, seed);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash128(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * @param data The input String
+     * @return The 128-bit hash (2 longs)
+     * @see #hash128(byte[], int, int, int)
+     * @deprecated Use {@link #hash128x64(byte[])} using the bytes returned from
+     * {@link String#getBytes(java.nio.charset.Charset)}.
+     */
+    @Deprecated
+    public static long[] hash128(final String data) {
+<span class="fc" id="L462">        final byte[] bytes = StringUtils.getBytesUtf8(data);</span>
+<span class="fc" id="L463">        return hash128(bytes, 0, bytes.length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 128-bit hash from the byte array with a seed of zero.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 0;
+     * int hash = MurmurHash3.hash128x64(data, offset, data.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The input byte array
+     * @return The 128-bit hash (2 longs)
+     * @see #hash128x64(byte[], int, int, int)
+     * @since 1.14
+     */
+    public static long[] hash128x64(final byte[] data) {
+<span class="fc" id="L482">        return hash128x64(data, 0, data.length, 0);</span>
+    }
+
+    /**
+     * Generates 128-bit hash from the byte array with the given offset, length and seed.
+     *
+     * &lt;p&gt;This is an implementation of the 128-bit hash function {@code MurmurHash3_x64_128}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param offset The first element of array
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 128-bit hash (2 longs)
+     * @since 1.14
+     */
+    public static long[] hash128x64(final byte[] data, final int offset, final int length, final int seed) {
+        // Use an unsigned 32-bit integer as the seed
+<span class="fc" id="L500">        return hash128x64Internal(data, offset, length, seed &amp; 0xffffffffL);</span>
+    }
+
+    /**
+     * Generates 128-bit hash from the byte array with the given offset, length and seed.
+     *
+     * &lt;p&gt;This is an implementation of the 128-bit hash function {@code MurmurHash3_x64_128}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param offset The first element of array
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 128-bit hash (2 longs)
+     */
+    private static long[] hash128x64Internal(final byte[] data, final int offset, final int length, final long seed) {
+<span class="fc" id="L516">        long h1 = seed;</span>
+<span class="fc" id="L517">        long h2 = seed;</span>
+<span class="fc" id="L518">        final int nblocks = length &gt;&gt; 4;</span>
+
+        // body
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L522">            final int index = offset + (i &lt;&lt; 4);</span>
+<span class="fc" id="L523">            long k1 = getLittleEndianLong(data, index);</span>
+<span class="fc" id="L524">            long k2 = getLittleEndianLong(data, index + 8);</span>
+
+            // mix functions for k1
+<span class="fc" id="L527">            k1 *= C1;</span>
+<span class="fc" id="L528">            k1 = Long.rotateLeft(k1, R1);</span>
+<span class="fc" id="L529">            k1 *= C2;</span>
+<span class="fc" id="L530">            h1 ^= k1;</span>
+<span class="fc" id="L531">            h1 = Long.rotateLeft(h1, R2);</span>
+<span class="fc" id="L532">            h1 += h2;</span>
+<span class="fc" id="L533">            h1 = h1 * M + N1;</span>
+
+            // mix functions for k2
+<span class="fc" id="L536">            k2 *= C2;</span>
+<span class="fc" id="L537">            k2 = Long.rotateLeft(k2, R3);</span>
+<span class="fc" id="L538">            k2 *= C1;</span>
+<span class="fc" id="L539">            h2 ^= k2;</span>
+<span class="fc" id="L540">            h2 = Long.rotateLeft(h2, R1);</span>
+<span class="fc" id="L541">            h2 += h1;</span>
+<span class="fc" id="L542">            h2 = h2 * M + N2;</span>
+        }
+
+        // tail
+<span class="fc" id="L546">        long k1 = 0;</span>
+<span class="fc" id="L547">        long k2 = 0;</span>
+<span class="fc" id="L548">        final int index = offset + (nblocks &lt;&lt; 4);</span>
+<span class="fc bfc" id="L549" title="All 16 branches covered.">        switch (offset + length - index) {</span>
+        case 15:
+<span class="fc" id="L551">            k2 ^= ((long) data[index + 14] &amp; 0xff) &lt;&lt; 48;</span>
+        case 14:
+<span class="fc" id="L553">            k2 ^= ((long) data[index + 13] &amp; 0xff) &lt;&lt; 40;</span>
+        case 13:
+<span class="fc" id="L555">            k2 ^= ((long) data[index + 12] &amp; 0xff) &lt;&lt; 32;</span>
+        case 12:
+<span class="fc" id="L557">            k2 ^= ((long) data[index + 11] &amp; 0xff) &lt;&lt; 24;</span>
+        case 11:
+<span class="fc" id="L559">            k2 ^= ((long) data[index + 10] &amp; 0xff) &lt;&lt; 16;</span>
+        case 10:
+<span class="fc" id="L561">            k2 ^= ((long) data[index + 9] &amp; 0xff) &lt;&lt; 8;</span>
+        case 9:
+<span class="fc" id="L563">            k2 ^= data[index + 8] &amp; 0xff;</span>
+<span class="fc" id="L564">            k2 *= C2;</span>
+<span class="fc" id="L565">            k2 = Long.rotateLeft(k2, R3);</span>
+<span class="fc" id="L566">            k2 *= C1;</span>
+<span class="fc" id="L567">            h2 ^= k2;</span>
+
+        case 8:
+<span class="fc" id="L570">            k1 ^= ((long) data[index + 7] &amp; 0xff) &lt;&lt; 56;</span>
+        case 7:
+<span class="fc" id="L572">            k1 ^= ((long) data[index + 6] &amp; 0xff) &lt;&lt; 48;</span>
+        case 6:
+<span class="fc" id="L574">            k1 ^= ((long) data[index + 5] &amp; 0xff) &lt;&lt; 40;</span>
+        case 5:
+<span class="fc" id="L576">            k1 ^= ((long) data[index + 4] &amp; 0xff) &lt;&lt; 32;</span>
+        case 4:
+<span class="fc" id="L578">            k1 ^= ((long) data[index + 3] &amp; 0xff) &lt;&lt; 24;</span>
+        case 3:
+<span class="fc" id="L580">            k1 ^= ((long) data[index + 2] &amp; 0xff) &lt;&lt; 16;</span>
+        case 2:
+<span class="fc" id="L582">            k1 ^= ((long) data[index + 1] &amp; 0xff) &lt;&lt; 8;</span>
+        case 1:
+<span class="fc" id="L584">            k1 ^= data[index] &amp; 0xff;</span>
+<span class="fc" id="L585">            k1 *= C1;</span>
+<span class="fc" id="L586">            k1 = Long.rotateLeft(k1, R1);</span>
+<span class="fc" id="L587">            k1 *= C2;</span>
+<span class="fc" id="L588">            h1 ^= k1;</span>
+        }
+
+        // finalization
+<span class="fc" id="L592">        h1 ^= length;</span>
+<span class="fc" id="L593">        h2 ^= length;</span>
+
+<span class="fc" id="L595">        h1 += h2;</span>
+<span class="fc" id="L596">        h2 += h1;</span>
+
+<span class="fc" id="L598">        h1 = fmix64(h1);</span>
+<span class="fc" id="L599">        h2 = fmix64(h2);</span>
+
+<span class="fc" id="L601">        h1 += h2;</span>
+<span class="fc" id="L602">        h2 += h1;</span>
+
+<span class="fc" id="L604">        return new long[] { h1, h2 };</span>
+    }
+
+    /**
+     * Generates 32-bit hash from the byte array with a default seed.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * int hash = MurmurHash3.hash32(data, offset, data.length, seed);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+     * any bytes left over from dividing the length by 4. This manifests if any of these
+     * bytes are negative.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int, int)
+     * @deprecated Use {@link #hash32x86(byte[], int, int, int)}. This corrects the processing of trailing bytes.
+     */
+    @Deprecated
+    public static int hash32(final byte[] data) {
+<span class="fc" id="L628">        return hash32(data, 0, data.length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from the byte array with the given length and a default seed.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * int hash = MurmurHash3.hash32(data, offset, length, seed);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+     * any bytes left over from dividing the length by 4. This manifests if any of these
+     * bytes are negative.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param length The length of array
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int, int)
+     * @deprecated Use {@link #hash32x86(byte[], int, int, int)}. This corrects the processing of trailing bytes.
+     */
+    @Deprecated
+    public static int hash32(final byte[] data, final int length) {
+<span class="fc" id="L653">        return hash32(data, length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from the byte array with the given length and seed. This is a
+     * helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int hash = MurmurHash3.hash32(data, offset, length, seed);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+     * any bytes left over from dividing the length by 4. This manifests if any of these
+     * bytes are negative.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int, int)
+     * @deprecated Use {@link #hash32x86(byte[], int, int, int)}. This corrects the processing of trailing bytes.
+     */
+    @Deprecated
+    public static int hash32(final byte[] data, final int length, final int seed) {
+<span class="fc" id="L678">        return hash32(data, 0, length, seed);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from the byte array with the given offset, length and seed.
+     *
+     * &lt;p&gt;This is an implementation of the 32-bit hash function {@code MurmurHash3_x86_32}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+     * any bytes left over from dividing the length by 4. This manifests if any of these
+     * bytes are negative.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param offset The offset of data
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 32-bit hash
+     * @deprecated Use {@link #hash32x86(byte[], int, int, int)}. This corrects the processing of trailing bytes.
+     */
+    @Deprecated
+    public static int hash32(final byte[] data, final int offset, final int length, final int seed) {
+<span class="fc" id="L700">        int hash = seed;</span>
+<span class="fc" id="L701">        final int nblocks = length &gt;&gt; 2;</span>
+
+        // body
+<span class="fc bfc" id="L704" title="All 2 branches covered.">        for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L705">            final int index = offset + (i &lt;&lt; 2);</span>
+<span class="fc" id="L706">            final int k = getLittleEndianInt(data, index);</span>
+<span class="fc" id="L707">            hash = mix32(k, hash);</span>
+        }
+
+        // tail
+        // ************
+        // Note: This fails to apply masking using 0xff to the 3 remaining bytes.
+        // ************
+<span class="fc" id="L714">        final int index = offset + (nblocks &lt;&lt; 2);</span>
+<span class="fc" id="L715">        int k1 = 0;</span>
+<span class="fc bfc" id="L716" title="All 4 branches covered.">        switch (offset + length - index) {</span>
+        case 3:
+<span class="fc" id="L718">            k1 ^= data[index + 2] &lt;&lt; 16;</span>
+        case 2:
+<span class="fc" id="L720">            k1 ^= data[index + 1] &lt;&lt; 8;</span>
+        case 1:
+<span class="fc" id="L722">            k1 ^= data[index];</span>
+
+            // mix functions
+<span class="fc" id="L725">            k1 *= C1_32;</span>
+<span class="fc" id="L726">            k1 = Integer.rotateLeft(k1, R1_32);</span>
+<span class="fc" id="L727">            k1 *= C2_32;</span>
+<span class="fc" id="L728">            hash ^= k1;</span>
+        }
+
+<span class="fc" id="L731">        hash ^= length;</span>
+<span class="fc" id="L732">        return fmix32(hash);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from a long with a default seed value.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * int hash = MurmurHash3.hash32x86(ByteBuffer.allocate(8)
+     *                                            .putLong(data)
+     *                                            .array(), offset, 8, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The long to hash
+     * @return The 32-bit hash
+     * @see #hash32x86(byte[], int, int, int)
+     */
+    public static int hash32(final long data) {
+<span class="fc" id="L752">        return hash32(data, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from a long with the given seed.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int hash = MurmurHash3.hash32x86(ByteBuffer.allocate(8)
+     *                                            .putLong(data)
+     *                                            .array(), offset, 8, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The long to hash
+     * @param seed The initial seed value
+     * @return The 32-bit hash
+     * @see #hash32x86(byte[], int, int, int)
+     */
+    public static int hash32(final long data, final int seed) {
+<span class="fc" id="L772">        int hash = seed;</span>
+<span class="fc" id="L773">        final long r0 = Long.reverseBytes(data);</span>
+
+<span class="fc" id="L775">        hash = mix32((int) r0, hash);</span>
+<span class="fc" id="L776">        hash = mix32((int) (r0 &gt;&gt;&gt; 32), hash);</span>
+
+<span class="fc" id="L778">        hash ^= Long.BYTES;</span>
+<span class="fc" id="L779">        return fmix32(hash);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from two longs with a default seed value.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * int hash = MurmurHash3.hash32x86(ByteBuffer.allocate(16)
+     *                                            .putLong(data1)
+     *                                            .putLong(data2)
+     *                                            .array(), offset, 16, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data1 The first long to hash
+     * @param data2 The second long to hash
+     * @return The 32-bit hash
+     * @see #hash32x86(byte[], int, int, int)
+     */
+    public static int hash32(final long data1, final long data2) {
+<span class="fc" id="L801">        return hash32(data1, data2, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from two longs with the given seed.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int hash = MurmurHash3.hash32x86(ByteBuffer.allocate(16)
+     *                                            .putLong(data1)
+     *                                            .putLong(data2)
+     *                                            .array(), offset, 16, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data1 The first long to hash
+     * @param data2 The second long to hash
+     * @param seed The initial seed value
+     * @return The 32-bit hash
+     * @see #hash32x86(byte[], int, int, int)
+     */
+    public static int hash32(final long data1, final long data2, final int seed) {
+<span class="fc" id="L823">        int hash = seed;</span>
+<span class="fc" id="L824">        final long r0 = Long.reverseBytes(data1);</span>
+<span class="fc" id="L825">        final long r1 = Long.reverseBytes(data2);</span>
+
+<span class="fc" id="L827">        hash = mix32((int) r0, hash);</span>
+<span class="fc" id="L828">        hash = mix32((int) (r0 &gt;&gt;&gt; 32), hash);</span>
+<span class="fc" id="L829">        hash = mix32((int) r1, hash);</span>
+<span class="fc" id="L830">        hash = mix32((int) (r1 &gt;&gt;&gt; 32), hash);</span>
+
+<span class="fc" id="L832">        hash ^= Long.BYTES * 2;</span>
+<span class="fc" id="L833">        return fmix32(hash);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from a string with a default seed.
+     * &lt;p&gt;
+     * Before 1.14 the string was converted using default encoding.
+     * Since 1.14 the string is converted to bytes using UTF-8 encoding.
+     * &lt;/p&gt;
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+     * int hash = MurmurHash3.hash32(bytes, offset, bytes.length, seed);
+     * &lt;/pre&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the finalization step of
+     * any bytes left over from dividing the length by 4. This manifests if any of these
+     * bytes are negative.&lt;/p&gt;
+     *
+     * @param data The input string
+     * @return The 32-bit hash
+     * @see #hash32(byte[], int, int, int)
+     * @deprecated Use {@link #hash32x86(byte[], int, int, int)} with the bytes returned from
+     * {@link String#getBytes(java.nio.charset.Charset)}. This corrects the processing of trailing bytes.
+     */
+    @Deprecated
+    public static int hash32(final String data) {
+<span class="fc" id="L863">        final byte[] bytes = StringUtils.getBytesUtf8(data);</span>
+<span class="fc" id="L864">        return hash32(bytes, 0, bytes.length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from the byte array with a seed of zero.
+     * This is a helper method that will produce the same result as:
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 0;
+     * int hash = MurmurHash3.hash32x86(data, offset, data.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The input byte array
+     * @return The 32-bit hash
+     * @see #hash32x86(byte[], int, int, int)
+     * @since 1.14
+     */
+    public static int hash32x86(final byte[] data) {
+<span class="fc" id="L883">        return hash32x86(data, 0, data.length, 0);</span>
+    }
+
+    /**
+     * Generates 32-bit hash from the byte array with the given offset, length and seed.
+     *
+     * &lt;p&gt;This is an implementation of the 32-bit hash function {@code MurmurHash3_x86_32}
+     * from Austin Appleby's original MurmurHash3 {@code c++} code in SMHasher.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param offset The offset of data
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 32-bit hash
+     * @since 1.14
+     */
+    public static int hash32x86(final byte[] data, final int offset, final int length, final int seed) {
+<span class="fc" id="L900">        int hash = seed;</span>
+<span class="fc" id="L901">        final int nblocks = length &gt;&gt; 2;</span>
+
+        // body
+<span class="fc bfc" id="L904" title="All 2 branches covered.">        for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L905">            final int index = offset + (i &lt;&lt; 2);</span>
+<span class="fc" id="L906">            final int k = getLittleEndianInt(data, index);</span>
+<span class="fc" id="L907">            hash = mix32(k, hash);</span>
+        }
+
+        // tail
+<span class="fc" id="L911">        final int index = offset + (nblocks &lt;&lt; 2);</span>
+<span class="fc" id="L912">        int k1 = 0;</span>
+<span class="fc bfc" id="L913" title="All 4 branches covered.">        switch (offset + length - index) {</span>
+        case 3:
+<span class="fc" id="L915">            k1 ^= (data[index + 2] &amp; 0xff) &lt;&lt; 16;</span>
+        case 2:
+<span class="fc" id="L917">            k1 ^= (data[index + 1] &amp; 0xff) &lt;&lt; 8;</span>
+        case 1:
+<span class="fc" id="L919">            k1 ^= data[index] &amp; 0xff;</span>
+
+            // mix functions
+<span class="fc" id="L922">            k1 *= C1_32;</span>
+<span class="fc" id="L923">            k1 = Integer.rotateLeft(k1, R1_32);</span>
+<span class="fc" id="L924">            k1 *= C2_32;</span>
+<span class="fc" id="L925">            hash ^= k1;</span>
+        }
+
+<span class="fc" id="L928">        hash ^= length;</span>
+<span class="fc" id="L929">        return fmix32(hash);</span>
+    }
+
+    /**
+     * Generates 64-bit hash from a byte array with a default seed.
+     *
+     * &lt;p&gt;&lt;strong&gt;This is not part of the original MurmurHash3 {@code c++} implementation.&lt;/strong&gt;&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a Murmur3-like 64-bit variant.
+     * The method does not produce the same result as either half of the hash bytes from
+     * {@linkplain #hash128x64(byte[])} with the same byte data.
+     * This method will be removed in a future release.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash64(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a helper method that will produce the same result as:&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * long hash = MurmurHash3.hash64(data, offset, data.length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The input byte array
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int, int)
+     * @deprecated Not part of the MurmurHash3 implementation.
+     * Use half of the hash bytes from {@link #hash128x64(byte[])}.
+     */
+    @Deprecated
+    public static long hash64(final byte[] data) {
+<span class="fc" id="L961">        return hash64(data, 0, data.length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 64-bit hash from a byte array with the given offset and length and a default seed.
+     *
+     * &lt;p&gt;&lt;strong&gt;This is not part of the original MurmurHash3 {@code c++} implementation.&lt;/strong&gt;&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a Murmur3-like 64-bit variant.
+     * The method does not produce the same result as either half of the hash bytes from
+     * {@linkplain #hash128x64(byte[])} with the same byte data.
+     * This method will be removed in a future release.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash64(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a helper method that will produce the same result as:&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int seed = 104729;
+     * long hash = MurmurHash3.hash64(data, offset, length, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The input byte array
+     * @param offset The offset of data
+     * @param length The length of array
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int, int)
+     * @deprecated Not part of the MurmurHash3 implementation.
+     * Use half of the hash bytes from {@link #hash128x64(byte[], int, int, int)}.
+     */
+    @Deprecated
+    public static long hash64(final byte[] data, final int offset, final int length) {
+<span class="fc" id="L994">        return hash64(data, offset, length, DEFAULT_SEED);</span>
+    }
+
+    /**
+     * Generates 64-bit hash from a byte array with the given offset, length and seed.
+     *
+     * &lt;p&gt;&lt;strong&gt;This is not part of the original MurmurHash3 {@code c++} implementation.&lt;/strong&gt;&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a Murmur3-like 64-bit variant.
+     * This method will be removed in a future release.&lt;/p&gt;
+     *
+     * &lt;p&gt;This implementation contains a sign-extension bug in the seed initialization.
+     * This manifests if the seed is negative.&lt;/p&gt;
+     *
+     * &lt;p&gt;This algorithm processes 8 bytes chunks of data in a manner similar to the 16 byte chunks
+     * of data processed in the MurmurHash3 {@code MurmurHash3_x64_128} method. However the hash
+     * is not mixed with a hash chunk from the next 8 bytes of data. The method will not return
+     * the same value as the first or second 64-bits of the function
+     * {@link #hash128(byte[], int, int, int)}.&lt;/p&gt;
+     *
+     * &lt;p&gt;Use of this method is not advised. Use the first long returned from
+     * {@link #hash128x64(byte[], int, int, int)}.&lt;/p&gt;
+     *
+     * @param data The input byte array
+     * @param offset The offset of data
+     * @param length The length of array
+     * @param seed The initial seed value
+     * @return The 64-bit hash
+     * @deprecated Not part of the MurmurHash3 implementation.
+     * Use half of the hash bytes from {@link #hash128x64(byte[], int, int, int)}.
+     */
+    @Deprecated
+    public static long hash64(final byte[] data, final int offset, final int length, final int seed) {
+        //
+        // Note: This fails to apply masking using 0xffffffffL to the seed.
+        //
+<span class="fc" id="L1030">        long hash = seed;</span>
+<span class="fc" id="L1031">        final int nblocks = length &gt;&gt; 3;</span>
+
+        // body
+<span class="fc bfc" id="L1034" title="All 2 branches covered.">        for (int i = 0; i &lt; nblocks; i++) {</span>
+<span class="fc" id="L1035">            final int index = offset + (i &lt;&lt; 3);</span>
+<span class="fc" id="L1036">            long k = getLittleEndianLong(data, index);</span>
+
+            // mix functions
+<span class="fc" id="L1039">            k *= C1;</span>
+<span class="fc" id="L1040">            k = Long.rotateLeft(k, R1);</span>
+<span class="fc" id="L1041">            k *= C2;</span>
+<span class="fc" id="L1042">            hash ^= k;</span>
+<span class="fc" id="L1043">            hash = Long.rotateLeft(hash, R2) * M + N1;</span>
+        }
+
+        // tail
+<span class="fc" id="L1047">        long k1 = 0;</span>
+<span class="fc" id="L1048">        final int index = offset + (nblocks &lt;&lt; 3);</span>
+<span class="fc bfc" id="L1049" title="All 8 branches covered.">        switch (offset + length - index) {</span>
+        case 7:
+<span class="fc" id="L1051">            k1 ^= ((long) data[index + 6] &amp; 0xff) &lt;&lt; 48;</span>
+        case 6:
+<span class="fc" id="L1053">            k1 ^= ((long) data[index + 5] &amp; 0xff) &lt;&lt; 40;</span>
+        case 5:
+<span class="fc" id="L1055">            k1 ^= ((long) data[index + 4] &amp; 0xff) &lt;&lt; 32;</span>
+        case 4:
+<span class="fc" id="L1057">            k1 ^= ((long) data[index + 3] &amp; 0xff) &lt;&lt; 24;</span>
+        case 3:
+<span class="fc" id="L1059">            k1 ^= ((long) data[index + 2] &amp; 0xff) &lt;&lt; 16;</span>
+        case 2:
+<span class="fc" id="L1061">            k1 ^= ((long) data[index + 1] &amp; 0xff) &lt;&lt; 8;</span>
+        case 1:
+<span class="fc" id="L1063">            k1 ^= (long) data[index] &amp; 0xff;</span>
+<span class="fc" id="L1064">            k1 *= C1;</span>
+<span class="fc" id="L1065">            k1 = Long.rotateLeft(k1, R1);</span>
+<span class="fc" id="L1066">            k1 *= C2;</span>
+<span class="fc" id="L1067">            hash ^= k1;</span>
+        }
+
+        // finalization
+<span class="fc" id="L1071">        hash ^= length;</span>
+<span class="fc" id="L1072">        return fmix64(hash);</span>
+    }
+
+    /**
+     * Generates 64-bit hash from an int with a default seed.
+     *
+     * &lt;p&gt;&lt;strong&gt;This is not part of the original MurmurHash3 {@code c++} implementation.&lt;/strong&gt;&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a Murmur3-like 64-bit variant.
+     * The method does not produce the same result as either half of the hash bytes from
+     * {@linkplain #hash128x64(byte[])} with the same byte data from the {@code int}.
+     * This method will be removed in a future release.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash64(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a helper method that will produce the same result as:&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * long hash = MurmurHash3.hash64(ByteBuffer.allocate(4)
+     *                                          .putInt(data)
+     *                                          .array(), offset, 4, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The int to hash
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int, int)
+     * @deprecated Not part of the MurmurHash3 implementation.
+     * Use half of the hash bytes from {@link #hash128x64(byte[])} with the bytes from the {@code int}.
+     */
+    @Deprecated
+    public static long hash64(final int data) {
+<span class="fc" id="L1106">        long k1 = Integer.reverseBytes(data) &amp; -1L &gt;&gt;&gt; 32;</span>
+<span class="fc" id="L1107">        long hash = DEFAULT_SEED;</span>
+<span class="fc" id="L1108">        k1 *= C1;</span>
+<span class="fc" id="L1109">        k1 = Long.rotateLeft(k1, R1);</span>
+<span class="fc" id="L1110">        k1 *= C2;</span>
+<span class="fc" id="L1111">        hash ^= k1;</span>
+        // finalization
+<span class="fc" id="L1113">        hash ^= Integer.BYTES;</span>
+<span class="fc" id="L1114">        return fmix64(hash);</span>
+    }
+
+    /**
+     * Generates 64-bit hash from a long with a default seed.
+     *
+     * &lt;p&gt;&lt;strong&gt;This is not part of the original MurmurHash3 {@code c++} implementation.&lt;/strong&gt;&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a Murmur3-like 64-bit variant.
+     * The method does not produce the same result as either half of the hash bytes from
+     * {@linkplain #hash128x64(byte[])} with the same byte data from the {@code long}.
+     * This method will be removed in a future release.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash64(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a helper method that will produce the same result as:&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * long hash = MurmurHash3.hash64(ByteBuffer.allocate(8)
+     *                                          .putLong(data)
+     *                                          .array(), offset, 8, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The long to hash
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int, int)
+     * @deprecated Not part of the MurmurHash3 implementation.
+     * Use half of the hash bytes from {@link #hash128x64(byte[])} with the bytes from the {@code long}.
+     */
+    @Deprecated
+    public static long hash64(final long data) {
+<span class="fc" id="L1148">        long hash = DEFAULT_SEED;</span>
+<span class="fc" id="L1149">        long k = Long.reverseBytes(data);</span>
+        // mix functions
+<span class="fc" id="L1151">        k *= C1;</span>
+<span class="fc" id="L1152">        k = Long.rotateLeft(k, R1);</span>
+<span class="fc" id="L1153">        k *= C2;</span>
+<span class="fc" id="L1154">        hash ^= k;</span>
+<span class="fc" id="L1155">        hash = Long.rotateLeft(hash, R2) * M + N1;</span>
+        // finalization
+<span class="fc" id="L1157">        hash ^= Long.BYTES;</span>
+<span class="fc" id="L1158">        return fmix64(hash);</span>
+    }
+
+    /**
+     * Generates 64-bit hash from a short with a default seed.
+     *
+     * &lt;p&gt;&lt;strong&gt;This is not part of the original MurmurHash3 {@code c++} implementation.&lt;/strong&gt;&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a Murmur3-like 64-bit variant.
+     * The method does not produce the same result as either half of the hash bytes from
+     * {@linkplain #hash128x64(byte[])} with the same byte data from the {@code short}.
+     * This method will be removed in a future release.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: The sign extension bug in {@link #hash64(byte[], int, int, int)} does not effect
+     * this result as the default seed is positive.&lt;/p&gt;
+     *
+     * &lt;p&gt;This is a helper method that will produce the same result as:&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * int offset = 0;
+     * int seed = 104729;
+     * long hash = MurmurHash3.hash64(ByteBuffer.allocate(2)
+     *                                          .putShort(data)
+     *                                          .array(), offset, 2, seed);
+     * &lt;/pre&gt;
+     *
+     * @param data The short to hash
+     * @return The 64-bit hash
+     * @see #hash64(byte[], int, int, int)
+     * @deprecated Not part of the MurmurHash3 implementation.
+     * Use half of the hash bytes from {@link #hash128x64(byte[])} with the bytes from the {@code short}.
+     */
+    @Deprecated
+    public static long hash64(final short data) {
+<span class="fc" id="L1192">        long hash = DEFAULT_SEED;</span>
+<span class="fc" id="L1193">        long k1 = 0;</span>
+<span class="fc" id="L1194">        k1 ^= ((long) data &amp; 0xff) &lt;&lt; 8;</span>
+<span class="fc" id="L1195">        k1 ^= (long) ((data &amp; 0xFF00) &gt;&gt; 8) &amp; 0xff;</span>
+<span class="fc" id="L1196">        k1 *= C1;</span>
+<span class="fc" id="L1197">        k1 = Long.rotateLeft(k1, R1);</span>
+<span class="fc" id="L1198">        k1 *= C2;</span>
+<span class="fc" id="L1199">        hash ^= k1;</span>
+
+        // finalization
+<span class="fc" id="L1202">        hash ^= Short.BYTES;</span>
+<span class="fc" id="L1203">        return fmix64(hash);</span>
+    }
+
+    /**
+     * Performs the intermediate mix step of the 32-bit hash function {@code MurmurHash3_x86_32}.
+     *
+     * @param k The data to add to the hash
+     * @param hash The current hash
+     * @return The new hash
+     */
+    private static int mix32(int k, int hash) {
+<span class="fc" id="L1214">        k *= C1_32;</span>
+<span class="fc" id="L1215">        k = Integer.rotateLeft(k, R1_32);</span>
+<span class="fc" id="L1216">        k *= C2_32;</span>
+<span class="fc" id="L1217">        hash ^= k;</span>
+<span class="fc" id="L1218">        return Integer.rotateLeft(hash, R2_32) * M_32 + N_32;</span>
+    }
+
+    /** No instance methods. */
+    private MurmurHash3() {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PeekingIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.iterators</a> &gt; <span class="el_source">PeekingIterator.java</span></div><h1>PeekingIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.iterators;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/**
+ * Decorates an iterator to support one-element lookahead while iterating.
+ * &lt;p&gt;
+ * The decorator supports the removal operation, but an {@link IllegalStateException}
+ * will be thrown if {@link #remove()} is called directly after a call to
+ * {@link #peek()} or {@link #element()}.
+ *
+ * @param &lt;E&gt; the type of elements returned by this iterator.
+ * @since 4.0
+ */
+public class PeekingIterator&lt;E&gt; implements Iterator&lt;E&gt; {
+
+    /**
+     * Decorates the specified iterator to support one-element lookahead.
+     * &lt;p&gt;
+     * If the iterator is already a {@link PeekingIterator} it is returned directly.
+     *
+     * @param &lt;E&gt;  the element type
+     * @param iterator  the iterator to decorate
+     * @return a new peeking iterator
+     * @throws NullPointerException if the iterator is null
+     */
+    public static &lt;E&gt; PeekingIterator&lt;E&gt; peekingIterator(final Iterator&lt;? extends E&gt; iterator) {
+<span class="fc" id="L46">        Objects.requireNonNull(iterator, &quot;iterator&quot;);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (iterator instanceof PeekingIterator&lt;?&gt;) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;) // safe cast
+<span class="nc" id="L49">            final PeekingIterator&lt;E&gt; it = (PeekingIterator&lt;E&gt;) iterator;</span>
+<span class="nc" id="L50">            return it;</span>
+        }
+<span class="fc" id="L52">        return new PeekingIterator&lt;&gt;(iterator);</span>
+    }
+
+    /** The iterator being decorated. */
+    private final Iterator&lt;? extends E&gt; iterator;
+
+    /** Indicates that the decorated iterator is exhausted. */
+    private boolean exhausted;
+
+    /** Indicates if the lookahead slot is filled. */
+    private boolean slotFilled;
+
+    /** The current slot for lookahead. */
+    private E slot;
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param iterator  the iterator to decorate
+     */
+<span class="fc" id="L72">    public PeekingIterator(final Iterator&lt;? extends E&gt; iterator) {</span>
+<span class="fc" id="L73">        this.iterator = iterator;</span>
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * Returns the next element in iteration without advancing the underlying iterator.
+     * If the iterator is already exhausted, null will be returned.
+     *
+     * @return the next element from the iterator
+     * @throws NoSuchElementException if the iterator is already exhausted according to {@link #hasNext()}
+     */
+    public E element() {
+<span class="fc" id="L84">        fill();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (exhausted) {</span>
+<span class="fc" id="L86">            throw new NoSuchElementException();</span>
+        }
+<span class="fc" id="L88">        return slot;</span>
+    }
+
+    private void fill() {
+<span class="fc bfc" id="L92" title="All 4 branches covered.">        if (exhausted || slotFilled) {</span>
+<span class="fc" id="L93">            return;</span>
+        }
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (iterator.hasNext()) {</span>
+<span class="fc" id="L96">            slot = iterator.next();</span>
+<span class="fc" id="L97">            slotFilled = true;</span>
+        } else {
+<span class="fc" id="L99">            exhausted = true;</span>
+<span class="fc" id="L100">            slot = null;</span>
+<span class="fc" id="L101">            slotFilled = false;</span>
+        }
+<span class="fc" id="L103">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (exhausted) {</span>
+<span class="nc" id="L108">            return false;</span>
+        }
+<span class="fc bfc" id="L110" title="All 4 branches covered.">        return slotFilled || iterator.hasNext();</span>
+    }
+
+    @Override
+    public E next() {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (!hasNext()) {</span>
+<span class="fc" id="L116">            throw new NoSuchElementException();</span>
+        }
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        final E x = slotFilled ? slot : iterator.next();</span>
+        // reset the lookahead slot
+<span class="fc" id="L120">        slot = null;</span>
+<span class="fc" id="L121">        slotFilled = false;</span>
+<span class="fc" id="L122">        return x;</span>
+    }
+
+    /**
+     * Returns the next element in iteration without advancing the underlying iterator.
+     * If the iterator is already exhausted, null will be returned.
+     * &lt;p&gt;
+     * Note: this method does not throw a {@link NoSuchElementException} if the iterator
+     * is already exhausted. If you want such a behavior, use {@link #element()} instead.
+     * &lt;p&gt;
+     * The rationale behind this is to follow the {@link java.util.Queue} interface
+     * which uses the same terminology.
+     *
+     * @return the next element from the iterator
+     */
+    public E peek() {
+<span class="fc" id="L138">        fill();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        return exhausted ? null : slot;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalStateException if {@link #peek()} or {@link #element()} has been called
+     *   prior to the call to {@link #remove()}
+     */
+    @Override
+    public void remove() {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        if (slotFilled) {</span>
+<span class="fc" id="L151">            throw new IllegalStateException(&quot;peek() or element() called before remove()&quot;);</span>
+        }
+<span class="fc" id="L153">        iterator.remove();</span>
+<span class="fc" id="L154">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

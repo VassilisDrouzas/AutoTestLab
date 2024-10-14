@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QCodec.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.net</a> &gt; <span class="el_source">QCodec.java</span></div><h1>QCodec.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.net;
+
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.UnsupportedCharsetException;
+import java.util.BitSet;
+
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.StringDecoder;
+import org.apache.commons.codec.StringEncoder;
+
+/**
+ * Similar to the Quoted-Printable content-transfer-encoding defined in
+ * &lt;a href=&quot;http://www.ietf.org/rfc/rfc1521.txt&quot;&gt;RFC 1521&lt;/a&gt; and designed to allow text containing mostly ASCII
+ * characters to be decipherable on an ASCII terminal without decoding.
+ * &lt;p&gt;
+ * &lt;a href=&quot;http://www.ietf.org/rfc/rfc1522.txt&quot;&gt;RFC 1522&lt;/a&gt; describes techniques to allow the encoding of non-ASCII
+ * text in various portions of a RFC 822 [2] message header, in a manner which is unlikely to confuse existing message
+ * handling software.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is conditionally thread-safe.
+ * The instance field for encoding blanks is mutable {@link #setEncodeBlanks(boolean)}
+ * but is not volatile, and accesses are not synchronized.
+ * If an instance of the class is shared between threads, the caller needs to ensure that suitable synchronization
+ * is used to ensure safe publication of the value between threads, and must not invoke
+ * {@link #setEncodeBlanks(boolean)} after initial setup.
+ * &lt;/p&gt;
+ *
+ * @see &lt;a href=&quot;http://www.ietf.org/rfc/rfc1522.txt&quot;&gt;MIME (Multipurpose Internet Mail Extensions) Part Two: Message
+ *          Header Extensions for Non-ASCII Text&lt;/a&gt;
+ *
+ * @since 1.3
+ */
+public class QCodec extends RFC1522Codec implements StringEncoder, StringDecoder {
+    /**
+     * BitSet of printable characters as defined in RFC 1522.
+     */
+<span class="fc" id="L58">    private static final BitSet PRINTABLE_CHARS = new BitSet(256);</span>
+
+    // Static initializer for printable chars collection
+    static {
+        // alpha characters
+<span class="fc" id="L63">        PRINTABLE_CHARS.set(' ');</span>
+<span class="fc" id="L64">        PRINTABLE_CHARS.set('!');</span>
+<span class="fc" id="L65">        PRINTABLE_CHARS.set('&quot;');</span>
+<span class="fc" id="L66">        PRINTABLE_CHARS.set('#');</span>
+<span class="fc" id="L67">        PRINTABLE_CHARS.set('$');</span>
+<span class="fc" id="L68">        PRINTABLE_CHARS.set('%');</span>
+<span class="fc" id="L69">        PRINTABLE_CHARS.set('&amp;');</span>
+<span class="fc" id="L70">        PRINTABLE_CHARS.set('\'');</span>
+<span class="fc" id="L71">        PRINTABLE_CHARS.set('(');</span>
+<span class="fc" id="L72">        PRINTABLE_CHARS.set(')');</span>
+<span class="fc" id="L73">        PRINTABLE_CHARS.set('*');</span>
+<span class="fc" id="L74">        PRINTABLE_CHARS.set('+');</span>
+<span class="fc" id="L75">        PRINTABLE_CHARS.set(',');</span>
+<span class="fc" id="L76">        PRINTABLE_CHARS.set('-');</span>
+<span class="fc" id="L77">        PRINTABLE_CHARS.set('.');</span>
+<span class="fc" id="L78">        PRINTABLE_CHARS.set('/');</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (int i = '0'; i &lt;= '9'; i++) {</span>
+<span class="fc" id="L80">            PRINTABLE_CHARS.set(i);</span>
+        }
+<span class="fc" id="L82">        PRINTABLE_CHARS.set(':');</span>
+<span class="fc" id="L83">        PRINTABLE_CHARS.set(';');</span>
+<span class="fc" id="L84">        PRINTABLE_CHARS.set('&lt;');</span>
+<span class="fc" id="L85">        PRINTABLE_CHARS.set('&gt;');</span>
+<span class="fc" id="L86">        PRINTABLE_CHARS.set('@');</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (int i = 'A'; i &lt;= 'Z'; i++) {</span>
+<span class="fc" id="L88">            PRINTABLE_CHARS.set(i);</span>
+        }
+<span class="fc" id="L90">        PRINTABLE_CHARS.set('[');</span>
+<span class="fc" id="L91">        PRINTABLE_CHARS.set('\\');</span>
+<span class="fc" id="L92">        PRINTABLE_CHARS.set(']');</span>
+<span class="fc" id="L93">        PRINTABLE_CHARS.set('^');</span>
+<span class="fc" id="L94">        PRINTABLE_CHARS.set('`');</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (int i = 'a'; i &lt;= 'z'; i++) {</span>
+<span class="fc" id="L96">            PRINTABLE_CHARS.set(i);</span>
+        }
+<span class="fc" id="L98">        PRINTABLE_CHARS.set('{');</span>
+<span class="fc" id="L99">        PRINTABLE_CHARS.set('|');</span>
+<span class="fc" id="L100">        PRINTABLE_CHARS.set('}');</span>
+<span class="fc" id="L101">        PRINTABLE_CHARS.set('~');</span>
+<span class="fc" id="L102">    }</span>
+    private static final byte SPACE = 32;
+
+    private static final byte UNDERSCORE = 95;
+
+    private boolean encodeBlanks;
+
+    /**
+     * Default constructor.
+     */
+    public QCodec() {
+<span class="fc" id="L113">        this(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Constructor which allows for the selection of a default Charset.
+     *
+     * @param charset
+     *            the default string Charset to use.
+     *
+     * @see Charset
+     * @since 1.7
+     */
+    public QCodec(final Charset charset) {
+<span class="fc" id="L126">        super(charset);</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Constructor which allows for the selection of a default Charset.
+     *
+     * @param charsetName
+     *            the Charset to use.
+     * @throws java.nio.charset.UnsupportedCharsetException
+     *             If the named Charset is unavailable
+     * @since 1.7 throws UnsupportedCharsetException if the named Charset is unavailable
+     * @see Charset
+     */
+    public QCodec(final String charsetName) {
+<span class="fc" id="L140">        this(Charset.forName(charsetName));</span>
+<span class="fc" id="L141">    }</span>
+
+    /**
+     * Decodes a quoted-printable object into its original form. Escaped characters are converted back to their original
+     * representation.
+     *
+     * @param obj
+     *            quoted-printable object to convert into its original form
+     * @return original object
+     * @throws DecoderException
+     *             Thrown if the argument is not a {@code String}. Thrown if a failure condition is encountered
+     *             during the decode process.
+     */
+    @Override
+    public Object decode(final Object obj) throws DecoderException {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (obj == null) {</span>
+<span class="fc" id="L157">            return null;</span>
+        }
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (obj instanceof String) {</span>
+<span class="fc" id="L160">            return decode((String) obj);</span>
+        }
+<span class="fc" id="L162">        throw new DecoderException(&quot;Objects of type &quot; + obj.getClass().getName() + &quot; cannot be decoded using Q codec&quot;);</span>
+    }
+
+    /**
+     * Decodes a quoted-printable string into its original form. Escaped characters are converted back to their original
+     * representation.
+     *
+     * @param str
+     *            quoted-printable string to convert into its original form
+     * @return original string
+     * @throws DecoderException
+     *             A decoder exception is thrown if a failure condition is encountered during the decode process.
+     */
+    @Override
+    public String decode(final String str) throws DecoderException {
+        try {
+<span class="fc" id="L178">            return decodeText(str);</span>
+<span class="nc" id="L179">        } catch (final UnsupportedEncodingException e) {</span>
+<span class="nc" id="L180">            throw new DecoderException(e.getMessage(), e);</span>
+        }
+    }
+
+    @Override
+    protected byte[] doDecoding(final byte[] bytes) throws DecoderException {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (bytes == null) {</span>
+<span class="fc" id="L187">            return null;</span>
+        }
+<span class="fc" id="L189">        boolean hasUnderscores = false;</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        for (final byte b : bytes) {</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (b == UNDERSCORE) {</span>
+<span class="fc" id="L192">                hasUnderscores = true;</span>
+<span class="fc" id="L193">                break;</span>
+            }
+        }
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (hasUnderscores) {</span>
+<span class="fc" id="L197">            final byte[] tmp = new byte[bytes.length];</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            for (int i = 0; i &lt; bytes.length; i++) {</span>
+<span class="fc" id="L199">                final byte b = bytes[i];</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">                if (b != UNDERSCORE) {</span>
+<span class="fc" id="L201">                    tmp[i] = b;</span>
+                } else {
+<span class="fc" id="L203">                    tmp[i] = SPACE;</span>
+                }
+            }
+<span class="fc" id="L206">            return QuotedPrintableCodec.decodeQuotedPrintable(tmp);</span>
+        }
+<span class="fc" id="L208">        return QuotedPrintableCodec.decodeQuotedPrintable(bytes);</span>
+    }
+
+    @Override
+    protected byte[] doEncoding(final byte[] bytes) {
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (bytes == null) {</span>
+<span class="fc" id="L214">            return null;</span>
+        }
+<span class="fc" id="L216">        final byte[] data = QuotedPrintableCodec.encodeQuotedPrintable(PRINTABLE_CHARS, bytes);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (this.encodeBlanks) {</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            for (int i = 0; i &lt; data.length; i++) {</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                if (data[i] == SPACE) {</span>
+<span class="fc" id="L220">                    data[i] = UNDERSCORE;</span>
+                }
+            }
+        }
+<span class="fc" id="L224">        return data;</span>
+    }
+
+    /**
+     * Encodes an object into its quoted-printable form using the default Charset. Unsafe characters are escaped.
+     *
+     * @param obj
+     *            object to convert to quoted-printable form
+     * @return quoted-printable object
+     * @throws EncoderException
+     *             thrown if a failure condition is encountered during the encoding process.
+     */
+    @Override
+    public Object encode(final Object obj) throws EncoderException {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (obj == null) {</span>
+<span class="fc" id="L239">            return null;</span>
+        }
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (obj instanceof String) {</span>
+<span class="fc" id="L242">            return encode((String) obj);</span>
+        }
+<span class="fc" id="L244">        throw new EncoderException(&quot;Objects of type &quot; + obj.getClass().getName() + &quot; cannot be encoded using Q codec&quot;);</span>
+    }
+
+    /**
+     * Encodes a string into its quoted-printable form using the default Charset. Unsafe characters are escaped.
+     *
+     * @param sourceStr
+     *            string to convert to quoted-printable form
+     * @return quoted-printable string
+     * @throws EncoderException
+     *             thrown if a failure condition is encountered during the encoding process.
+     */
+    @Override
+    public String encode(final String sourceStr) throws EncoderException {
+<span class="fc" id="L258">        return encode(sourceStr, getCharset());</span>
+    }
+
+    /**
+     * Encodes a string into its quoted-printable form using the specified Charset. Unsafe characters are escaped.
+     *
+     * @param sourceStr
+     *            string to convert to quoted-printable form
+     * @param sourceCharset
+     *            the Charset for sourceStr
+     * @return quoted-printable string
+     * @throws EncoderException
+     *             thrown if a failure condition is encountered during the encoding process.
+     * @since 1.7
+     */
+    public String encode(final String sourceStr, final Charset sourceCharset) throws EncoderException {
+<span class="fc" id="L274">        return encodeText(sourceStr, sourceCharset);</span>
+    }
+
+    /**
+     * Encodes a string into its quoted-printable form using the specified Charset. Unsafe characters are escaped.
+     *
+     * @param sourceStr
+     *            string to convert to quoted-printable form
+     * @param sourceCharset
+     *            the Charset for sourceStr
+     * @return quoted-printable string
+     * @throws EncoderException
+     *             thrown if a failure condition is encountered during the encoding process.
+     */
+    public String encode(final String sourceStr, final String sourceCharset) throws EncoderException {
+        try {
+<span class="fc" id="L290">            return encodeText(sourceStr, sourceCharset);</span>
+<span class="nc" id="L291">        } catch (final UnsupportedCharsetException e) {</span>
+<span class="nc" id="L292">            throw new EncoderException(e.getMessage(), e);</span>
+        }
+    }
+
+    @Override
+    protected String getEncoding() {
+<span class="fc" id="L298">        return &quot;Q&quot;;</span>
+    }
+
+    /**
+     * Tests if optional transformation of SPACE characters is to be used
+     *
+     * @return {@code true} if SPACE characters are to be transformed, {@code false} otherwise
+     */
+    public boolean isEncodeBlanks() {
+<span class="fc" id="L307">        return this.encodeBlanks;</span>
+    }
+
+    /**
+     * Defines whether optional transformation of SPACE characters is to be used
+     *
+     * @param b
+     *            {@code true} if SPACE characters are to be transformed, {@code false} otherwise
+     */
+    public void setEncodeBlanks(final boolean b) {
+<span class="fc" id="L317">        this.encodeBlanks = b;</span>
+<span class="fc" id="L318">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LayeredBloomFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">LayeredBloomFilter.java</span></div><h1>LayeredBloomFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Arrays;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.function.IntPredicate;
+import java.util.function.LongPredicate;
+import java.util.function.Predicate;
+
+/**
+ * Layered Bloom filters are described in Zhiwang, Cen; Jungang, Xu; Jian, Sun
+ * (2010), &quot;A multi-layer Bloom filter for duplicated URL detection&quot;, Proc. 3rd
+ * International Conference on Advanced Computer Theory and Engineering (ICACTE
+ * 2010), vol. 1, pp. V1-586-V1-591, doi:10.1109/ICACTE.2010.5578947, ISBN
+ * 978-1-4244-6539-2, S2CID 3108985
+ * &lt;p&gt;
+ * In short, Layered Bloom filter contains several bloom filters arranged in
+ * layers.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;When membership in the filter is checked each layer in turn is checked
+ * and if a match is found {@code true} is returned.&lt;/li&gt;
+ * &lt;li&gt;When merging each bloom filter is merged into the newest filter in the
+ * list of layers.&lt;/li&gt;
+ * &lt;li&gt;When questions of cardinality are asked the cardinality of the union of
+ * the enclosed Bloom filters is used.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * The net result is that the layered Bloom filter can be populated with more
+ * items than the Shape would indicate and yet still return a false positive
+ * rate in line with the Shape and not the over population.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This implementation uses a LayerManager to handle the manipulation of the
+ * layers.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;Level 0 is the oldest layer and the highest level is the newest.&lt;/li&gt;
+ * &lt;li&gt;There is always at least one enclosed filter.&lt;/li&gt;
+ * &lt;li&gt;The newest filter is the {@code target} into which merges are performed.
+ * &lt;li&gt;Whenever the target is retrieved, or a {@code merge} operation is
+ * performed the code checks if any older layers should be removed, and if so
+ * removes them. It also checks it a new layer should be added, and if so adds
+ * it and sets the {@code target} before the operation.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * @param &lt;T&gt; The type of Bloom Filter that is used for the layers.
+ * @since 4.5
+ */
+public class LayeredBloomFilter&lt;T extends BloomFilter&gt; implements BloomFilter, BloomFilterExtractor {
+    /**
+     * A class used to locate matching filters across all the layers.
+     */
+    private class Finder implements Predicate&lt;BloomFilter&gt; {
+<span class="fc" id="L70">        int[] result = new int[layerManager.getDepth()];</span>
+        int bfIdx;
+        int resultIdx;
+        BloomFilter bf;
+
+<span class="fc" id="L75">        Finder(final BloomFilter bf) {</span>
+<span class="fc" id="L76">            this.bf = bf;</span>
+<span class="fc" id="L77">        }</span>
+
+        int[] getResult() {
+<span class="fc" id="L80">            return Arrays.copyOf(result, resultIdx);</span>
+        }
+
+        @Override
+        public boolean test(final BloomFilter x) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (x.contains(bf)) {</span>
+<span class="fc" id="L86">                result[resultIdx++] = bfIdx;</span>
+            }
+<span class="fc" id="L88">            bfIdx++;</span>
+<span class="fc" id="L89">            return true;</span>
+        }
+    }
+
+    private final Shape shape;
+
+    private final LayerManager&lt;T&gt; layerManager;
+
+    /**
+     * Constructor.
+     *
+     * @param shape        the Shape of the enclosed Bloom filters
+     * @param layerManager the LayerManager to manage the layers.
+     */
+<span class="fc" id="L103">    public LayeredBloomFilter(final Shape shape, final LayerManager&lt;T&gt; layerManager) {</span>
+<span class="fc" id="L104">        this.shape = shape;</span>
+<span class="fc" id="L105">        this.layerManager = layerManager;</span>
+<span class="fc" id="L106">    }</span>
+
+    @Override
+    public int cardinality() {
+<span class="fc" id="L110">        return SetOperations.cardinality(this);</span>
+    }
+
+    @Override
+    public int characteristics() {
+<span class="fc" id="L115">        return 0;</span>
+    }
+
+    /**
+     * Forces the execution of the cleanup Consumer that was provided when the associated LayerManager
+     * was built.
+     *
+     * @see LayerManager.Builder#setCleanup(java.util.function.Consumer)
+     */
+    public void cleanup() {
+<span class="fc" id="L125">        layerManager.cleanup();</span>
+<span class="fc" id="L126">    }</span>
+
+    @Override
+    public final void clear() {
+<span class="fc" id="L130">        layerManager.clear();</span>
+<span class="fc" id="L131">    }</span>
+
+    @Override
+    public boolean contains(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L135">        return contains(createFilter(bitMapExtractor));</span>
+    }
+
+    /**
+     * Returns {@code true} if this any layer contained by this filter contains the
+     * specified filter.
+     * &lt;p&gt;
+     * If the {@code other} is a BloomFilterExtractor each filter within the
+     * {@code other} is checked to see if it exits within this filter.
+     * &lt;/p&gt;
+     *
+     * @param other the other Bloom filter
+     * @return {@code true} if this filter contains the other filter.
+     */
+    @Override
+    public boolean contains(final BloomFilter other) {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        return other instanceof BloomFilterExtractor ? contains((BloomFilterExtractor) other)</span>
+<span class="fc bfc" id="L152" title="All 4 branches covered.">                : !processBloomFilters(x -&gt; !x.contains(other));</span>
+    }
+
+    /**
+     * Returns {@code true} if each filter within the {@code bloomFilterExtractor} exits within
+     * this filter.
+     *
+     * @param bloomFilterExtractor the BloomFilterExtractor that provides the filters to check
+     *                 for.
+     * @return {@code true} if this filter contains all of the filters contained in
+     *         the {@code bloomFilterExtractor}.
+     */
+    public boolean contains(final BloomFilterExtractor bloomFilterExtractor) {
+<span class="fc" id="L165">        final boolean[] result = { true };</span>
+        // return false when we have found a match to short circuit checks
+<span class="fc" id="L167">        return bloomFilterExtractor.processBloomFilters(x -&gt; {</span>
+<span class="fc" id="L168">            result[0] &amp;= contains(x);</span>
+<span class="fc" id="L169">            return result[0];</span>
+        });
+    }
+
+    @Override
+    public boolean contains(final Hasher hasher) {
+<span class="fc" id="L175">        return contains(createFilter(hasher));</span>
+    }
+
+    @Override
+    public boolean contains(final IndexExtractor indexExtractor) {
+<span class="fc" id="L180">        return contains(createFilter(indexExtractor));</span>
+    }
+
+    @Override
+    public LayeredBloomFilter&lt;T&gt; copy() {
+<span class="fc" id="L185">        return new LayeredBloomFilter&lt;&gt;(shape, layerManager.copy());</span>
+    }
+
+    /**
+     * Creates a Bloom filter from a BitMapExtractor.
+     *
+     * @param bitMapExtractor the BitMapExtractor to create the filter from.
+     * @return the BloomFilter.
+     */
+    private BloomFilter createFilter(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L195">        final SimpleBloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L196">        bf.merge(bitMapExtractor);</span>
+<span class="fc" id="L197">        return bf;</span>
+    }
+
+    /**
+     * Creates a Bloom filter from a Hasher.
+     *
+     * @param hasher the hasher to create the filter from.
+     * @return the BloomFilter.
+     */
+    private BloomFilter createFilter(final Hasher hasher) {
+<span class="fc" id="L207">        final SimpleBloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L208">        bf.merge(hasher);</span>
+<span class="fc" id="L209">        return bf;</span>
+    }
+
+    /**
+     * Creates a Bloom filter from an IndexExtractor.
+     *
+     * @param indexExtractor the IndexExtractor to create the filter from.
+     * @return the BloomFilter.
+     */
+    private BloomFilter createFilter(final IndexExtractor indexExtractor) {
+<span class="fc" id="L219">        final SimpleBloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L220">        bf.merge(indexExtractor);</span>
+<span class="fc" id="L221">        return bf;</span>
+    }
+
+    @Override
+    public int estimateN() {
+<span class="fc" id="L226">        return flatten().estimateN();</span>
+    }
+
+    @Override
+    public int estimateUnion(final BloomFilter other) {
+<span class="fc" id="L231">        Objects.requireNonNull(other, &quot;other&quot;);</span>
+<span class="fc" id="L232">        final BloomFilter cpy = this.flatten();</span>
+<span class="fc" id="L233">        cpy.merge(other);</span>
+<span class="fc" id="L234">        return cpy.estimateN();</span>
+    }
+
+    /**
+     * Finds the layers in which the BitMapExtractor is found.
+     *
+     * @param bitMapExtractor the BitMapExtractor to search for.
+     * @return an array of layer indices in which the Bloom filter is found.
+     */
+    public int[] find(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L244">        final SimpleBloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L245">        bf.merge(bitMapExtractor);</span>
+<span class="fc" id="L246">        return find(bf);</span>
+    }
+
+    /**
+     * Finds the layers in which the Bloom filter is found.
+     *
+     * @param bf the Bloom filter to search for.
+     * @return an array of layer indices in which the Bloom filter is found.
+     */
+    public int[] find(final BloomFilter bf) {
+<span class="fc" id="L256">        final Finder finder = new Finder(bf);</span>
+<span class="fc" id="L257">        processBloomFilters(finder);</span>
+<span class="fc" id="L258">        return finder.getResult();</span>
+    }
+
+    /**
+     * Finds the layers in which the Hasher is found.
+     *
+     * @param hasher the Hasher to search for.
+     * @return an array of layer indices in which the Bloom filter is found.
+     */
+    public int[] find(final Hasher hasher) {
+<span class="fc" id="L268">        final SimpleBloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L269">        bf.merge(hasher);</span>
+<span class="fc" id="L270">        return find(bf);</span>
+    }
+
+    /**
+     * Finds the layers in which the IndexExtractor is found.
+     *
+     * @param indexExtractor the Index extractor to search for.
+     * @return an array of layer indices in which the Bloom filter is found.
+     */
+    public int[] find(final IndexExtractor indexExtractor) {
+<span class="fc" id="L280">        final SimpleBloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L281">        bf.merge(indexExtractor);</span>
+<span class="fc" id="L282">        return find(bf);</span>
+    }
+
+    /**
+     * Create a standard (non-layered) Bloom filter by merging all of the layers. If
+     * the filter is empty this method will return an empty Bloom filter.
+     *
+     * @return the merged bloom filter.
+     */
+    @Override
+    public BloomFilter flatten() {
+<span class="fc" id="L293">        final BloomFilter bf = new SimpleBloomFilter(shape);</span>
+<span class="fc" id="L294">        processBloomFilters(bf::merge);</span>
+<span class="fc" id="L295">        return bf;</span>
+    }
+
+    @Override
+    public boolean processBitMaps(final LongPredicate predicate) {
+<span class="fc" id="L300">        return flatten().processBitMaps(predicate);</span>
+    }
+
+    /**
+     * Processes the Bloom filters in depth order with the most recent filters
+     * first. Each filter is passed to the predicate in turn. The function exits on
+     * the first {@code false} returned by the predicate.
+     *
+     * @param bloomFilterPredicate the predicate to execute.
+     * @return {@code true} if all filters passed the predicate, {@code false}
+     *         otherwise.
+     */
+    @Override
+    public final boolean processBloomFilters(final Predicate&lt;BloomFilter&gt; bloomFilterPredicate) {
+<span class="fc" id="L314">        return layerManager.processBloomFilters(bloomFilterPredicate);</span>
+    }
+
+    @Override
+    public boolean processIndices(final IntPredicate predicate) {
+<span class="fc" id="L319">        return processBloomFilters(bf -&gt; bf.processIndices(predicate));</span>
+    }
+
+    /**
+     * Gets the Bloom filter at the specified depth
+     *
+     * @param depth the depth of the filter to return.
+     * @return the Bloom filter at the specified depth.
+     * @throws NoSuchElementException if depth is not in the range [0,getDepth())
+     */
+    public T get(final int depth) {
+<span class="fc" id="L330">        return layerManager.get(depth);</span>
+    }
+
+    /**
+     * Gets the depth of the deepest layer. The minimum value returned by this
+     * method is 1.
+     *
+     * @return the depth of the deepest layer.
+     */
+    public final int getDepth() {
+<span class="fc" id="L340">        return layerManager.getDepth();</span>
+    }
+
+    @Override
+    public final Shape getShape() {
+<span class="fc" id="L345">        return shape;</span>
+    }
+
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L350">        return processBloomFilters(BloomFilter::isEmpty);</span>
+    }
+
+    @Override
+    public boolean merge(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L355">        return layerManager.getTarget().merge(bitMapExtractor);</span>
+    }
+
+    @Override
+    public boolean merge(final BloomFilter bf) {
+<span class="fc" id="L360">        return layerManager.getTarget().merge(bf);</span>
+    }
+
+    @Override
+    public boolean merge(final IndexExtractor indexExtractor) {
+<span class="fc" id="L365">        return layerManager.getTarget().merge(indexExtractor);</span>
+    }
+
+    /**
+     * Forces and advance to the next layer. This method will clean-up the current
+     * layers and generate a new filter layer. In most cases is it unnecessary to
+     * call this method directly.
+     *
+     * @see LayerManager.Builder#setCleanup(java.util.function.Consumer)
+     * @see LayerManager.Builder#setExtendCheck(Predicate)
+     */
+    public void next() {
+<span class="fc" id="L377">        layerManager.next();</span>
+<span class="fc" id="L378">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Crypt.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.digest</a> &gt; <span class="el_source">Crypt.java</span></div><h1>Crypt.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.codec.digest;
+
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+
+/**
+ * GNU libc crypt(3) compatible hash method.
+ * &lt;p&gt;
+ * See {@link #crypt(String, String)} for further details.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is immutable and thread-safe.
+ * &lt;/p&gt;
+ *
+ * @since 1.7
+ */
+public class Crypt {
+
+    /**
+     * Encrypts a password in a crypt(3) compatible way.
+     * &lt;p&gt;
+     * A random salt and the default algorithm (currently SHA-512) are used. See {@link #crypt(String, String)} for
+     * details.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * A salt is generated for you using {@link SecureRandom}.
+     * &lt;/p&gt;
+     *
+     * @param keyBytes
+     *            plaintext password
+     * @return hash value
+     * @throws IllegalArgumentException
+     *             when a {@link java.security.NoSuchAlgorithmException} is caught.
+     */
+    public static String crypt(final byte[] keyBytes) {
+<span class="fc" id="L52">        return crypt(keyBytes, null);</span>
+    }
+
+    /**
+     * Encrypts a password in a crypt(3) compatible way.
+     * &lt;p&gt;
+     * If no salt is provided, a random salt and the default algorithm (currently SHA-512) will be used. See
+     * {@link #crypt(String, String)} for details.
+     * &lt;/p&gt;
+     *
+     * @param keyBytes
+     *            plaintext password
+     * @param salt
+     *            real salt value without prefix or &quot;rounds=&quot;. The salt may be null,
+     *            in which case a salt is generated for you using {@link SecureRandom}.
+     * @return hash value
+     * @throws IllegalArgumentException
+     *             if the salt does not match the allowed pattern
+     * @throws IllegalArgumentException
+     *             when a {@link java.security.NoSuchAlgorithmException} is caught.
+     */
+    public static String crypt(final byte[] keyBytes, final String salt) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (salt == null) {</span>
+<span class="fc" id="L75">            return Sha2Crypt.sha512Crypt(keyBytes);</span>
+        }
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (salt.startsWith(Sha2Crypt.SHA512_PREFIX)) {</span>
+<span class="fc" id="L78">            return Sha2Crypt.sha512Crypt(keyBytes, salt);</span>
+        }
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (salt.startsWith(Sha2Crypt.SHA256_PREFIX)) {</span>
+<span class="fc" id="L81">            return Sha2Crypt.sha256Crypt(keyBytes, salt);</span>
+        }
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (salt.startsWith(Md5Crypt.MD5_PREFIX)) {</span>
+<span class="fc" id="L84">            return Md5Crypt.md5Crypt(keyBytes, salt);</span>
+        }
+<span class="fc" id="L86">        return UnixCrypt.crypt(keyBytes, salt);</span>
+    }
+
+    /**
+     * Calculates the digest using the strongest crypt(3) algorithm.
+     * &lt;p&gt;
+     * A random salt and the default algorithm (currently SHA-512) are used.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * A salt is generated for you using {@link SecureRandom}.
+     * &lt;/p&gt;
+     *
+     * @see #crypt(String, String)
+     * @param key
+     *            plaintext password
+     * @return hash value
+     * @throws IllegalArgumentException
+     *             when a {@link java.security.NoSuchAlgorithmException} is caught.
+     */
+    public static String crypt(final String key) {
+<span class="fc" id="L106">        return crypt(key, null);</span>
+    }
+
+    /**
+     * Encrypts a password in a crypt(3) compatible way.
+     * &lt;p&gt;
+     * The exact algorithm depends on the format of the salt string:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;SHA-512 salts start with {@code $6$} and are up to 16 chars long.
+     * &lt;li&gt;SHA-256 salts start with {@code $5$} and are up to 16 chars long
+     * &lt;li&gt;MD5 salts start with {@code $1$} and are up to 8 chars long
+     * &lt;li&gt;DES, the traditional UnixCrypt algorithm is used with only 2 chars
+     * &lt;li&gt;Only the first 8 chars of the passwords are used in the DES algorithm!
+     * &lt;/ul&gt;
+     * &lt;p&gt;
+     * The magic strings {@code &quot;$apr1$&quot;} and {@code &quot;$2a$&quot;} are not recognized by this method as its output should be
+     * identical with that of the libc implementation.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The rest of the salt string is drawn from the set {@code [a-zA-Z0-9./]} and is cut at the maximum length of if a
+     * {@code &quot;$&quot;} sign is encountered. It is therefore valid to enter a complete hash value as salt to e.g. verify a
+     * password with:
+     * &lt;/p&gt;
+     * &lt;pre&gt;
+     * storedPwd.equals(crypt(enteredPwd, storedPwd))
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * The resulting string starts with the marker string ({@code $n$}), where n is the same as the input salt.
+     * The salt is then appended, followed by a {@code &quot;$&quot;} sign.
+     * This is followed by the actual hash value.
+     * For DES the string only contains the salt and actual hash.
+     * The total length is dependent on the algorithm used:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;SHA-512: 106 chars
+     * &lt;li&gt;SHA-256: 63 chars
+     * &lt;li&gt;MD5: 34 chars
+     * &lt;li&gt;DES: 13 chars
+     * &lt;/ul&gt;
+     * &lt;p&gt;
+     * Example:
+     * &lt;/p&gt;
+     * &lt;pre&gt;
+     *      crypt(&quot;secret&quot;, &quot;$1$xxxx&quot;) =&amp;gt; &quot;$1$xxxx$aMkevjfEIpa35Bh3G4bAc.&quot;
+     *      crypt(&quot;secret&quot;, &quot;xx&quot;) =&amp;gt; &quot;xxWAum7tHdIUw&quot;
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * This method comes in a variation that accepts a byte[] array to support input strings that are not encoded in
+     * UTF-8 but e.g. in ISO-8859-1 where equal characters result in different byte values.
+     * &lt;/p&gt;
+     *
+     * @see &quot;The man page of the libc crypt (3) function.&quot;
+     * @param key
+     *            plaintext password as entered by the used
+     * @param salt
+     *            real salt value without prefix or &quot;rounds=&quot;. The salt may be null, in which case a
+     *            salt is generated for you using {@link SecureRandom}
+     * @return hash value, i.e. encrypted password including the salt string
+     * @throws IllegalArgumentException
+     *             if the salt does not match the allowed pattern
+     * @throws IllegalArgumentException
+     *             when a {@link java.security.NoSuchAlgorithmException} is caught. *
+     */
+    public static String crypt(final String key, final String salt) {
+<span class="fc" id="L171">        return crypt(key.getBytes(StandardCharsets.UTF_8), salt);</span>
+    }
+
+    /**
+     * TODO Make private in 2.0.
+     *
+     * @deprecated TODO Make private in 2.0.
+     */
+    @Deprecated
+<span class="fc" id="L180">    public Crypt() {</span>
+        // empty
+<span class="fc" id="L182">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

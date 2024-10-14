@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationDynaBean.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.beanutils</a> &gt; <span class="el_source">ConfigurationDynaBean.java</span></div><h1>ConfigurationDynaBean.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2.beanutils;
+
+import java.lang.reflect.Array;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+
+import org.apache.commons.beanutils.DynaBean;
+import org.apache.commons.beanutils.DynaClass;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.configuration2.ConfigurationMap;
+import org.apache.commons.configuration2.SubsetConfiguration;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+/**
+ * The {@code ConfigurationDynaBean} dynamically reads and writes configurations properties from a wrapped
+ * configuration-collection {@link org.apache.commons.configuration2.Configuration} instance. It also implements a
+ * {@link java.util.Map} interface so that it can be used in JSP 2.0 Expression Language expressions.
+ *
+ * &lt;p&gt;
+ * The {@code ConfigurationDynaBean} maps nested and mapped properties to the appropriate {@code Configuration} subset
+ * using the {@link org.apache.commons.configuration2.Configuration#subset} method. Similarly, indexed properties
+ * reference lists of configuration properties using the
+ * {@link org.apache.commons.configuration2.Configuration#getList(String)} method. Setting an indexed property is
+ * supported, too.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Note: Some of the methods expect that a dot (&amp;quot;.&amp;quot;) is used as property delimiter for the wrapped
+ * configuration. This is true for most of the default configurations. Hierarchical configurations, for which a specific
+ * expression engine is set, may cause problems.
+ * &lt;/p&gt;
+ *
+ * @since 1.0-rc1
+ */
+public class ConfigurationDynaBean extends ConfigurationMap implements DynaBean {
+
+    /** Constant for the property delimiter. */
+    private static final String PROPERTY_DELIMITER = &quot;.&quot;;
+
+    /** The logger. */
+<span class="fc" id="L60">    private static final Log LOG = LogFactory.getLog(ConfigurationDynaBean.class);</span>
+
+    /**
+     * Constructs a new instance of {@code ConfigurationDynaBean} and sets the configuration this bean is associated with.
+     *
+     * @param configuration the configuration
+     */
+    public ConfigurationDynaBean(final Configuration configuration) {
+<span class="fc" id="L68">        super(configuration);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L70">            LOG.trace(&quot;ConfigurationDynaBean(&quot; + configuration + &quot;)&quot;);</span>
+        }
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Checks whether the given name references an indexed property. This implementation tests for properties of type list or
+     * array. If the property does not exist, an exception is thrown.
+     *
+     * @param name the name of the property to check
+     * @return a flag whether this is an indexed property
+     * @throws IllegalArgumentException if the property does not exist
+     */
+    private boolean checkIndexedProperty(final String name) {
+<span class="fc" id="L83">        final Object property = getConfiguration().getProperty(name);</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (property == null) {</span>
+<span class="fc" id="L86">            throw new IllegalArgumentException(&quot;Property '&quot; + name + &quot;' does not exist.&quot;);</span>
+        }
+
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        return property instanceof List || property.getClass().isArray();</span>
+    }
+
+    @Override
+    public boolean contains(final String name, final String key) {
+<span class="fc" id="L94">        final Configuration subset = getConfiguration().subset(name);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if (subset == null) {</span>
+<span class="nc" id="L96">            throw new IllegalArgumentException(&quot;Mapped property '&quot; + name + &quot;' does not exist.&quot;);</span>
+        }
+
+<span class="fc" id="L99">        return subset.containsKey(key);</span>
+    }
+
+    @Override
+    public Object get(final String name) {
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L105">            LOG.trace(&quot;get(&quot; + name + &quot;)&quot;);</span>
+        }
+
+        // get configuration property
+<span class="fc" id="L109">        Object result = getConfiguration().getProperty(name);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (result == null) {</span>
+            // otherwise attempt to create bean from configuration subset
+<span class="fc" id="L112">            final Configuration subset = new SubsetConfiguration(getConfiguration(), name, PROPERTY_DELIMITER);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (!subset.isEmpty()) {</span>
+<span class="fc" id="L114">                result = new ConfigurationDynaBean(subset);</span>
+            }
+        }
+
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        if (LOG.isDebugEnabled()) {</span>
+<span class="nc" id="L119">            LOG.debug(name + &quot;=[&quot; + result + &quot;]&quot;);</span>
+        }
+
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (result == null) {</span>
+<span class="fc" id="L123">            throw new IllegalArgumentException(&quot;Property '&quot; + name + &quot;' does not exist.&quot;);</span>
+        }
+<span class="fc" id="L125">        return result;</span>
+    }
+
+    @Override
+    public Object get(final String name, final int index) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (!checkIndexedProperty(name)) {</span>
+<span class="fc" id="L131">            throw new IllegalArgumentException(&quot;Property '&quot; + name + &quot;' is not indexed.&quot;);</span>
+        }
+
+<span class="fc" id="L134">        final List&lt;Object&gt; list = getConfiguration().getList(name);</span>
+<span class="fc" id="L135">        return list.get(index);</span>
+    }
+
+    @Override
+    public Object get(final String name, final String key) {
+<span class="fc" id="L140">        final Configuration subset = getConfiguration().subset(name);</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (subset == null) {</span>
+<span class="nc" id="L142">            throw new IllegalArgumentException(&quot;Mapped property '&quot; + name + &quot;' does not exist.&quot;);</span>
+        }
+
+<span class="fc" id="L145">        return subset.getProperty(key);</span>
+    }
+
+    @Override
+    public DynaClass getDynaClass() {
+<span class="fc" id="L150">        return new ConfigurationDynaClass(getConfiguration());</span>
+    }
+
+    @Override
+    public void remove(final String name, final String key) {
+<span class="fc" id="L155">        final Configuration subset = new SubsetConfiguration(getConfiguration(), name, PROPERTY_DELIMITER);</span>
+<span class="fc" id="L156">        subset.setProperty(key, null);</span>
+<span class="fc" id="L157">    }</span>
+
+    @Override
+    public void set(final String name, final int index, final Object value) {
+<span class="pc bpc" id="L161" title="1 of 4 branches missed.">        if (!checkIndexedProperty(name) &amp;&amp; index &gt; 0) {</span>
+<span class="fc" id="L162">            throw new IllegalArgumentException(&quot;Property '&quot; + name + &quot;' is not indexed.&quot;);</span>
+        }
+
+<span class="fc" id="L165">        final Object property = getConfiguration().getProperty(name);</span>
+
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (property instanceof List) {</span>
+            // This is safe because multiple values of a configuration property
+            // are always stored as lists of type Object.
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L171">            final List&lt;Object&gt; list = (List&lt;Object&gt;) property;</span>
+<span class="fc" id="L172">            list.set(index, value);</span>
+<span class="fc" id="L173">            getConfiguration().setProperty(name, list);</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">        } else if (property.getClass().isArray()) {</span>
+<span class="fc" id="L175">            Array.set(property, index, value);</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        } else if (index == 0) {</span>
+<span class="nc" id="L177">            getConfiguration().setProperty(name, value);</span>
+        }
+<span class="fc" id="L179">    }</span>
+
+    @Override
+    public void set(final String name, final Object value) {
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (LOG.isTraceEnabled()) {</span>
+<span class="nc" id="L184">            LOG.trace(&quot;set(&quot; + name + &quot;,&quot; + value + &quot;)&quot;);</span>
+        }
+<span class="fc" id="L186">        Objects.requireNonNull(value, &quot;value&quot;);</span>
+
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (value instanceof Collection) {</span>
+<span class="fc" id="L189">            final Collection&lt;?&gt; collection = (Collection&lt;?&gt;) value;</span>
+<span class="fc" id="L190">            collection.forEach(v -&gt; getConfiguration().addProperty(name, v));</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        } else if (value.getClass().isArray()) {</span>
+<span class="fc" id="L192">            final int length = Array.getLength(value);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            for (int i = 0; i &lt; length; i++) {</span>
+<span class="fc" id="L194">                getConfiguration().addProperty(name, Array.get(value, i));</span>
+            }
+<span class="fc" id="L196">        } else {</span>
+<span class="fc" id="L197">            getConfiguration().setProperty(name, value);</span>
+        }
+<span class="fc" id="L199">    }</span>
+
+    @Override
+    public void set(final String name, final String key, final Object value) {
+<span class="fc" id="L203">        getConfiguration().setProperty(name + &quot;.&quot; + key, value);</span>
+<span class="fc" id="L204">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

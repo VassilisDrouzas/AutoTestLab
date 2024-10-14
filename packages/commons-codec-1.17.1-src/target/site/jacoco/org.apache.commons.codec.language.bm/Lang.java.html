@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Lang.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.language.bm</a> &gt; <span class="el_source">Lang.java</span></div><h1>Lang.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.language.bm;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+import org.apache.commons.codec.Resources;
+
+/**
+ * Language guessing utility.
+ * &lt;p&gt;
+ * This class encapsulates rules used to guess the possible languages that a word originates from. This is
+ * done by reference to a whole series of rules distributed in resource files.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Instances of this class are typically managed through the static factory method instance().
+ * Unless you are developing your own language guessing rules, you will not need to interact with this class directly.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is intended to be immutable and thread-safe.
+ * &lt;/p&gt;
+ * &lt;h2&gt;Lang resources&lt;/h2&gt;
+ * &lt;p&gt;
+ * Language guessing rules are typically loaded from resource files. These are UTF-8 encoded text files.
+ * They are systematically named following the pattern:
+ * &lt;/p&gt;
+ * &lt;blockquote&gt;org/apache/commons/codec/language/bm/lang.txt&lt;/blockquote&gt;
+ * &lt;p&gt;
+ * The format of these resources is the following:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Rules:&lt;/b&gt; whitespace separated strings.
+ * There should be 3 columns to each row, and these will be interpreted as:
+ * &lt;ol&gt;
+ * &lt;li&gt;pattern: a regular expression.&lt;/li&gt;
+ * &lt;li&gt;languages: a '+'-separated list of languages.&lt;/li&gt;
+ * &lt;li&gt;acceptOnMatch: 'true' or 'false' indicating if a match rules in or rules out the language.&lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;End-of-line comments:&lt;/b&gt; Any occurrence of '//' will cause all text following on that line to be
+ * discarded as a comment.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Multi-line comments:&lt;/b&gt; Any line starting with '/*' will start multi-line commenting mode.
+ * This will skip all content until a line ending in '*' and '/' is found.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Blank lines:&lt;/b&gt; All blank lines will be skipped.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Port of lang.php
+ * &lt;/p&gt;
+ *
+ * @since 1.6
+ */
+public class Lang {
+    // Implementation note: This class is divided into two sections. The first part is a static factory interface that
+    // exposes the LANGUAGE_RULES_RN resource as a Lang instance. The second part is the Lang instance methods that
+    // encapsulate a particular language-guessing rule table and the language guessing itself.
+    //
+    // It may make sense in the future to expose the private constructor to allow power users to build custom language-
+    // guessing rules, perhaps by marking it protected and allowing sub-classing. However, the vast majority of users
+    // should be strongly encouraged to use the static factory {@code instance} method to get their Lang instances.
+
+    private static final class LangRule {
+        private final boolean acceptOnMatch;
+        private final Set&lt;String&gt; languages;
+        private final Pattern pattern;
+
+<span class="fc" id="L91">        private LangRule(final Pattern pattern, final Set&lt;String&gt; languages, final boolean acceptOnMatch) {</span>
+<span class="fc" id="L92">            this.pattern = pattern;</span>
+<span class="fc" id="L93">            this.languages = languages;</span>
+<span class="fc" id="L94">            this.acceptOnMatch = acceptOnMatch;</span>
+<span class="fc" id="L95">        }</span>
+
+        public boolean matches(final String txt) {
+<span class="fc" id="L98">            return this.pattern.matcher(txt).find();</span>
+        }
+    }
+
+<span class="fc" id="L102">    private static final Map&lt;NameType, Lang&gt; LANGS = new EnumMap&lt;&gt;(NameType.class);</span>
+
+    private static final String LANGUAGE_RULES_RN = &quot;org/apache/commons/codec/language/bm/%s_lang.txt&quot;;
+
+    static {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (final NameType s : NameType.values()) {</span>
+<span class="fc" id="L108">            LANGS.put(s, loadFromResource(String.format(LANGUAGE_RULES_RN, s.getName()), Languages.getInstance(s)));</span>
+        }
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Gets a Lang instance for one of the supported NameTypes.
+     *
+     * @param nameType
+     *            the NameType to look up
+     * @return a Lang encapsulating the language guessing rules for that name type
+     */
+    public static Lang instance(final NameType nameType) {
+<span class="fc" id="L120">        return LANGS.get(nameType);</span>
+    }
+
+    /**
+     * Loads language rules from a resource.
+     * &lt;p&gt;
+     * In normal use, you will obtain instances of Lang through the {@link #instance(NameType)} method.
+     * You will only need to call this yourself if you are developing custom language mapping rules.
+     * &lt;/p&gt;
+     *
+     * @param languageRulesResourceName
+     *            the fully-qualified resource name to load
+     * @param languages
+     *            the languages that these rules will support
+     * @return a Lang encapsulating the loaded language-guessing rules.
+     */
+    public static Lang loadFromResource(final String languageRulesResourceName, final Languages languages) {
+<span class="fc" id="L137">        final List&lt;LangRule&gt; rules = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L138">        try (final Scanner scanner = new Scanner(Resources.getInputStream(languageRulesResourceName),</span>
+                ResourceConstants.ENCODING)) {
+<span class="fc" id="L140">            boolean inExtendedComment = false;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            while (scanner.hasNextLine()) {</span>
+<span class="fc" id="L142">                final String rawLine = scanner.nextLine();</span>
+<span class="fc" id="L143">                String line = rawLine;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (inExtendedComment) {</span>
+                    // check for closing comment marker, otherwise discard doc comment line
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                    if (line.endsWith(ResourceConstants.EXT_CMT_END)) {</span>
+<span class="fc" id="L147">                        inExtendedComment = false;</span>
+                    }
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                } else if (line.startsWith(ResourceConstants.EXT_CMT_START)) {</span>
+<span class="fc" id="L150">                    inExtendedComment = true;</span>
+                } else {
+                    // discard comments
+<span class="fc" id="L153">                    final int cmtI = line.indexOf(ResourceConstants.CMT);</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                    if (cmtI &gt;= 0) {</span>
+<span class="fc" id="L155">                        line = line.substring(0, cmtI);</span>
+                    }
+
+                    // trim leading-trailing whitespace
+<span class="fc" id="L159">                    line = line.trim();</span>
+
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                    if (line.isEmpty()) {</span>
+<span class="fc" id="L162">                        continue; // empty lines can be safely skipped</span>
+                    }
+
+                    // split it up
+<span class="fc" id="L166">                    final String[] parts = line.split(&quot;\\s+&quot;);</span>
+
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                    if (parts.length != 3) {</span>
+<span class="nc" id="L169">                        throw new IllegalArgumentException(&quot;Malformed line '&quot; + rawLine +</span>
+                                &quot;' in language resource '&quot; + languageRulesResourceName + &quot;'&quot;);
+                    }
+
+<span class="fc" id="L173">                    final Pattern pattern = Pattern.compile(parts[0]);</span>
+<span class="fc" id="L174">                    final String[] langs = parts[1].split(&quot;\\+&quot;);</span>
+<span class="fc" id="L175">                    final boolean accept = parts[2].equals(&quot;true&quot;);</span>
+
+<span class="fc" id="L177">                    rules.add(new LangRule(pattern, new HashSet&lt;&gt;(Arrays.asList(langs)), accept));</span>
+                }
+<span class="fc" id="L179">            }</span>
+        }
+<span class="fc" id="L181">        return new Lang(rules, languages);</span>
+    }
+
+    private final Languages languages;
+
+    private final List&lt;LangRule&gt; rules;
+
+<span class="fc" id="L188">    private Lang(final List&lt;LangRule&gt; rules, final Languages languages) {</span>
+<span class="fc" id="L189">        this.rules = Collections.unmodifiableList(rules);</span>
+<span class="fc" id="L190">        this.languages = languages;</span>
+<span class="fc" id="L191">    }</span>
+
+    /**
+     * Guesses the language of a word.
+     *
+     * @param text
+     *            the word
+     * @return the language that the word originates from or {@link Languages#ANY} if there was no unique match
+     */
+    public String guessLanguage(final String text) {
+<span class="nc" id="L201">        final Languages.LanguageSet ls = guessLanguages(text);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        return ls.isSingleton() ? ls.getAny() : Languages.ANY;</span>
+    }
+
+    /**
+     * Guesses the languages of a word.
+     *
+     * @param input
+     *            the word
+     * @return a Set of Strings of language names that are potential matches for the input word
+     */
+    public Languages.LanguageSet guessLanguages(final String input) {
+<span class="fc" id="L213">        final String text = input.toLowerCase(Locale.ENGLISH);</span>
+<span class="fc" id="L214">        final Set&lt;String&gt; langs = new HashSet&lt;&gt;(this.languages.getLanguages());</span>
+<span class="fc" id="L215">        rules.forEach(rule -&gt; {</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">            if (rule.matches(text)) {</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                if (rule.acceptOnMatch) {</span>
+<span class="fc" id="L218">                    langs.retainAll(rule.languages);</span>
+                } else {
+<span class="fc" id="L220">                    langs.removeAll(rule.languages);</span>
+                }
+            }
+<span class="fc" id="L223">        });</span>
+<span class="fc" id="L224">        final Languages.LanguageSet ls = Languages.LanguageSet.from(langs);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        return ls.equals(Languages.NO_LANGUAGES) ? Languages.ANY_LANGUAGE : ls;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

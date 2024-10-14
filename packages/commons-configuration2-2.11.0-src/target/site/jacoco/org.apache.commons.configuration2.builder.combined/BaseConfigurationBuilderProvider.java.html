@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseConfigurationBuilderProvider.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder.combined</a> &gt; <span class="el_source">BaseConfigurationBuilderProvider.java</span></div><h1>BaseConfigurationBuilderProvider.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder.combined;
+
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
+
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.configuration2.ConfigurationUtils;
+import org.apache.commons.configuration2.builder.BasicConfigurationBuilder;
+import org.apache.commons.configuration2.builder.BuilderParameters;
+import org.apache.commons.configuration2.builder.ConfigurationBuilder;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+
+/**
+ * &lt;p&gt;
+ * A fully-functional, reflection-based implementation of the {@code ConfigurationBuilderProvider} interface which can
+ * deal with the default tags defining configuration sources.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this class is initialized with the names of the {@code ConfigurationBuilder} class used by this
+ * provider and the concrete {@code Configuration} class. The {@code ConfigurationBuilder} class must be derived from
+ * {@link BasicConfigurationBuilder}. When asked for the builder object, an instance of the builder class is created and
+ * initialized from the bean declaration associated with the current configuration source.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * {@code ConfigurationBuilder} objects are configured using parameter objects. When declaring configuration sources in
+ * XML it should not be necessary to define the single parameter objects. Rather, simple and complex properties are set
+ * in the typical way of a bean declaration (i.e. as attributes of the current XML element or as child elements). This
+ * class creates all supported parameter objects (whose names also must be provided at construction time) and takes care
+ * that their properties are initialized according to the current bean declaration.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The use of reflection to create builder instances allows a generic implementation supporting many concrete builder
+ * classes. Another reason for this approach is that builder classes are only loaded if actually needed. Some
+ * specialized {@code Configuration} implementations require specific external dependencies which should not be
+ * mandatory for the use of {@code CombinedConfigurationBuilder}. Because such classes are lazily loaded, an application
+ * only has to include the dependencies it actually uses.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class BaseConfigurationBuilderProvider implements ConfigurationBuilderProvider {
+    /** The types of the constructor parameters for a basic builder. */
+<span class="fc" id="L62">    private static final Class&lt;?&gt;[] CTOR_PARAM_TYPES = {Class.class, Map.class, Boolean.TYPE};</span>
+
+    /**
+     * Creates an instance of a parameter class using reflection.
+     *
+     * @param paramcls the parameter class
+     * @return the newly created instance
+     * @throws Exception if an error occurs
+     */
+    private static BuilderParameters createParameterObject(final String paramcls) throws ReflectiveOperationException {
+<span class="fc" id="L72">        return (BuilderParameters) ConfigurationUtils.loadClass(paramcls).getConstructor().newInstance();</span>
+    }
+
+    /**
+     * Creates a new, unmodifiable collection for the parameter classes.
+     *
+     * @param paramCls the collection with parameter classes passed to the constructor
+     * @return the collection to be stored
+     */
+    private static Collection&lt;String&gt; initParameterClasses(final Collection&lt;String&gt; paramCls) {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (paramCls == null) {</span>
+<span class="fc" id="L83">            return Collections.emptySet();</span>
+        }
+<span class="fc" id="L85">        return Collections.unmodifiableCollection(new ArrayList&lt;&gt;(paramCls));</span>
+    }
+
+    /** The name of the builder class. */
+    private final String builderClass;
+
+    /** The name of a builder class with reloading support. */
+    private final String reloadingBuilderClass;
+
+    /** Stores the name of the configuration class to be created. */
+    private final String configurationClass;
+
+    /** A collection with the names of parameter classes. */
+    private final Collection&lt;String&gt; parameterClasses;
+
+    /**
+     * Creates a new instance of {@code BaseConfigurationBuilderProvider} and initializes all its properties.
+     *
+     * @param bldrCls the name of the builder class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param reloadBldrCls the name of a builder class to be used if reloading support is required (&lt;b&gt;null&lt;/b&gt; if
+     *        reloading is not supported)
+     * @param configCls the name of the configuration class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param paramCls a collection with the names of parameters classes
+     * @throws IllegalArgumentException if a required parameter is missing
+     */
+<span class="fc" id="L110">    public BaseConfigurationBuilderProvider(final String bldrCls, final String reloadBldrCls, final String configCls, final Collection&lt;String&gt; paramCls) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (bldrCls == null) {</span>
+<span class="fc" id="L112">            throw new IllegalArgumentException(&quot;Builder class must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (configCls == null) {</span>
+<span class="fc" id="L115">            throw new IllegalArgumentException(&quot;Configuration class must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L118">        builderClass = bldrCls;</span>
+<span class="fc" id="L119">        reloadingBuilderClass = reloadBldrCls;</span>
+<span class="fc" id="L120">        configurationClass = configCls;</span>
+<span class="fc" id="L121">        parameterClasses = initParameterClasses(paramCls);</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Configures a newly created builder instance with its initialization parameters. This method is called after a new
+     * instance was created using reflection. This implementation passes the parameter objects to the builder's
+     * {@code configure()} method.
+     *
+     * @param builder the builder to be initialized
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @param params the collection with initialization parameter objects
+     * @throws Exception if an error occurs
+     */
+    protected void configureBuilder(final BasicConfigurationBuilder&lt;? extends Configuration&gt; builder, final ConfigurationDeclaration decl,
+        final Collection&lt;BuilderParameters&gt; params) throws Exception {
+<span class="fc" id="L136">        builder.configure(params.toArray(new BuilderParameters[params.size()]));</span>
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * Creates a new, uninitialized instance of the builder class managed by this provider. This implementation determines
+     * the builder class to be used by delegating to {@code determineBuilderClass()}. It then calls the constructor
+     * expecting the configuration class, the map with properties, and the&lt;em&gt;allowFailOnInit&lt;/em&gt; flag.
+     *
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @param params initialization parameters for the new builder object
+     * @return the newly created builder instance
+     * @throws Exception if an error occurs
+     */
+    protected BasicConfigurationBuilder&lt;? extends Configuration&gt; createBuilder(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params)
+        throws Exception {
+<span class="fc" id="L151">        final Class&lt;?&gt; bldCls = ConfigurationUtils.loadClass(determineBuilderClass(decl));</span>
+<span class="fc" id="L152">        final Class&lt;?&gt; configCls = ConfigurationUtils.loadClass(determineConfigurationClass(decl, params));</span>
+<span class="fc" id="L153">        final Constructor&lt;?&gt; ctor = bldCls.getConstructor(CTOR_PARAM_TYPES);</span>
+        // ? extends Configuration is the minimum constraint
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L156">        final BasicConfigurationBuilder&lt;? extends Configuration&gt; builder = (BasicConfigurationBuilder&lt;? extends Configuration&gt;) ctor.newInstance(configCls,</span>
+<span class="fc" id="L157">            null, isAllowFailOnInit(decl));</span>
+<span class="fc" id="L158">        return builder;</span>
+    }
+
+    /**
+     * Creates a collection of parameter objects to be used for configuring the builder. This method creates instances of
+     * the parameter classes passed to the constructor.
+     *
+     * @return a collection with parameter objects for the builder
+     * @throws Exception if an error occurs while creating parameter objects via reflection
+     */
+    protected Collection&lt;BuilderParameters&gt; createParameterObjects() throws Exception {
+<span class="fc" id="L169">        final Collection&lt;BuilderParameters&gt; params = new ArrayList&lt;&gt;(getParameterClasses().size());</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (final String paramcls : getParameterClasses()) {</span>
+<span class="fc" id="L171">            params.add(createParameterObject(paramcls));</span>
+<span class="fc" id="L172">        }</span>
+<span class="fc" id="L173">        return params;</span>
+    }
+
+    /**
+     * Determines the name of the class to be used for a new builder instance. This implementation selects between the
+     * normal and the reloading builder class, based on the passed in {@code ConfigurationDeclaration}. If a reloading
+     * builder is desired, but this provider has no reloading support, an exception is thrown.
+     *
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @return the name of the builder class
+     * @throws ConfigurationException if the builder class cannot be determined
+     */
+    protected String determineBuilderClass(final ConfigurationDeclaration decl) throws ConfigurationException {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (decl.isReload()) {</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (getReloadingBuilderClass() == null) {</span>
+<span class="fc" id="L188">                throw new ConfigurationException(&quot;No support for reloading for builder class &quot; + getBuilderClass());</span>
+            }
+<span class="fc" id="L190">            return getReloadingBuilderClass();</span>
+        }
+<span class="fc" id="L192">        return getBuilderClass();</span>
+    }
+
+    /**
+     * Determines the name of the configuration class produced by the builder. This method is called when obtaining the
+     * arguments for invoking the constructor of the builder class. This implementation just returns the pre-configured
+     * configuration class name. Derived classes may determine this class name dynamically based on the passed in
+     * parameters.
+     *
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @param params the collection with parameter objects
+     * @return the name of the builder's result configuration class
+     * @throws ConfigurationException if an error occurs
+     */
+    protected String determineConfigurationClass(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params)
+        throws ConfigurationException {
+<span class="fc" id="L208">        return getConfigurationClass();</span>
+    }
+
+    /**
+     * Gets the name of the class of the builder created by this provider.
+     *
+     * @return the builder class
+     */
+    public String getBuilderClass() {
+<span class="fc" id="L217">        return builderClass;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation delegates to some protected methods to create a new builder instance using
+     * reflection and to configure it with parameter values defined by the passed in {@code BeanDeclaration}.
+     */
+    @Override
+    public ConfigurationBuilder&lt;? extends Configuration&gt; getConfigurationBuilder(final ConfigurationDeclaration decl) throws ConfigurationException {
+        try {
+<span class="fc" id="L227">            final Collection&lt;BuilderParameters&gt; params = createParameterObjects();</span>
+<span class="fc" id="L228">            initializeParameterObjects(decl, params);</span>
+<span class="fc" id="L229">            final BasicConfigurationBuilder&lt;? extends Configuration&gt; builder = createBuilder(decl, params);</span>
+<span class="fc" id="L230">            configureBuilder(builder, decl, params);</span>
+<span class="fc" id="L231">            return builder;</span>
+<span class="fc" id="L232">        } catch (final ConfigurationException cex) {</span>
+<span class="fc" id="L233">            throw cex;</span>
+<span class="nc" id="L234">        } catch (final Exception ex) {</span>
+<span class="nc" id="L235">            throw new ConfigurationException(ex);</span>
+        }
+    }
+
+    /**
+     * Gets the name of the configuration class created by the builder produced by this provider.
+     *
+     * @return the configuration class
+     */
+    public String getConfigurationClass() {
+<span class="fc" id="L245">        return configurationClass;</span>
+    }
+
+    /**
+     * Gets an unmodifiable collection with the names of parameter classes supported by this provider.
+     *
+     * @return the parameter classes
+     */
+    public Collection&lt;String&gt; getParameterClasses() {
+<span class="fc" id="L254">        return parameterClasses;</span>
+    }
+
+    /**
+     * Gets the name of the class of the builder created by this provider if the reload flag is set. If this method
+     * returns &lt;b&gt;null&lt;/b&gt;, reloading builders are not supported by this provider.
+     *
+     * @return the reloading builder class
+     */
+    public String getReloadingBuilderClass() {
+<span class="fc" id="L264">        return reloadingBuilderClass;</span>
+    }
+
+    /**
+     * Passes all parameter objects to the parent {@code CombinedConfigurationBuilder} so that properties already defined
+     * for the parent builder can be added. This method is called before the parameter objects are initialized from the
+     * definition configuration. This way properties from the parent builder are inherited, but can be overridden for child
+     * configurations.
+     *
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @param params the collection with (uninitialized) parameter objects
+     */
+    protected void inheritParentBuilderProperties(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params) {
+<span class="fc" id="L277">        params.forEach(p -&gt; decl.getConfigurationBuilder().initChildBuilderParameters(p));</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Initializes the parameter objects with data stored in the current bean declaration. This method is called before the
+     * newly created builder instance is configured with the parameter objects. It maps attributes of the bean declaration
+     * to properties of parameter objects. In addition, it invokes the parent {@code CombinedConfigurationBuilder} so that
+     * the parameters object can inherit properties already defined for this builder.
+     *
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @param params the collection with (uninitialized) parameter objects
+     * @throws Exception if an error occurs
+     */
+    protected void initializeParameterObjects(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params) throws Exception {
+<span class="fc" id="L291">        inheritParentBuilderProperties(decl, params);</span>
+<span class="fc" id="L292">        final MultiWrapDynaBean wrapBean = new MultiWrapDynaBean(params);</span>
+<span class="fc" id="L293">        decl.getConfigurationBuilder().initBean(wrapBean, decl);</span>
+<span class="fc" id="L294">    }</span>
+
+    /**
+     * Determines the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag for the newly created builder based on the given
+     * {@code ConfigurationDeclaration}. Some combinations of flags in the declaration say that a configuration source is
+     * optional, but an empty instance should be created if its creation fail.
+     *
+     * @param decl the current {@code ConfigurationDeclaration}
+     * @return the value of the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag
+     */
+    protected boolean isAllowFailOnInit(final ConfigurationDeclaration decl) {
+<span class="fc bfc" id="L305" title="All 4 branches covered.">        return decl.isOptional() &amp;&amp; decl.isForceCreate();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

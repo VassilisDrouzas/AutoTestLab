@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractFormatCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.time</a> &gt; <span class="el_source">AbstractFormatCache.java</span></div><h1>AbstractFormatCache.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.time;
+
+import java.text.DateFormat;
+import java.text.Format;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.apache.commons.lang3.LocaleUtils;
+
+/**
+ * FormatCache is a cache and factory for {@link Format}s.
+ *
+ * @param &lt;F&gt; The Format type.
+ *
+ * @since 3.0
+ */
+// TODO: Before making public move from getDateTimeInstance(Integer, ...) to int; or some other approach.
+<span class="fc" id="L39">abstract class AbstractFormatCache&lt;F extends Format&gt; {</span>
+
+    /**
+     * Helper class to hold multipart Map keys as arrays.
+     */
+    private static final class ArrayKey {
+
+        private static int computeHashCode(final Object[] keys) {
+<span class="fc" id="L47">            final int prime = 31;</span>
+<span class="fc" id="L48">            int result = 1;</span>
+<span class="fc" id="L49">            result = prime * result + Arrays.hashCode(keys);</span>
+<span class="fc" id="L50">            return result;</span>
+        }
+
+        private final Object[] keys;
+        private final int hashCode;
+
+        /**
+         * Constructs an instance of {@link MultipartKey} to hold the specified objects.
+         *
+         * @param keys the set of objects that make up the key.  Each key may be null.
+         */
+<span class="fc" id="L61">        ArrayKey(final Object... keys) {</span>
+<span class="fc" id="L62">            this.keys = keys;</span>
+<span class="fc" id="L63">            this.hashCode = computeHashCode(keys);</span>
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public boolean equals(final Object obj) {
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            if (this == obj) {</span>
+<span class="nc" id="L69">                return true;</span>
+            }
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if (obj == null) {</span>
+<span class="nc" id="L72">                return false;</span>
+            }
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (getClass() != obj.getClass()) {</span>
+<span class="nc" id="L75">                return false;</span>
+            }
+<span class="fc" id="L77">            final ArrayKey other = (ArrayKey) obj;</span>
+<span class="fc" id="L78">            return Arrays.deepEquals(keys, other.keys);</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="fc" id="L83">            return hashCode;</span>
+        }
+
+    }
+
+    /**
+     * No date or no time.  Used in same parameters as DateFormat.SHORT or DateFormat.LONG
+     */
+    static final int NONE = -1;
+
+<span class="fc" id="L93">    private static final ConcurrentMap&lt;ArrayKey, String&gt; cDateTimeInstanceCache = new ConcurrentHashMap&lt;&gt;(7);</span>
+
+    /**
+     * Gets a date/time format for the specified styles and locale.
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT, null indicates no date in format
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT, null indicates no time in format
+     * @param locale  The non-null locale of the desired format
+     * @return a localized standard date/time format
+     * @throws IllegalArgumentException if the Locale has no date/time pattern defined
+     */
+    // package protected, for access from test code; do not make public or protected
+    static String getPatternForStyle(final Integer dateStyle, final Integer timeStyle, final Locale locale) {
+<span class="fc" id="L106">        final Locale safeLocale = LocaleUtils.toLocale(locale);</span>
+<span class="fc" id="L107">        final ArrayKey key = new ArrayKey(dateStyle, timeStyle, safeLocale);</span>
+<span class="fc" id="L108">        return cDateTimeInstanceCache.computeIfAbsent(key, k -&gt; {</span>
+            try {
+                final DateFormat formatter;
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                if (dateStyle == null) {</span>
+<span class="fc" id="L112">                    formatter = DateFormat.getTimeInstance(timeStyle.intValue(), safeLocale);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                } else if (timeStyle == null) {</span>
+<span class="fc" id="L114">                    formatter = DateFormat.getDateInstance(dateStyle.intValue(), safeLocale);</span>
+                } else {
+<span class="fc" id="L116">                    formatter = DateFormat.getDateTimeInstance(dateStyle.intValue(), timeStyle.intValue(), safeLocale);</span>
+                }
+<span class="fc" id="L118">                return ((SimpleDateFormat) formatter).toPattern();</span>
+<span class="nc" id="L119">            } catch (final ClassCastException ex) {</span>
+<span class="nc" id="L120">                throw new IllegalArgumentException(&quot;No date time pattern for locale: &quot; + safeLocale);</span>
+            }
+        });
+    }
+
+<span class="fc" id="L125">    private final ConcurrentMap&lt;ArrayKey, F&gt; cInstanceCache = new ConcurrentHashMap&lt;&gt;(7);</span>
+
+    /**
+     * Create a format instance using the specified pattern, time zone
+     * and locale.
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible pattern, this will not be null.
+     * @param timeZone  time zone, this will not be null.
+     * @param locale  locale, this will not be null.
+     * @return a pattern based date/time formatter
+     * @throws IllegalArgumentException if pattern is invalid
+     *  or {@code null}
+     */
+    protected abstract F createInstance(String pattern, TimeZone timeZone, Locale locale);
+
+    /**
+     * Gets a date formatter instance using the specified style,
+     * time zone and locale.
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date, null means use default Locale
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     */
+    // package protected, for access from FastDateFormat; do not make public or protected
+    F getDateInstance(final int dateStyle, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L154">        return getDateTimeInstance(Integer.valueOf(dateStyle), null, timeZone, locale);</span>
+    }
+
+    /**
+     * Gets a date/time formatter instance using the specified style,
+     * time zone and locale.
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date, null means use default Locale
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     */
+    // package protected, for access from FastDateFormat; do not make public or protected
+    F getDateTimeInstance(final int dateStyle, final int timeStyle, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L172">        return getDateTimeInstance(Integer.valueOf(dateStyle), Integer.valueOf(timeStyle), timeZone, locale);</span>
+    }
+
+    /**
+     * Gets a date/time formatter instance using the specified style,
+     * time zone and locale.
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT, null indicates no date in format
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT, null indicates no time in format
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date, null means use default Locale
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     */
+    // This must remain private, see LANG-884
+    private F getDateTimeInstance(final Integer dateStyle, final Integer timeStyle, final TimeZone timeZone, Locale locale) {
+<span class="fc" id="L190">        locale = LocaleUtils.toLocale(locale);</span>
+<span class="fc" id="L191">        final String pattern = getPatternForStyle(dateStyle, timeStyle, locale);</span>
+<span class="fc" id="L192">        return getInstance(pattern, timeZone, locale);</span>
+    }
+
+    /**
+     * Gets a formatter instance using the default pattern in the
+     * default time zone and locale.
+     *
+     * @return a date/time formatter
+     */
+    public F getInstance() {
+<span class="fc" id="L202">        return getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, TimeZone.getDefault(), Locale.getDefault());</span>
+    }
+
+    /**
+     * Gets a formatter instance using the specified pattern, time zone
+     * and locale.
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible
+     *  pattern, non-null
+     * @param timeZone  the time zone, null means use the default TimeZone
+     * @param locale  the locale, null means use the default Locale
+     * @return a pattern based date/time formatter
+     * @throws NullPointerException if pattern is {@code null}
+     * @throws IllegalArgumentException if pattern is invalid
+     */
+    public F getInstance(final String pattern, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L218">        Objects.requireNonNull(pattern, &quot;pattern&quot;);</span>
+<span class="fc" id="L219">        final TimeZone actualTimeZone = TimeZones.toTimeZone(timeZone);</span>
+<span class="fc" id="L220">        final Locale actualLocale = LocaleUtils.toLocale(locale);</span>
+<span class="fc" id="L221">        final ArrayKey key = new ArrayKey(pattern, actualTimeZone, actualLocale);</span>
+<span class="fc" id="L222">        return cInstanceCache.computeIfAbsent(key, k -&gt; createInstance(pattern, actualTimeZone, actualLocale));</span>
+    }
+
+    /**
+     * Gets a time formatter instance using the specified style,
+     * time zone and locale.
+     *
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date, null means use default Locale
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     */
+    // package protected, for access from FastDateFormat; do not make public or protected
+    F getTimeInstance(final int timeStyle, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L239">        return getDateTimeInstance(null, Integer.valueOf(timeStyle), timeZone, locale);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

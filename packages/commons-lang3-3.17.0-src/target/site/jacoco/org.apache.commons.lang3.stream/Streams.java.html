@@ -1,0 +1,855 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Streams.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.stream</a> &gt; <span class="el_source">Streams.java</span></div><h1>Streams.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.stream;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.Spliterators.AbstractSpliterator;
+import java.util.function.BiConsumer;
+import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.function.Failable;
+import org.apache.commons.lang3.function.FailableConsumer;
+import org.apache.commons.lang3.function.FailableFunction;
+import org.apache.commons.lang3.function.FailablePredicate;
+
+/**
+ * Provides utility functions, and classes for working with the {@link java.util.stream} package, or more generally, with Java 8 lambdas. More specifically, it
+ * attempts to address the fact that lambdas are supposed not to throw Exceptions, at least not checked Exceptions, AKA instances of {@link Exception}. This
+ * enforces the use of constructs like:
+ *
+ * &lt;pre&gt;{@code
+ * Consumer&lt;java.lang.reflect.Method&gt; consumer = m -&gt; {
+ *     try {
+ *         m.invoke(o, args);
+ *     } catch (Throwable t) {
+ *         throw Failable.rethrow(t);
+ *     }
+ * };
+ * stream.forEach(consumer);
+ * }&lt;/pre&gt;
+ * &lt;p&gt;
+ * Using a {@link FailableStream}, this can be rewritten as follows:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * Streams.failable(stream).forEach(m -&gt; m.invoke(o, args));
+ * }&lt;/pre&gt;
+ * &lt;p&gt;
+ * Obviously, the second version is much more concise and the spirit of Lambda expressions is met better than in the first version.
+ * &lt;/p&gt;
+ *
+ * @see Stream
+ * @see Failable
+ * @since 3.11
+ */
+public class Streams {
+
+    /**
+     * A Collector type for arrays.
+     *
+     * @param &lt;E&gt; The array type.
+     */
+    public static class ArrayCollector&lt;E&gt; implements Collector&lt;E, List&lt;E&gt;, E[]&gt; {
+<span class="fc" id="L85">        private static final Set&lt;Characteristics&gt; characteristics = Collections.emptySet();</span>
+        private final Class&lt;E&gt; elementType;
+
+        /**
+         * Constructs a new instance for the given element type.
+         *
+         * @param elementType The element type.
+         */
+<span class="fc" id="L93">        public ArrayCollector(final Class&lt;E&gt; elementType) {</span>
+<span class="fc" id="L94">            this.elementType = Objects.requireNonNull(elementType, &quot;elementType&quot;);</span>
+<span class="fc" id="L95">        }</span>
+
+        @Override
+        public BiConsumer&lt;List&lt;E&gt;, E&gt; accumulator() {
+<span class="fc" id="L99">            return List::add;</span>
+        }
+
+        @Override
+        public Set&lt;Characteristics&gt; characteristics() {
+<span class="fc" id="L104">            return characteristics;</span>
+        }
+
+        @Override
+        public BinaryOperator&lt;List&lt;E&gt;&gt; combiner() {
+<span class="fc" id="L109">            return (left, right) -&gt; {</span>
+<span class="nc" id="L110">                left.addAll(right);</span>
+<span class="nc" id="L111">                return left;</span>
+            };
+        }
+
+        @Override
+        public Function&lt;List&lt;E&gt;, E[]&gt; finisher() {
+<span class="fc" id="L117">            return list -&gt; list.toArray(ArrayUtils.newInstance(elementType, list.size()));</span>
+        }
+
+        @Override
+        public Supplier&lt;List&lt;E&gt;&gt; supplier() {
+<span class="fc" id="L122">            return ArrayList::new;</span>
+        }
+    }
+
+    /**
+     * Helps implement {@link Streams#of(Enumeration)}.
+     *
+     * @param &lt;T&gt; The element type.
+     */
+    private static final class EnumerationSpliterator&lt;T&gt; extends AbstractSpliterator&lt;T&gt; {
+
+        private final Enumeration&lt;T&gt; enumeration;
+
+        /**
+         * Creates a spliterator reporting the given estimated size and additionalCharacteristics.
+         *
+         * @param estimatedSize the estimated size of this spliterator if known, otherwise {@code Long.MAX_VALUE}.
+         * @param additionalCharacteristics properties of this spliterator's source or elements. If {@code SIZED} is reported then this spliterator will
+         *        additionally report {@code SUBSIZED}.
+         * @param enumeration The Enumeration to wrap.
+         */
+        protected EnumerationSpliterator(final long estimatedSize, final int additionalCharacteristics, final Enumeration&lt;T&gt; enumeration) {
+<span class="fc" id="L144">            super(estimatedSize, additionalCharacteristics);</span>
+<span class="fc" id="L145">            this.enumeration = Objects.requireNonNull(enumeration, &quot;enumeration&quot;);</span>
+<span class="fc" id="L146">        }</span>
+
+        @Override
+        public void forEachRemaining(final Consumer&lt;? super T&gt; action) {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            while (enumeration.hasMoreElements()) {</span>
+<span class="fc" id="L151">                next(action);</span>
+            }
+<span class="fc" id="L153">        }</span>
+
+        private boolean next(final Consumer&lt;? super T&gt; action) {
+<span class="fc" id="L156">            action.accept(enumeration.nextElement());</span>
+<span class="fc" id="L157">            return true;</span>
+
+        }
+
+        @Override
+        public boolean tryAdvance(final Consumer&lt;? super T&gt; action) {
+<span class="nc bnc" id="L163" title="All 4 branches missed.">            return enumeration.hasMoreElements() &amp;&amp; next(action);</span>
+        }
+    }
+
+    /**
+     * A reduced, and simplified version of a {@link Stream} with failable method signatures.
+     *
+     * @param &lt;T&gt; The streams element type.
+     */
+    public static class FailableStream&lt;T&gt; {
+
+        private Stream&lt;T&gt; stream;
+        private boolean terminated;
+
+        /**
+         * Constructs a new instance with the given {@code stream}.
+         *
+         * @param stream The stream.
+         */
+<span class="fc" id="L182">        public FailableStream(final Stream&lt;T&gt; stream) {</span>
+<span class="fc" id="L183">            this.stream = stream;</span>
+<span class="fc" id="L184">        }</span>
+
+        /**
+         * Returns whether all elements of this stream match the provided predicate. May not evaluate the predicate on all
+         * elements if not necessary for determining the result. If the stream is empty then {@code true} is returned and the
+         * predicate is not evaluated.
+         *
+         * &lt;p&gt;
+         * This is a short-circuiting terminal operation.
+         * &lt;/p&gt;
+         *
+         * Note This method evaluates the &lt;em&gt;universal quantification&lt;/em&gt; of the predicate over the elements of the stream
+         * (for all x P(x)). If the stream is empty, the quantification is said to be &lt;em&gt;vacuously satisfied&lt;/em&gt; and is always
+         * {@code true} (regardless of P(x)).
+         *
+         * @param predicate A non-interfering, stateless predicate to apply to elements of this stream
+         * @return {@code true} If either all elements of the stream match the provided predicate or the stream is empty,
+         *         otherwise {@code false}.
+         */
+        public boolean allMatch(final FailablePredicate&lt;T, ?&gt; predicate) {
+<span class="nc" id="L204">            assertNotTerminated();</span>
+<span class="nc" id="L205">            return stream().allMatch(Failable.asPredicate(predicate));</span>
+        }
+
+        /**
+         * Returns whether any elements of this stream match the provided predicate. May not evaluate the predicate on all
+         * elements if not necessary for determining the result. If the stream is empty then {@code false} is returned and the
+         * predicate is not evaluated.
+         *
+         * &lt;p&gt;
+         * This is a short-circuiting terminal operation.
+         * &lt;/p&gt;
+         *
+         * Note This method evaluates the &lt;em&gt;existential quantification&lt;/em&gt; of the predicate over the elements of the stream
+         * (for some x P(x)).
+         *
+         * @param predicate A non-interfering, stateless predicate to apply to elements of this stream
+         * @return {@code true} if any elements of the stream match the provided predicate, otherwise {@code false}
+         */
+        public boolean anyMatch(final FailablePredicate&lt;T, ?&gt; predicate) {
+<span class="nc" id="L224">            assertNotTerminated();</span>
+<span class="nc" id="L225">            return stream().anyMatch(Failable.asPredicate(predicate));</span>
+        }
+
+        /**
+         * Throws IllegalStateException if this stream is already terminated.
+         *
+         * @throws IllegalStateException if this stream is already terminated.
+         */
+        protected void assertNotTerminated() {
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">            if (terminated) {</span>
+<span class="nc" id="L235">                throw new IllegalStateException(&quot;This stream is already terminated.&quot;);</span>
+            }
+<span class="fc" id="L237">        }</span>
+
+        /**
+         * Performs a mutable reduction operation on the elements of this stream using a {@link Collector}. A {@link Collector}
+         * encapsulates the functions used as arguments to {@link #collect(Supplier, BiConsumer, BiConsumer)}, allowing for
+         * reuse of collection strategies and composition of collect operations such as multiple-level grouping or partitioning.
+         *
+         * &lt;p&gt;
+         * If the underlying stream is parallel, and the {@link Collector} is concurrent, and either the stream is unordered or
+         * the collector is unordered, then a concurrent reduction will be performed (see {@link Collector} for details on
+         * concurrent reduction.)
+         * &lt;/p&gt;
+         *
+         * &lt;p&gt;
+         * This is a terminal operation.
+         * &lt;/p&gt;
+         *
+         * &lt;p&gt;
+         * When executed in parallel, multiple intermediate results may be instantiated, populated, and merged so as to maintain
+         * isolation of mutable data structures. Therefore, even when executed in parallel with non-thread-safe data structures
+         * (such as {@link ArrayList}), no additional synchronization is needed for a parallel reduction.
+         * &lt;/p&gt;
+         *
+         * Note The following will accumulate strings into an ArrayList:
+         *
+         * &lt;pre&gt;
+         * {@code
+         *     List&lt;String&gt; asList = stringStream.collect(Collectors.toList());
+         * }
+         * &lt;/pre&gt;
+         *
+         * &lt;p&gt;
+         * The following will classify {@code Person} objects by city:
+         * &lt;/p&gt;
+         *
+         * &lt;pre&gt;
+         * {@code
+         *     Map&lt;String, List&lt;Person&gt;&gt; peopleByCity = personStream.collect(Collectors.groupingBy(Person::getCity));
+         * }
+         * &lt;/pre&gt;
+         *
+         * &lt;p&gt;
+         * The following will classify {@code Person} objects by state and city, cascading two {@link Collector}s together:
+         * &lt;/p&gt;
+         *
+         * &lt;pre&gt;
+         * {@code
+         *     Map&lt;String, Map&lt;String, List&lt;Person&gt;&gt;&gt; peopleByStateAndCity = personStream
+         *         .collect(Collectors.groupingBy(Person::getState, Collectors.groupingBy(Person::getCity)));
+         * }
+         * &lt;/pre&gt;
+         *
+         * @param &lt;R&gt; the type of the result
+         * @param &lt;A&gt; the intermediate accumulation type of the {@link Collector}
+         * @param collector the {@link Collector} describing the reduction
+         * @return the result of the reduction
+         * @see #collect(Supplier, BiConsumer, BiConsumer)
+         * @see Collectors
+         */
+        public &lt;A, R&gt; R collect(final Collector&lt;? super T, A, R&gt; collector) {
+<span class="fc" id="L297">            makeTerminated();</span>
+<span class="fc" id="L298">            return stream().collect(collector);</span>
+        }
+
+        /**
+         * Performs a mutable reduction operation on the elements of this FailableStream. A mutable reduction is one in which
+         * the reduced value is a mutable result container, such as an {@link ArrayList}, and elements are incorporated by
+         * updating the state of the result rather than by replacing the result. This produces a result equivalent to:
+         * &lt;pre&gt;
+         * {@code
+         *     R result = supplier.get();
+         *     for (T element : this stream)
+         *         accumulator.accept(result, element);
+         *     return result;
+         * }
+         * &lt;/pre&gt;
+         * &lt;p&gt;
+         * Like {@link #reduce(Object, BinaryOperator)}, {@code collect} operations can be parallelized without requiring
+         * additional synchronization.
+         * &lt;/p&gt;
+         * &lt;p&gt;
+         * This is a terminal operation.
+         * &lt;/p&gt;
+         * &lt;p&gt;
+         * Note There are many existing classes in the JDK whose signatures are well-suited for use with method references as
+         * arguments to {@code collect()}. For example, the following will accumulate strings into an {@link ArrayList}:
+         * &lt;/p&gt;
+         * &lt;pre&gt;
+         * {@code
+         *     List&lt;String&gt; asList = stringStream.collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+         * }
+         * &lt;/pre&gt;
+         * &lt;p&gt;
+         * The following will take a stream of strings and concatenates them into a single string:
+         * &lt;/p&gt;
+         * &lt;pre&gt;
+         * {@code
+         *     String concat = stringStream.collect(StringBuilder::new, StringBuilder::append, StringBuilder::append).toString();
+         * }
+         * &lt;/pre&gt;
+         *
+         * @param &lt;R&gt; type of the result
+         * @param &lt;A&gt; Type of the accumulator.
+         * @param supplier a function that creates a new result container. For a parallel execution, this function may be called
+         *        multiple times and must return a fresh value each time.
+         * @param accumulator An associative, non-interfering, stateless function for incorporating an additional element into a
+         *        result
+         * @param combiner An associative, non-interfering, stateless function for combining two values, which must be
+         *        compatible with the accumulator function
+         * @return The result of the reduction
+         */
+        public &lt;A, R&gt; R collect(final Supplier&lt;R&gt; supplier, final BiConsumer&lt;R, ? super T&gt; accumulator, final BiConsumer&lt;R, R&gt; combiner) {
+<span class="nc" id="L349">            makeTerminated();</span>
+<span class="nc" id="L350">            return stream().collect(supplier, accumulator, combiner);</span>
+        }
+
+        /**
+         * Returns a FailableStream consisting of the elements of this stream that match the given FailablePredicate.
+         * &lt;p&gt;
+         * This is an intermediate operation.
+         * &lt;/p&gt;
+         *
+         * @param predicate a non-interfering, stateless predicate to apply to each element to determine if it should be
+         *        included.
+         * @return the new stream
+         */
+        public FailableStream&lt;T&gt; filter(final FailablePredicate&lt;T, ?&gt; predicate) {
+<span class="fc" id="L364">            assertNotTerminated();</span>
+<span class="fc" id="L365">            stream = stream.filter(Failable.asPredicate(predicate));</span>
+<span class="fc" id="L366">            return this;</span>
+        }
+
+        /**
+         * Performs an action for each element of this stream.
+         * &lt;p&gt;
+         * This is a terminal operation.
+         * &lt;/p&gt;
+         * &lt;p&gt;
+         * The behavior of this operation is explicitly nondeterministic. For parallel stream pipelines, this operation does
+         * &lt;em&gt;not&lt;/em&gt; guarantee to respect the encounter order of the stream, as doing so would sacrifice the benefit of
+         * parallelism. For any given element, the action may be performed at whatever time and in whatever thread the library
+         * chooses. If the action accesses shared state, it is responsible for providing the required synchronization.
+         * &lt;/p&gt;
+         *
+         * @param action a non-interfering action to perform on the elements
+         */
+        public void forEach(final FailableConsumer&lt;T, ?&gt; action) {
+<span class="fc" id="L384">            makeTerminated();</span>
+<span class="fc" id="L385">            stream().forEach(Failable.asConsumer(action));</span>
+<span class="fc" id="L386">        }</span>
+
+        /**
+         * Marks this stream as terminated.
+         *
+         * @throws IllegalStateException if this stream is already terminated.
+         */
+        protected void makeTerminated() {
+<span class="fc" id="L394">            assertNotTerminated();</span>
+<span class="fc" id="L395">            terminated = true;</span>
+<span class="fc" id="L396">        }</span>
+
+        /**
+         * Returns a stream consisting of the results of applying the given function to the elements of this stream.
+         *
+         * &lt;p&gt;
+         * This is an intermediate operation.
+         * &lt;/p&gt;
+         *
+         * @param &lt;R&gt; The element type of the new stream
+         * @param mapper A non-interfering, stateless function to apply to each element
+         * @return the new stream
+         */
+        public &lt;R&gt; FailableStream&lt;R&gt; map(final FailableFunction&lt;T, R, ?&gt; mapper) {
+<span class="fc" id="L410">            assertNotTerminated();</span>
+<span class="fc" id="L411">            return new FailableStream&lt;&gt;(stream.map(Failable.asFunction(mapper)));</span>
+        }
+
+        /**
+         * Performs a reduction on the elements of this stream, using the provided identity value and an associative
+         * accumulation function, and returns the reduced value. This is equivalent to:
+         *
+         * &lt;pre&gt;
+         * {@code
+         *     T result = identity;
+         *     for (T element : this stream)
+         *         result = accumulator.apply(result, element)
+         *     return result;
+         * }
+         * &lt;/pre&gt;
+         *
+         * but is not constrained to execute sequentially.
+         *
+         * &lt;p&gt;
+         * The {@code identity} value must be an identity for the accumulator function. This means that for all {@code t},
+         * {@code accumulator.apply(identity, t)} is equal to {@code t}. The {@code accumulator} function must be an associative
+         * function.
+         * &lt;/p&gt;
+         *
+         * &lt;p&gt;
+         * This is a terminal operation.
+         * &lt;/p&gt;
+         *
+         * Note Sum, min, max, average, and string concatenation are all special cases of reduction. Summing a stream of numbers
+         * can be expressed as:
+         *
+         * &lt;pre&gt;
+         * {@code
+         *     Integer sum = integers.reduce(0, (a, b) -&gt; a + b);
+         * }
+         * &lt;/pre&gt;
+         *
+         * or:
+         *
+         * &lt;pre&gt;
+         * {@code
+         *     Integer sum = integers.reduce(0, Integer::sum);
+         * }
+         * &lt;/pre&gt;
+         *
+         * &lt;p&gt;
+         * While this may seem a more roundabout way to perform an aggregation compared to simply mutating a running total in a
+         * loop, reduction operations parallelize more gracefully, without needing additional synchronization and with greatly
+         * reduced risk of data races.
+         * &lt;/p&gt;
+         *
+         * @param identity the identity value for the accumulating function
+         * @param accumulator an associative, non-interfering, stateless function for combining two values
+         * @return the result of the reduction
+         */
+        public T reduce(final T identity, final BinaryOperator&lt;T&gt; accumulator) {
+<span class="nc" id="L467">            makeTerminated();</span>
+<span class="nc" id="L468">            return stream().reduce(identity, accumulator);</span>
+        }
+
+        /**
+         * Converts the FailableStream into an equivalent stream.
+         *
+         * @return A stream, which will return the same elements, which this FailableStream would return.
+         */
+        public Stream&lt;T&gt; stream() {
+<span class="fc" id="L477">            return stream;</span>
+        }
+    }
+
+    /**
+     * Converts the given {@link Collection} into a {@link FailableStream}. This is basically a simplified, reduced version
+     * of the {@link Stream} class, with the same underlying element stream, except that failable objects, like
+     * {@link FailablePredicate}, {@link FailableFunction}, or {@link FailableConsumer} may be applied, instead of
+     * {@link Predicate}, {@link Function}, or {@link Consumer}. The idea is to rewrite a code snippet like this:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final Function&lt;O, String&gt; mapper = (o) -&gt; {
+     *     try {
+     *         return (String) m.invoke(o);
+     *     } catch (Throwable t) {
+     *         throw Failable.rethrow(t);
+     *     }
+     * };
+     * final List&lt;String&gt; strList = list.stream().map(mapper).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * as follows:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final List&lt;String&gt; strList = Failable.stream(list.stream()).map((o) -&gt; (String) m.invoke(o)).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * While the second version may not be &lt;em&gt;quite&lt;/em&gt; as efficient (because it depends on the creation of additional,
+     * intermediate objects, of type FailableStream), it is much more concise, and readable, and meets the spirit of Lambdas
+     * better than the first version.
+     *
+     * @param &lt;T&gt; The streams element type.
+     * @param stream The stream, which is being converted.
+     * @return The {@link FailableStream}, which has been created by converting the stream.
+     * @since 3.13.0
+     */
+    public static &lt;T&gt; FailableStream&lt;T&gt; failableStream(final Collection&lt;T&gt; stream) {
+<span class="fc" id="L522">        return failableStream(of(stream));</span>
+    }
+
+    /**
+     * Converts the given {@link Stream stream} into a {@link FailableStream}. This is basically a simplified, reduced
+     * version of the {@link Stream} class, with the same underlying element stream, except that failable objects, like
+     * {@link FailablePredicate}, {@link FailableFunction}, or {@link FailableConsumer} may be applied, instead of
+     * {@link Predicate}, {@link Function}, or {@link Consumer}. The idea is to rewrite a code snippet like this:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final Function&lt;O, String&gt; mapper = (o) -&gt; {
+     *     try {
+     *         return (String) m.invoke(o);
+     *     } catch (Throwable t) {
+     *         throw Failable.rethrow(t);
+     *     }
+     * };
+     * final List&lt;String&gt; strList = list.stream().map(mapper).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * as follows:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final List&lt;String&gt; strList = Failable.stream(list.stream()).map((o) -&gt; (String) m.invoke(o)).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * While the second version may not be &lt;em&gt;quite&lt;/em&gt; as efficient (because it depends on the creation of additional,
+     * intermediate objects, of type FailableStream), it is much more concise, and readable, and meets the spirit of Lambdas
+     * better than the first version.
+     *
+     * @param &lt;T&gt; The streams element type.
+     * @param stream The stream, which is being converted.
+     * @return The {@link FailableStream}, which has been created by converting the stream.
+     * @since 3.13.0
+     */
+    public static &lt;T&gt; FailableStream&lt;T&gt; failableStream(final Stream&lt;T&gt; stream) {
+<span class="fc" id="L566">        return new FailableStream&lt;&gt;(stream);</span>
+    }
+
+    /**
+     * Shorthand for {@code Streams.failableStream(value == null ? Stream.empty() : Stream.of(value))}.
+     *
+     * @param &lt;T&gt; the type of stream elements.
+     * @param value the single element of the new stream, may be {@code null}.
+     * @return the new FailableStream on {@code value} or an empty stream.
+     * @since 3.15.0
+     */
+    public static &lt;T&gt; FailableStream&lt;T&gt; failableStream(final T value) {
+<span class="fc" id="L578">        return failableStream(streamOf(value));</span>
+    }
+
+    /**
+     * Shorthand for {@code Streams.failableStream(Streams.of(arrayValues))}.
+     *
+     * @param &lt;T&gt; the type of stream elements.
+     * @param values the elements of the new stream, may be {@code null}.
+     * @return the new FailableStream on {@code values} or an empty stream.
+     * @since 3.14.0
+     */
+    @SafeVarargs // Creating a stream from an array is safe
+    public static &lt;T&gt; FailableStream&lt;T&gt; failableStream(final T... values) {
+<span class="fc" id="L591">        return failableStream(of(values));</span>
+    }
+
+    /**
+     * Streams only instances of the give Class in a collection.
+     * &lt;p&gt;
+     * This method shorthand for:
+     * &lt;/p&gt;
+     * &lt;pre&gt;
+     * {@code (Stream&lt;E&gt;) Streams.toStream(collection).filter(collection, SomeClass.class::isInstance);}
+     * &lt;/pre&gt;
+     *
+     * @param &lt;E&gt; the type of elements in the collection we want to stream.
+     * @param clazz the type of elements in the collection we want to stream.
+     * @param collection the collection to stream or null.
+     * @return A non-null stream that only provides instances we want.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; instancesOf(final Class&lt;? super E&gt; clazz, final Collection&lt;? super E&gt; collection) {
+<span class="fc" id="L610">        return instancesOf(clazz, of(collection));</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;) // After the isInstance check, we still need to type-cast.
+    private static &lt;E&gt; Stream&lt;E&gt; instancesOf(final Class&lt;? super E&gt; clazz, final Stream&lt;?&gt; stream) {
+<span class="fc" id="L615">        return (Stream&lt;E&gt;) of(stream).filter(clazz::isInstance);</span>
+    }
+
+    /**
+     * Streams the non-null elements of a collection.
+     *
+     * @param &lt;E&gt; the type of elements in the collection.
+     * @param collection the collection to stream or null.
+     * @return A non-null stream that filters out null elements.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; nonNull(final Collection&lt;E&gt; collection) {
+<span class="fc" id="L627">        return of(collection).filter(Objects::nonNull);</span>
+    }
+
+    /**
+     * Streams the non-null element.
+     *
+     * @param &lt;E&gt; the type of elements in the collection.
+     * @param array the element to stream or null.
+     * @return A non-null stream that filters out a null element.
+     * @since 3.15.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; nonNull(final E array) {
+<span class="fc" id="L639">        return nonNull(streamOf(array));</span>
+    }
+
+    /**
+     * Streams the non-null elements of an array.
+     *
+     * @param &lt;E&gt; the type of elements in the collection.
+     * @param array the array to stream or null.
+     * @return A non-null stream that filters out null elements.
+     * @since 3.13.0
+     */
+    @SafeVarargs
+    public static &lt;E&gt; Stream&lt;E&gt; nonNull(final E... array) {
+<span class="fc" id="L652">        return nonNull(of(array));</span>
+    }
+
+    /**
+     * Streams the non-null elements of a stream.
+     *
+     * @param &lt;E&gt; the type of elements in the collection.
+     * @param stream the stream to stream or null.
+     * @return A non-null stream that filters out null elements.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; nonNull(final Stream&lt;E&gt; stream) {
+<span class="fc" id="L664">        return of(stream).filter(Objects::nonNull);</span>
+    }
+
+    /**
+     * Delegates to {@link Collection#stream()} or returns {@link Stream#empty()} if the collection is null.
+     *
+     * @param &lt;E&gt; the type of elements in the collection.
+     * @param collection the collection to stream or null.
+     * @return {@link Collection#stream()} or {@link Stream#empty()} if the collection is null.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; of(final Collection&lt;E&gt; collection) {
+<span class="fc bfc" id="L676" title="All 2 branches covered.">        return collection == null ? Stream.empty() : collection.stream();</span>
+    }
+
+    /**
+     * Streams the elements of the given enumeration in order.
+     *
+     * @param &lt;E&gt; The enumeration element type.
+     * @param enumeration The enumeration to stream.
+     * @return a new stream.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; of(final Enumeration&lt;E&gt; enumeration) {
+<span class="fc" id="L688">        return StreamSupport.stream(new EnumerationSpliterator&lt;&gt;(Long.MAX_VALUE, Spliterator.ORDERED, enumeration), false);</span>
+    }
+
+    /**
+     * Creates a stream on the given Iterable.
+     *
+     * @param &lt;E&gt; the type of elements in the Iterable.
+     * @param iterable the Iterable to stream or null.
+     * @return a new Stream or {@link Stream#empty()} if the Iterable is null.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; of(final Iterable&lt;E&gt; iterable) {
+<span class="fc bfc" id="L700" title="All 2 branches covered.">        return iterable == null ? Stream.empty() : StreamSupport.stream(iterable.spliterator(), false);</span>
+    }
+
+    /**
+     * Creates a stream on the given Iterator.
+     *
+     * @param &lt;E&gt; the type of elements in the Iterator.
+     * @param iterator the Iterator to stream or null.
+     * @return a new Stream or {@link Stream#empty()} if the Iterator is null.
+     * @since 3.13.0
+     */
+    public static &lt;E&gt; Stream&lt;E&gt; of(final Iterator&lt;E&gt; iterator) {
+<span class="fc bfc" id="L712" title="All 2 branches covered.">        return iterator == null ? Stream.empty() : StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false);</span>
+    }
+
+    /**
+     * Returns the stream or {@link Stream#empty()} if the stream is null.
+     *
+     * @param &lt;E&gt; the type of elements in the collection.
+     * @param stream the stream to stream or null.
+     * @return the stream or {@link Stream#empty()} if the stream is null.
+     * @since 3.13.0
+     */
+    private static &lt;E&gt; Stream&lt;E&gt; of(final Stream&lt;E&gt; stream) {
+<span class="pc bpc" id="L724" title="1 of 2 branches missed.">        return stream == null ? Stream.empty() : stream;</span>
+    }
+
+    /**
+     * Null-safe version of {@link Stream#of(Object[])}.
+     *
+     * @param &lt;T&gt; the type of stream elements.
+     * @param values the elements of the new stream, may be {@code null}.
+     * @return the new stream on {@code values} or {@link Stream#empty()}.
+     * @since 3.13.0
+     */
+    @SafeVarargs // Creating a stream from an array is safe
+    public static &lt;T&gt; Stream&lt;T&gt; of(final T... values) {
+<span class="fc bfc" id="L737" title="All 2 branches covered.">        return values == null ? Stream.empty() : Stream.of(values);</span>
+    }
+
+    /**
+     * Converts the given {@link Collection} into a {@link FailableStream}. This is basically a simplified, reduced version
+     * of the {@link Stream} class, with the same underlying element stream, except that failable objects, like
+     * {@link FailablePredicate}, {@link FailableFunction}, or {@link FailableConsumer} may be applied, instead of
+     * {@link Predicate}, {@link Function}, or {@link Consumer}. The idea is to rewrite a code snippet like this:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final Function&lt;O, String&gt; mapper = (o) -&gt; {
+     *     try {
+     *         return (String) m.invoke(o);
+     *     } catch (Throwable t) {
+     *         throw Failable.rethrow(t);
+     *     }
+     * };
+     * final List&lt;String&gt; strList = list.stream().map(mapper).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * as follows:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final List&lt;String&gt; strList = Failable.stream(list.stream()).map((o) -&gt; (String) m.invoke(o)).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * While the second version may not be &lt;em&gt;quite&lt;/em&gt; as efficient (because it depends on the creation of additional,
+     * intermediate objects, of type FailableStream), it is much more concise, and readable, and meets the spirit of Lambdas
+     * better than the first version.
+     *
+     * @param &lt;E&gt; The streams element type.
+     * @param collection The stream, which is being converted.
+     * @return The {@link FailableStream}, which has been created by converting the stream.
+     * @deprecated Use {@link #failableStream(Collection)}.
+     */
+    @Deprecated
+    public static &lt;E&gt; FailableStream&lt;E&gt; stream(final Collection&lt;E&gt; collection) {
+<span class="fc" id="L782">        return failableStream(collection);</span>
+    }
+
+    /**
+     * Converts the given {@link Stream stream} into a {@link FailableStream}. This is basically a simplified, reduced
+     * version of the {@link Stream} class, with the same underlying element stream, except that failable objects, like
+     * {@link FailablePredicate}, {@link FailableFunction}, or {@link FailableConsumer} may be applied, instead of
+     * {@link Predicate}, {@link Function}, or {@link Consumer}. The idea is to rewrite a code snippet like this:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final Function&lt;O, String&gt; mapper = (o) -&gt; {
+     *     try {
+     *         return (String) m.invoke(o);
+     *     } catch (Throwable t) {
+     *         throw Failable.rethrow(t);
+     *     }
+     * };
+     * final List&lt;String&gt; strList = list.stream().map(mapper).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * as follows:
+     *
+     * &lt;pre&gt;
+     * {@code
+     * final List&lt;O&gt; list;
+     * final Method m;
+     * final List&lt;String&gt; strList = Failable.stream(list.stream()).map((o) -&gt; (String) m.invoke(o)).collect(Collectors.toList());
+     * }
+     * &lt;/pre&gt;
+     *
+     * While the second version may not be &lt;em&gt;quite&lt;/em&gt; as efficient (because it depends on the creation of additional,
+     * intermediate objects, of type FailableStream), it is much more concise, and readable, and meets the spirit of Lambdas
+     * better than the first version.
+     *
+     * @param &lt;T&gt; The streams element type.
+     * @param stream The stream, which is being converted.
+     * @return The {@link FailableStream}, which has been created by converting the stream.
+     * @deprecated Use {@link #failableStream(Stream)}.
+     */
+    @Deprecated
+    public static &lt;T&gt; FailableStream&lt;T&gt; stream(final Stream&lt;T&gt; stream) {
+<span class="nc" id="L827">        return failableStream(stream);</span>
+    }
+
+    private static &lt;T&gt; Stream&lt;T&gt; streamOf(final T value) {
+<span class="pc bpc" id="L831" title="1 of 2 branches missed.">        return value == null ? Stream.empty() : Stream.of(value);</span>
+    }
+
+    /**
+     * Returns a {@link Collector} that accumulates the input elements into a new array.
+     *
+     * @param elementType Type of an element in the array.
+     * @param &lt;T&gt; the type of the input elements
+     * @return a {@link Collector} which collects all the input elements into an array, in encounter order
+     */
+    public static &lt;T&gt; Collector&lt;T, ?, T[]&gt; toArray(final Class&lt;T&gt; elementType) {
+<span class="fc" id="L842">        return new ArrayCollector&lt;&gt;(elementType);</span>
+    }
+
+    /**
+     * Constructs a new instance.
+     *
+     * @deprecated Will be private in 4.0.0.
+     */
+    @Deprecated
+<span class="nc" id="L851">    public Streams() {</span>
+        // empty
+<span class="nc" id="L853">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

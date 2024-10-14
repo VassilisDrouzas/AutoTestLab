@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ListOrderedSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.set</a> &gt; <span class="el_source">ListOrderedSet.java</span></div><h1>ListOrderedSet.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.set;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
+
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.OrderedIterator;
+import org.apache.commons.collections4.functors.UniquePredicate;
+import org.apache.commons.collections4.iterators.AbstractIteratorDecorator;
+import org.apache.commons.collections4.list.UnmodifiableList;
+
+/**
+ * Decorates another {@code Set} to ensure that the order of addition is
+ * retained and used by the iterator.
+ * &lt;p&gt;
+ * If an object is added to the set for a second time, it will remain in the
+ * original position in the iteration. The order can be observed from the set
+ * via the iterator or toArray methods.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The ListOrderedSet also has various useful direct methods. These include many
+ * from {@code List}, such as {@code get(int)},
+ * {@code remove(int)} and {@code indexOf(int)}. An unmodifiable
+ * {@code List} view of the set can be obtained via {@code asList()}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class cannot implement the {@code List} interface directly as
+ * various interface methods (notably equals/hashCode) are incompatible with a
+ * set.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is Serializable from Commons Collections 3.1.
+ * &lt;/p&gt;
+ *
+ * @param &lt;E&gt; the type of the elements in this set
+ * @since 3.0
+ */
+public class ListOrderedSet&lt;E&gt;
+    extends AbstractSerializableSetDecorator&lt;E&gt; {
+
+    /**
+     * Internal iterator handle remove.
+     */
+    static class OrderedSetIterator&lt;E&gt;
+        extends AbstractIteratorDecorator&lt;E&gt;
+        implements OrderedIterator&lt;E&gt; {
+
+        /** Object we iterate on */
+        private final Collection&lt;E&gt; set;
+
+        /** Last object retrieved */
+        private E last;
+
+        private OrderedSetIterator(final ListIterator&lt;E&gt; iterator, final Collection&lt;E&gt; set) {
+<span class="fc" id="L77">            super(iterator);</span>
+<span class="fc" id="L78">            this.set = set;</span>
+<span class="fc" id="L79">        }</span>
+
+        @Override
+        public boolean hasPrevious() {
+<span class="nc" id="L83">            return ((ListIterator&lt;E&gt;) getIterator()).hasPrevious();</span>
+        }
+
+        @Override
+        public E next() {
+<span class="fc" id="L88">            last = getIterator().next();</span>
+<span class="fc" id="L89">            return last;</span>
+        }
+
+        @Override
+        public E previous() {
+<span class="nc" id="L94">            last = ((ListIterator&lt;E&gt;) getIterator()).previous();</span>
+<span class="nc" id="L95">            return last;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="fc" id="L100">            set.remove(last);</span>
+<span class="fc" id="L101">            getIterator().remove();</span>
+<span class="fc" id="L102">            last = null;</span>
+<span class="fc" id="L103">        }</span>
+    }
+
+    /** Serialization version */
+    private static final long serialVersionUID = -228664372470420141L;
+
+    /**
+     * Factory method to create an ordered set using the supplied list to retain order.
+     * &lt;p&gt;
+     * A {@code HashSet} is used for the set behavior.
+     * &lt;p&gt;
+     * NOTE: If the list contains duplicates, the duplicates are removed,
+     * altering the specified list.
+     *
+     * @param &lt;E&gt; the element type
+     * @param list the list to decorate, must not be null
+     * @return a new ordered set
+     * @throws NullPointerException if list is null
+     * @since 4.0
+     */
+    public static &lt;E&gt; ListOrderedSet&lt;E&gt; listOrderedSet(final List&lt;E&gt; list) {
+<span class="fc" id="L124">        Objects.requireNonNull(list, &quot;list&quot;);</span>
+<span class="fc" id="L125">        CollectionUtils.filter(list, UniquePredicate.uniquePredicate());</span>
+<span class="fc" id="L126">        final Set&lt;E&gt; set = new HashSet&lt;&gt;(list);</span>
+
+<span class="fc" id="L128">        return new ListOrderedSet&lt;&gt;(set, list);</span>
+    }
+
+    /**
+     * Factory method to create an ordered set.
+     * &lt;p&gt;
+     * An {@code ArrayList} is used to retain order.
+     *
+     * @param &lt;E&gt; the element type
+     * @param set the set to decorate, must not be null
+     * @return a new ordered set
+     * @throws NullPointerException if set is null
+     * @since 4.0
+     */
+    public static &lt;E&gt; ListOrderedSet&lt;E&gt; listOrderedSet(final Set&lt;E&gt; set) {
+<span class="fc" id="L143">        return new ListOrderedSet&lt;&gt;(set);</span>
+    }
+
+    /**
+     * Factory method to create an ordered set specifying the list and set to use.
+     * &lt;p&gt;
+     * The list and set must both be empty.
+     *
+     * @param &lt;E&gt; the element type
+     * @param set the set to decorate, must be empty and not null
+     * @param list the list to decorate, must be empty and not null
+     * @return a new ordered set
+     * @throws NullPointerException if set or list is null
+     * @throws IllegalArgumentException if either the set or list is not empty
+     * @since 4.0
+     */
+    public static &lt;E&gt; ListOrderedSet&lt;E&gt; listOrderedSet(final Set&lt;E&gt; set, final List&lt;E&gt; list) {
+<span class="fc" id="L160">        Objects.requireNonNull(set, &quot;set&quot;);</span>
+<span class="fc" id="L161">        Objects.requireNonNull(list, &quot;list&quot;);</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">        if (!set.isEmpty() || !list.isEmpty()) {</span>
+<span class="nc" id="L163">            throw new IllegalArgumentException(&quot;Set and List must be empty&quot;);</span>
+        }
+<span class="fc" id="L165">        return new ListOrderedSet&lt;&gt;(set, list);</span>
+    }
+
+    /** Internal list to hold the sequence of objects */
+    private final List&lt;E&gt; setOrder;
+
+    /**
+     * Constructs a new empty {@code ListOrderedSet} using a
+     * {@code HashSet} and an {@code ArrayList} internally.
+     *
+     * @since 3.1
+     */
+    public ListOrderedSet() {
+<span class="fc" id="L178">        super(new HashSet&lt;&gt;());</span>
+<span class="fc" id="L179">        setOrder = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param set the set to decorate, must not be null
+     * @throws NullPointerException if set is null
+     */
+    protected ListOrderedSet(final Set&lt;E&gt; set) {
+<span class="fc" id="L189">        super(set);</span>
+<span class="fc" id="L190">        setOrder = new ArrayList&lt;&gt;(set);</span>
+<span class="fc" id="L191">    }</span>
+
+    /**
+     * Constructor that wraps (not copies) the Set and specifies the list to
+     * use.
+     * &lt;p&gt;
+     * The set and list must both be correctly initialized to the same elements.
+     *
+     * @param set the set to decorate, must not be null
+     * @param list the list to decorate, must not be null
+     * @throws NullPointerException if set or list is null
+     */
+    protected ListOrderedSet(final Set&lt;E&gt; set, final List&lt;E&gt; list) {
+<span class="fc" id="L204">        super(set);</span>
+<span class="fc" id="L205">        setOrder = Objects.requireNonNull(list, &quot;list&quot;);</span>
+<span class="fc" id="L206">    }</span>
+
+    @Override
+    public boolean add(final E object) {
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (decorated().add(object)) {</span>
+<span class="fc" id="L211">            setOrder.add(object);</span>
+<span class="fc" id="L212">            return true;</span>
+        }
+<span class="fc" id="L214">        return false;</span>
+    }
+
+    /**
+     * Inserts the specified element at the specified position if it is not yet
+     * contained in this ordered set (optional operation). Shifts the element
+     * currently at this position and any subsequent elements to the right.
+     *
+     * @param index the index at which the element is to be inserted
+     * @param object the element to be inserted
+     * @see List#add(int, Object)
+     */
+    public void add(final int index, final E object) {
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        if (!contains(object)) {</span>
+<span class="fc" id="L228">            decorated().add(object);</span>
+<span class="fc" id="L229">            setOrder.add(index, object);</span>
+        }
+<span class="fc" id="L231">    }</span>
+
+    @Override
+    public boolean addAll(final Collection&lt;? extends E&gt; coll) {
+<span class="fc" id="L235">        boolean result = false;</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        for (final E e : coll) {</span>
+<span class="fc" id="L237">            result |= add(e);</span>
+<span class="fc" id="L238">        }</span>
+<span class="fc" id="L239">        return result;</span>
+    }
+
+    /**
+     * Inserts all elements in the specified collection not yet contained in the
+     * ordered set at the specified position (optional operation). Shifts the
+     * element currently at the position and all subsequent elements to the
+     * right.
+     *
+     * @param index the position to insert the elements
+     * @param coll the collection containing the elements to be inserted
+     * @return {@code true} if this ordered set changed as a result of the call
+     * @see List#addAll(int, Collection)
+     */
+    public boolean addAll(final int index, final Collection&lt;? extends E&gt; coll) {
+<span class="fc" id="L254">        boolean changed = false;</span>
+        // collect all elements to be added for performance reasons
+<span class="fc" id="L256">        final List&lt;E&gt; toAdd = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for (final E e : coll) {</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            if (contains(e)) {</span>
+<span class="fc" id="L259">                continue;</span>
+            }
+<span class="fc" id="L261">            decorated().add(e);</span>
+<span class="fc" id="L262">            toAdd.add(e);</span>
+<span class="fc" id="L263">            changed = true;</span>
+<span class="fc" id="L264">        }</span>
+
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (changed) {</span>
+<span class="fc" id="L267">            setOrder.addAll(index, toAdd);</span>
+        }
+
+<span class="fc" id="L270">        return changed;</span>
+    }
+
+    /**
+     * Gets an unmodifiable view of the order of the Set.
+     *
+     * @return an unmodifiable list view
+     */
+    public List&lt;E&gt; asList() {
+<span class="fc" id="L279">        return UnmodifiableList.unmodifiableList(setOrder);</span>
+    }
+
+    @Override
+    public void clear() {
+<span class="fc" id="L284">        decorated().clear();</span>
+<span class="fc" id="L285">        setOrder.clear();</span>
+<span class="fc" id="L286">    }</span>
+
+    /**
+     * Returns the element at the specified position in this ordered set.
+     *
+     * @param index the position of the element in the ordered {@link Set}.
+     * @return the element at position {@code index}
+     * @see List#get(int)
+     */
+    public E get(final int index) {
+<span class="fc" id="L296">        return setOrder.get(index);</span>
+    }
+
+    /**
+     * Returns the index of the first occurrence of the specified element in
+     * ordered set.
+     *
+     * @param object the element to search for
+     * @return the index of the first occurrence of the object, or {@code -1} if
+     *         this ordered set does not contain this object
+     * @see List#indexOf(Object)
+     */
+    public int indexOf(final Object object) {
+<span class="fc" id="L309">        return setOrder.indexOf(object);</span>
+    }
+
+    @Override
+    public OrderedIterator&lt;E&gt; iterator() {
+<span class="fc" id="L314">        return new OrderedSetIterator&lt;&gt;(setOrder.listIterator(), decorated());</span>
+    }
+
+    /**
+     * Removes the element at the specified position from the ordered set.
+     * Shifts any subsequent elements to the left.
+     *
+     * @param index the index of the element to be removed
+     * @return the element that has been remove from the ordered set
+     * @see List#remove(int)
+     */
+    public E remove(final int index) {
+<span class="fc" id="L326">        final E obj = setOrder.remove(index);</span>
+<span class="fc" id="L327">        remove(obj);</span>
+<span class="fc" id="L328">        return obj;</span>
+    }
+
+    @Override
+    public boolean remove(final Object object) {
+<span class="fc" id="L333">        final boolean result = decorated().remove(object);</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        if (result) {</span>
+<span class="fc" id="L335">            setOrder.remove(object);</span>
+        }
+<span class="fc" id="L337">        return result;</span>
+    }
+
+    @Override
+    public boolean removeAll(final Collection&lt;?&gt; coll) {
+<span class="fc" id="L342">        boolean result = false;</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        for (final Object name : coll) {</span>
+<span class="fc" id="L344">            result |= remove(name);</span>
+<span class="fc" id="L345">        }</span>
+<span class="fc" id="L346">        return result;</span>
+    }
+
+    /**
+     * @since 4.4
+     */
+    @Override
+    public boolean removeIf(final Predicate&lt;? super E&gt; filter) {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        if (Objects.isNull(filter)) {</span>
+<span class="nc" id="L355">            return false;</span>
+        }
+<span class="fc" id="L357">        final boolean result = decorated().removeIf(filter);</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        if (result) {</span>
+<span class="fc" id="L359">            setOrder.removeIf(filter);</span>
+        }
+<span class="fc" id="L361">        return result;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * This implementation iterates over the elements of this set, checking
+     * each element in turn to see if it's contained in {@code coll}.
+     * If it's not contained, it's removed from this set. As a consequence,
+     * it is advised to use a collection type for {@code coll} that provides
+     * a fast (e.g. O(1)) implementation of {@link Collection#contains(Object)}.
+     */
+    @Override
+    public boolean retainAll(final Collection&lt;?&gt; coll) {
+<span class="fc" id="L375">        final boolean result = decorated().retainAll(coll);</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">        if (!result) {</span>
+<span class="fc" id="L377">            return false;</span>
+        }
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        if (decorated().isEmpty()) {</span>
+<span class="fc" id="L380">            setOrder.clear();</span>
+        } else {
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            setOrder.removeIf(e -&gt; !decorated().contains(e));</span>
+        }
+<span class="fc" id="L384">        return result;</span>
+    }
+
+    @Override
+    public Object[] toArray() {
+<span class="fc" id="L389">        return setOrder.toArray();</span>
+    }
+
+    @Override
+    public &lt;T&gt; T[] toArray(final T[] a) {
+<span class="fc" id="L394">        return setOrder.toArray(a);</span>
+    }
+
+    /**
+     * Uses the underlying List's toString so that order is achieved. This means
+     * that the decorated Set's toString is not used, so any custom toStrings
+     * will be ignored.
+     *
+     * @return a string representation of the ordered set
+     */
+    // Fortunately List.toString and Set.toString look the same
+    @Override
+    public String toString() {
+<span class="fc" id="L407">        return setOrder.toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

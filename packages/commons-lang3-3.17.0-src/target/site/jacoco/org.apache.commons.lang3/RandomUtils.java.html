@@ -1,0 +1,468 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RandomUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">RandomUtils.java</span></div><h1>RandomUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.Security;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
+
+import org.apache.commons.lang3.exception.UncheckedException;
+
+/**
+ * Supplements the standard {@link Random} class.
+ * &lt;p&gt;
+ * Use {@link #secure()} to get the singleton instance based on {@link SecureRandom#SecureRandom()} which uses a secure random number generator implementing the
+ * default random number algorithm.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Use {@link #secureStrong()} to get the singleton instance based on {@link SecureRandom#getInstanceStrong()} which uses an instance that was selected by using
+ * the algorithms/providers specified in the {@code securerandom.strongAlgorithms} {@link Security} property.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Use {@link #insecure()} to get the singleton instance based on {@link ThreadLocalRandom#current()} &lt;b&gt;which is not cryptographically secure&lt;/b&gt;. In addition,
+ * instances do not use a cryptographically random seed unless the {@linkplain System#getProperty system property} {@code java.util.secureRandomSeed} is set to
+ * {@code true}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Starting in version 3.17.0, the method {@link #secure()} uses {@link SecureRandom#SecureRandom()} instead of {@link SecureRandom#getInstanceStrong()}, and
+ * adds {@link #secureStrong()}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Starting in version 3.16.0, this class uses {@link #secure()} for static methods and adds {@link #insecure()}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Starting in version 3.15.0, this class uses {@link SecureRandom#getInstanceStrong()} for static methods.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Before version 3.15.0, this class used {@link ThreadLocalRandom#current()} for static methods, which is not cryptographically secure.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Please note that the Apache Commons project provides a component dedicated to pseudo-random number generation, namely
+ * &lt;a href=&quot;https://commons.apache.org/proper/commons-rng/&quot;&gt;Commons RNG&lt;/a&gt;, that may be a better choice for applications with more stringent requirements
+ * (performance and/or correctness).
+ * &lt;/p&gt;
+ *
+ * @see #secure()
+ * @see #secureStrong()
+ * @see #insecure()
+ * @see SecureRandom#SecureRandom()
+ * @see SecureRandom#getInstanceStrong()
+ * @see ThreadLocalRandom#current()
+ * @see RandomStringUtils
+ * @since 3.3
+ */
+public class RandomUtils {
+
+<span class="fc" id="L73">    private static RandomUtils INSECURE = new RandomUtils(ThreadLocalRandom::current);</span>
+
+<span class="fc" id="L75">    private static RandomUtils SECURE = new RandomUtils(SecureRandom::new);</span>
+
+<span class="fc" id="L77">    private static final Supplier&lt;Random&gt; SECURE_STRONG_SUPPLIER = () -&gt; RandomUtils.SECURE_RANDOM_STRONG.get();</span>
+
+<span class="fc" id="L79">    private static RandomUtils SECURE_STRONG = new RandomUtils(SECURE_STRONG_SUPPLIER);</span>
+
+<span class="fc" id="L81">    private static final ThreadLocal&lt;SecureRandom&gt; SECURE_RANDOM_STRONG = ThreadLocal.withInitial(() -&gt; {</span>
+        try {
+<span class="fc" id="L83">            return SecureRandom.getInstanceStrong();</span>
+<span class="nc" id="L84">        } catch (final NoSuchAlgorithmException e) {</span>
+<span class="nc" id="L85">            throw new UncheckedException(e);</span>
+        }
+    });
+
+    /**
+     * Gets the singleton instance based on {@link ThreadLocalRandom#current()}; &lt;b&gt;which is not cryptographically
+     * secure&lt;/b&gt;; use {@link #secure()} to use an algorithms/providers specified in the
+     * {@code securerandom.strongAlgorithms} {@link Security} property.
+     * &lt;p&gt;
+     * The method {@link ThreadLocalRandom#current()} is called on-demand.
+     * &lt;/p&gt;
+     *
+     * @return the singleton instance based on {@link ThreadLocalRandom#current()}.
+     * @see ThreadLocalRandom#current()
+     * @see #secure()
+     * @since 3.17.0
+     */
+    public static RandomUtils insecure() {
+<span class="fc" id="L103">        return INSECURE;</span>
+    }
+
+    /**
+     * Generates a random boolean value.
+     *
+     * @return the random boolean
+     * @since 3.5
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static boolean nextBoolean() {
+<span class="fc" id="L115">        return secure().randomBoolean();</span>
+    }
+
+    /**
+     * Generates an array of random bytes.
+     *
+     * @param count the size of the returned array
+     * @return the random byte array
+     * @throws IllegalArgumentException if {@code count} is negative
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static byte[] nextBytes(final int count) {
+<span class="fc" id="L128">        return secure().randomBytes(count);</span>
+    }
+
+    /**
+     * Generates a random double between 0 (inclusive) and Double.MAX_VALUE (exclusive).
+     *
+     * @return the random double
+     * @see #nextDouble(double, double)
+     * @since 3.5
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static double nextDouble() {
+<span class="fc" id="L141">        return secure().randomDouble();</span>
+    }
+
+    /**
+     * Generates a random double within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random double
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static double nextDouble(final double startInclusive, final double endExclusive) {
+<span class="fc" id="L156">        return secure().randomDouble(startInclusive, endExclusive);</span>
+    }
+
+    /**
+     * Generates a random float between 0 (inclusive) and Float.MAX_VALUE (exclusive).
+     *
+     * @return the random float
+     * @see #nextFloat(float, float)
+     * @since 3.5
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static float nextFloat() {
+<span class="fc" id="L169">        return secure().randomFloat();</span>
+    }
+
+    /**
+     * Generates a random float within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random float
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static float nextFloat(final float startInclusive, final float endExclusive) {
+<span class="fc" id="L184">        return secure().randomFloat(startInclusive, endExclusive);</span>
+    }
+
+    /**
+     * Generates a random int between 0 (inclusive) and Integer.MAX_VALUE (exclusive).
+     *
+     * @return the random integer
+     * @see #nextInt(int, int)
+     * @since 3.5
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static int nextInt() {
+<span class="fc" id="L197">        return secure().randomInt();</span>
+    }
+
+    /**
+     * Generates a random integer within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random integer
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static int nextInt(final int startInclusive, final int endExclusive) {
+<span class="fc" id="L212">        return secure().randomInt(startInclusive, endExclusive);</span>
+    }
+
+    /**
+     * Generates a random long between 0 (inclusive) and Long.MAX_VALUE (exclusive).
+     *
+     * @return the random long
+     * @see #nextLong(long, long)
+     * @since 3.5
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static long nextLong() {
+<span class="fc" id="L225">        return secure().randomLong();</span>
+    }
+
+    /**
+     * Generates a random long within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random long
+     * @deprecated Use {@link #secure()}, {@link #secureStrong()},or {@link #insecure()}.
+     */
+    @Deprecated
+    public static long nextLong(final long startInclusive, final long endExclusive) {
+<span class="fc" id="L240">        return secure().randomLong(startInclusive, endExclusive);</span>
+    }
+
+    /**
+     * Gets the singleton instance based on {@link SecureRandom#SecureRandom()} which uses an algorithms/providers
+     * specified in the {@code securerandom.strongAlgorithms} {@link Security} property.
+     * &lt;p&gt;
+     * The method {@link SecureRandom#SecureRandom()} is called on-demand.
+     * &lt;/p&gt;
+     *
+     * @return the singleton instance based on {@link SecureRandom#SecureRandom()}.
+     * @see SecureRandom#SecureRandom()
+     * @since 3.16.0
+     */
+    public static RandomUtils secure() {
+<span class="fc" id="L255">        return SECURE;</span>
+    }
+
+    static SecureRandom secureRandom() {
+<span class="nc" id="L259">        return SECURE_RANDOM_STRONG.get();</span>
+    }
+
+    /**
+     * Gets the singleton instance based on {@link SecureRandom#getInstanceStrong()} which uses an algorithms/providers
+     * specified in the {@code securerandom.strongAlgorithms} {@link Security} property.
+     * &lt;p&gt;
+     * The method {@link SecureRandom#getInstanceStrong()} is called on-demand.
+     * &lt;/p&gt;
+     *
+     * @return the singleton instance based on {@link SecureRandom#getInstanceStrong()}.
+     * @see SecureRandom#getInstanceStrong()
+     * @since 3.17.0
+     */
+    public static RandomUtils secureStrong() {
+<span class="fc" id="L274">        return SECURE_STRONG;</span>
+    }
+
+    private final Supplier&lt;Random&gt; random;
+
+    /**
+     * {@link RandomUtils} instances should NOT be constructed in standard programming. Instead, the class should be
+     * used as {@code RandomUtils.nextBytes(5);}.
+     * &lt;p&gt;
+     * This constructor is public to permit tools that require a JavaBean instance to operate.
+     * &lt;/p&gt;
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+    public RandomUtils() {
+<span class="fc" id="L290">        this(SECURE_STRONG_SUPPLIER);</span>
+<span class="fc" id="L291">    }</span>
+
+<span class="fc" id="L293">    private RandomUtils(final Supplier&lt;Random&gt; random) {</span>
+<span class="fc" id="L294">        this.random = random;</span>
+<span class="fc" id="L295">    }</span>
+
+    Random random() {
+<span class="fc" id="L298">        return random.get();</span>
+    }
+
+    /**
+     * Generates a random boolean value.
+     *
+     * @return the random boolean
+     * @since 3.16.0
+     */
+    public boolean randomBoolean() {
+<span class="fc" id="L308">        return random().nextBoolean();</span>
+    }
+
+    /**
+     * Generates an array of random bytes.
+     *
+     * @param count the size of the returned array
+     * @return the random byte array
+     * @throws IllegalArgumentException if {@code count} is negative
+     * @since 3.16.0
+     */
+    public byte[] randomBytes(final int count) {
+<span class="fc bfc" id="L320" title="All 2 branches covered.">        Validate.isTrue(count &gt;= 0, &quot;Count cannot be negative.&quot;);</span>
+<span class="fc" id="L321">        final byte[] result = new byte[count];</span>
+<span class="fc" id="L322">        random().nextBytes(result);</span>
+<span class="fc" id="L323">        return result;</span>
+    }
+
+    /**
+     * Generates a random double between 0 (inclusive) and Double.MAX_VALUE (exclusive).
+     *
+     * @return the random double
+     * @see #randomDouble(double, double)
+     * @since 3.16.0
+     */
+    public double randomDouble() {
+<span class="fc" id="L334">        return randomDouble(0, Double.MAX_VALUE);</span>
+    }
+
+    /**
+     * Generates a random double within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random double
+     * @since 3.16.0
+     */
+    public double randomDouble(final double startInclusive, final double endExclusive) {
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        Validate.isTrue(endExclusive &gt;= startInclusive, &quot;Start value must be smaller or equal to end value.&quot;);</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        Validate.isTrue(startInclusive &gt;= 0, &quot;Both range values must be non-negative.&quot;);</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        if (startInclusive == endExclusive) {</span>
+<span class="fc" id="L351">            return startInclusive;</span>
+        }
+<span class="fc" id="L353">        return startInclusive + (endExclusive - startInclusive) * random().nextDouble();</span>
+    }
+
+    /**
+     * Generates a random float between 0 (inclusive) and Float.MAX_VALUE (exclusive).
+     *
+     * @return the random float
+     * @see #randomFloat(float, float)
+     * @since 3.16.0
+     */
+    public float randomFloat() {
+<span class="fc" id="L364">        return randomFloat(0, Float.MAX_VALUE);</span>
+    }
+
+    /**
+     * Generates a random float within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random float
+     */
+    public float randomFloat(final float startInclusive, final float endExclusive) {
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        Validate.isTrue(endExclusive &gt;= startInclusive, &quot;Start value must be smaller or equal to end value.&quot;);</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        Validate.isTrue(startInclusive &gt;= 0, &quot;Both range values must be non-negative.&quot;);</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        if (startInclusive == endExclusive) {</span>
+<span class="fc" id="L380">            return startInclusive;</span>
+        }
+<span class="fc" id="L382">        return startInclusive + (endExclusive - startInclusive) * random().nextFloat();</span>
+    }
+
+    /**
+     * Generates a random int between 0 (inclusive) and Integer.MAX_VALUE (exclusive).
+     *
+     * @return the random integer
+     * @see #randomInt(int, int)
+     * @since 3.16.0
+     */
+    public int randomInt() {
+<span class="fc" id="L393">        return randomInt(0, Integer.MAX_VALUE);</span>
+    }
+
+    /**
+     * Generates a random integer within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random integer
+     * @since 3.16.0
+     */
+    public int randomInt(final int startInclusive, final int endExclusive) {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        Validate.isTrue(endExclusive &gt;= startInclusive, &quot;Start value must be smaller or equal to end value.&quot;);</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        Validate.isTrue(startInclusive &gt;= 0, &quot;Both range values must be non-negative.&quot;);</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (startInclusive == endExclusive) {</span>
+<span class="fc" id="L410">            return startInclusive;</span>
+        }
+<span class="fc" id="L412">        return startInclusive + random().nextInt(endExclusive - startInclusive);</span>
+    }
+
+    /**
+     * Generates a random long between 0 (inclusive) and Long.MAX_VALUE (exclusive).
+     *
+     * @return the random long
+     * @see #randomLong(long, long)
+     * @since 3.16.0
+     */
+    public long randomLong() {
+<span class="fc" id="L423">        return randomLong(Long.MAX_VALUE);</span>
+    }
+
+    /**
+     * Generates a {@code long} value between 0 (inclusive) and the specified value (exclusive).
+     *
+     * @param n Bound on the random number to be returned. Must be positive.
+     * @return a random {@code long} value between 0 (inclusive) and {@code n} (exclusive).
+     */
+    private long randomLong(final long n) {
+        // Extracted from o.a.c.rng.core.BaseProvider.nextLong(long)
+        long bits;
+        long val;
+        do {
+<span class="fc" id="L437">            bits = random().nextLong() &gt;&gt;&gt; 1;</span>
+<span class="fc" id="L438">            val = bits % n;</span>
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">        } while (bits - val + n - 1 &lt; 0);</span>
+<span class="fc" id="L440">        return val;</span>
+    }
+
+    /**
+     * Generates a random long within the specified range.
+     *
+     * @param startInclusive the smallest value that can be returned, must be non-negative
+     * @param endExclusive   the upper bound (not included)
+     * @throws IllegalArgumentException if {@code startInclusive &gt; endExclusive} or if {@code startInclusive} is
+     *                                  negative
+     * @return the random long
+     * @since 3.16.0
+     */
+    public long randomLong(final long startInclusive, final long endExclusive) {
+<span class="fc bfc" id="L454" title="All 2 branches covered.">        Validate.isTrue(endExclusive &gt;= startInclusive, &quot;Start value must be smaller or equal to end value.&quot;);</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        Validate.isTrue(startInclusive &gt;= 0, &quot;Both range values must be non-negative.&quot;);</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">        if (startInclusive == endExclusive) {</span>
+<span class="fc" id="L457">            return startInclusive;</span>
+        }
+<span class="fc" id="L459">        return startInclusive + randomLong(endExclusive - startInclusive);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L464">        return &quot;RandomUtils [random=&quot; + random() + &quot;]&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

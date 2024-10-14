@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PoolingDataSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">PoolingDataSource.java</span></div><h1>PoolingDataSource.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.logging.Logger;
+
+import javax.sql.DataSource;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.pool2.ObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPool;
+
+/**
+ * A simple {@link DataSource} implementation that obtains {@link Connection}s from the specified {@link ObjectPool}.
+ *
+ * @param &lt;C&gt;
+ *            The connection type
+ *
+ * @since 2.0
+ */
+public class PoolingDataSource&lt;C extends Connection&gt; implements DataSource, AutoCloseable {
+
+    /**
+     * PoolGuardConnectionWrapper is a Connection wrapper that makes sure a closed connection cannot be used anymore.
+     *
+     * @since 2.0
+     */
+    private final class PoolGuardConnectionWrapper&lt;D extends Connection&gt; extends DelegatingConnection&lt;D&gt; {
+
+<span class="fc" id="L51">        PoolGuardConnectionWrapper(final D delegate) {</span>
+<span class="fc" id="L52">            super(delegate);</span>
+<span class="fc" id="L53">        }</span>
+
+        @Override
+        public void close() throws SQLException {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (getDelegateInternal() != null) {</span>
+<span class="fc" id="L58">                super.close();</span>
+<span class="fc" id="L59">                super.setDelegate(null);</span>
+            }
+<span class="fc" id="L61">        }</span>
+
+        /**
+         * @see org.apache.commons.dbcp2.DelegatingConnection#getDelegate()
+         */
+        @Override
+        public D getDelegate() {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            return isAccessToUnderlyingConnectionAllowed() ? super.getDelegate() : null;</span>
+        }
+
+        /**
+         * @see org.apache.commons.dbcp2.DelegatingConnection#getInnermostDelegate()
+         */
+        @Override
+        public Connection getInnermostDelegate() {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            return isAccessToUnderlyingConnectionAllowed() ? super.getInnermostDelegate() : null;</span>
+        }
+
+        @Override
+        public boolean isClosed() throws SQLException {
+<span class="fc bfc" id="L81" title="All 4 branches covered.">            return getDelegateInternal() == null || super.isClosed();</span>
+        }
+    }
+
+<span class="fc" id="L85">    private static final Log log = LogFactory.getLog(PoolingDataSource.class);</span>
+
+    /** Controls access to the underlying connection */
+    private boolean accessToUnderlyingConnectionAllowed;
+
+    /** My log writer. */
+    private PrintWriter logWriter;
+
+    private final ObjectPool&lt;C&gt; pool;
+
+    /**
+     * Constructs a new instance backed by the given connection pool.
+     *
+     * @param pool
+     *            the given connection pool.
+     */
+<span class="fc" id="L101">    public PoolingDataSource(final ObjectPool&lt;C&gt; pool) {</span>
+<span class="fc" id="L102">        Objects.requireNonNull(pool, &quot;Pool must not be null.&quot;);</span>
+<span class="fc" id="L103">        this.pool = pool;</span>
+        // Verify that pool's factory refers back to it. If not, log a warning and try to fix.
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (this.pool instanceof GenericObjectPool&lt;?&gt;) {</span>
+<span class="fc" id="L106">            final PoolableConnectionFactory pcf = (PoolableConnectionFactory) ((GenericObjectPool&lt;?&gt;) this.pool)</span>
+<span class="fc" id="L107">                    .getFactory();</span>
+<span class="fc" id="L108">            Objects.requireNonNull(pcf, &quot;PoolableConnectionFactory must not be null.&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (pcf.getPool() != this.pool) {</span>
+<span class="fc" id="L110">                log.warn(Utils.getMessage(&quot;poolingDataSource.factoryConfig&quot;));</span>
+                @SuppressWarnings(&quot;unchecked&quot;) // PCF must have a pool of PCs
+<span class="fc" id="L112">                final ObjectPool&lt;PoolableConnection&gt; p = (ObjectPool&lt;PoolableConnection&gt;) this.pool;</span>
+<span class="fc" id="L113">                pcf.setPool(p);</span>
+            }
+        }
+<span class="fc" id="L116">    }</span>
+
+    /**
+     * Closes and free all {@link Connection}s from the pool.
+     *
+     * @since 2.1
+     */
+    @Override
+    public void close() throws SQLException {
+        try {
+<span class="fc" id="L126">            pool.close();</span>
+<span class="nc" id="L127">        } catch (final Exception e) {</span>
+<span class="nc" id="L128">            throw new SQLException(Utils.getMessage(&quot;pool.close.fail&quot;), e);</span>
+<span class="fc" id="L129">        }</span>
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * Returns a {@link java.sql.Connection} from my pool, according to the contract specified by
+     * {@link ObjectPool#borrowObject}.
+     */
+    @Override
+    public Connection getConnection() throws SQLException {
+        try {
+<span class="fc" id="L139">            final C conn = pool.borrowObject();</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            if (conn == null) {</span>
+<span class="nc" id="L141">                return null;</span>
+            }
+<span class="fc" id="L143">            return new PoolGuardConnectionWrapper&lt;&gt;(conn);</span>
+<span class="fc" id="L144">        } catch (final NoSuchElementException e) {</span>
+<span class="fc" id="L145">            throw new SQLException(&quot;Cannot get a connection, pool error &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L146">        } catch (final SQLException | RuntimeException e) {</span>
+<span class="nc" id="L147">            throw e;</span>
+<span class="nc" id="L148">        } catch (final InterruptedException e) {</span>
+            // Reset the interrupt status so it is visible to callers
+<span class="nc" id="L150">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L151">            throw new SQLException(&quot;Cannot get a connection, general error&quot;, e);</span>
+<span class="nc" id="L152">        } catch (final Exception e) {</span>
+<span class="nc" id="L153">            throw new SQLException(&quot;Cannot get a connection, general error&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Throws {@link UnsupportedOperationException}
+     *
+     * @throws UnsupportedOperationException
+     *             always thrown
+     */
+    @Override
+    public Connection getConnection(final String userName, final String password) throws SQLException {
+<span class="nc" id="L165">        throw new UnsupportedOperationException();</span>
+    }
+
+    // --- DataSource methods -----------------------------------------
+
+    /**
+     * Throws {@link UnsupportedOperationException}.
+     *
+     * @throws UnsupportedOperationException
+     *             As this implementation does not support this feature.
+     */
+    @Override
+    public int getLoginTimeout() {
+<span class="nc" id="L178">        throw new UnsupportedOperationException(&quot;Login timeout is not supported.&quot;);</span>
+    }
+
+    /**
+     * Returns my log writer.
+     *
+     * @return my log writer
+     * @see DataSource#getLogWriter
+     */
+    @Override
+    public PrintWriter getLogWriter() {
+<span class="fc" id="L189">        return logWriter;</span>
+    }
+
+    @Override
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+<span class="nc" id="L194">        throw new SQLFeatureNotSupportedException();</span>
+    }
+
+    protected ObjectPool&lt;C&gt; getPool() {
+<span class="fc" id="L198">        return pool;</span>
+    }
+
+    /**
+     * Returns the value of the accessToUnderlyingConnectionAllowed property.
+     *
+     * @return true if access to the underlying {@link Connection} is allowed, false otherwise.
+     */
+    public boolean isAccessToUnderlyingConnectionAllowed() {
+<span class="fc" id="L207">        return this.accessToUnderlyingConnectionAllowed;</span>
+    }
+
+    @Override
+    public boolean isWrapperFor(final Class&lt;?&gt; iface) throws SQLException {
+<span class="fc bfc" id="L212" title="All 4 branches covered.">        return iface != null &amp;&amp; iface.isInstance(this);</span>
+    }
+
+    /**
+     * Sets the value of the accessToUnderlyingConnectionAllowed property. It controls if the PoolGuard allows access to
+     * the underlying connection. (Default: false)
+     *
+     * @param allow
+     *            Access to the underlying connection is granted when true.
+     */
+    public void setAccessToUnderlyingConnectionAllowed(final boolean allow) {
+<span class="fc" id="L223">        this.accessToUnderlyingConnectionAllowed = allow;</span>
+<span class="fc" id="L224">    }</span>
+
+    /**
+     * Throws {@link UnsupportedOperationException}.
+     *
+     * @throws UnsupportedOperationException
+     *             As this implementation does not support this feature.
+     */
+    @Override
+    public void setLoginTimeout(final int seconds) {
+<span class="nc" id="L234">        throw new UnsupportedOperationException(&quot;Login timeout is not supported.&quot;);</span>
+    }
+
+    /**
+     * Sets my log writer.
+     *
+     * @see DataSource#setLogWriter
+     */
+    @Override
+    public void setLogWriter(final PrintWriter out) {
+<span class="fc" id="L244">        logWriter = out;</span>
+<span class="fc" id="L245">    }</span>
+
+    @Override
+    public &lt;T&gt; T unwrap(final Class&lt;T&gt; iface) throws SQLException {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (isWrapperFor(iface)) {</span>
+<span class="fc" id="L250">            return iface.cast(this);</span>
+        }
+<span class="fc" id="L252">        throw new SQLException(this + &quot; is not a wrapper for &quot; + iface);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

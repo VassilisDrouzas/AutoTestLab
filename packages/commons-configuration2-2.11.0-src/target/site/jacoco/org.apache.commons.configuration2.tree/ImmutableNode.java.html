@@ -1,0 +1,579 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImmutableNode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">ImmutableNode.java</span></div><h1>ImmutableNode.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+/**
+ * &lt;p&gt;
+ * An immutable default implementation for configuration nodes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is used for an in-memory representation of hierarchical configuration data. It stores typical information
+ * like a node name, a value, child nodes, or attributes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * After their creation, instances cannot be manipulated. There are methods for updating properties, but these methods
+ * return new {@code ImmutableNode} instances. Instances are created using the nested {@code Builder} class.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public final class ImmutableNode implements Iterable&lt;ImmutableNode&gt; {
+    /**
+     * &lt;p&gt;
+     * A &lt;em&gt;builder&lt;/em&gt; class for creating instances of {@code ImmutableNode}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This class can be used to set all properties of an immutable node instance. Eventually call the {@code create()}
+     * method to obtain the resulting instance.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Implementation note: This class is not thread-safe. It is intended to be used to define a single node instance only.
+     * &lt;/p&gt;
+     */
+    public static final class Builder {
+        /**
+         * Filters null entries from the passed in collection with child nodes.
+         *
+         *
+         * @param children the collection to be filtered
+         * @return the collection with null entries removed
+         */
+        private static Collection&lt;? extends ImmutableNode&gt; filterNull(final Collection&lt;? extends ImmutableNode&gt; children) {
+<span class="fc" id="L68">            final List&lt;ImmutableNode&gt; result = new ArrayList&lt;&gt;(children.size());</span>
+<span class="fc" id="L69">            children.forEach(c -&gt; {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                if (c != null) {</span>
+<span class="fc" id="L71">                    result.add(c);</span>
+                }
+<span class="fc" id="L73">            });</span>
+<span class="fc" id="L74">            return result;</span>
+        }
+
+        /** The direct list of children of the new node. */
+        private final List&lt;ImmutableNode&gt; directChildren;
+
+        /** The direct map of attributes of the new node. */
+        private final Map&lt;String, Object&gt; directAttributes;
+
+        /**
+         * A list for the children of the new node. This list is populated by the {@code addChild()} method.
+         */
+        private List&lt;ImmutableNode&gt; children;
+
+        /**
+         * A map for storing the attributes of the new node. This map is populated by {@code addAttribute()}.
+         */
+        private Map&lt;String, Object&gt; attributes;
+
+        /** The name of the node. */
+        private String name;
+
+        /** The value of the node. */
+        private Object value;
+
+        /**
+         * Creates a new instance of {@code Builder} which does not contain any property definitions yet.
+         */
+        public Builder() {
+<span class="fc" id="L103">            this(null, null);</span>
+<span class="fc" id="L104">        }</span>
+
+        /**
+         * Creates a new instance of {@code Builder} and sets the number of expected child nodes. Using this constructor helps
+         * the class to create a properly sized list for the child nodes to be added.
+         *
+         * @param childCount the number of child nodes
+         */
+        public Builder(final int childCount) {
+<span class="fc" id="L113">            this();</span>
+<span class="fc" id="L114">            initChildrenCollection(childCount);</span>
+<span class="fc" id="L115">        }</span>
+
+        /**
+         * Creates a new instance of {@code Builder} and initializes the attributes of the new node and prepares the collection
+         * for the children. This constructor is used internally by methods of {@code ImmutableNode} which update the node and
+         * change the children. The new number of child nodes can be passed so that the collection for the new children can be
+         * created with an appropriate size.
+         *
+         * @param childCount the expected number of new children
+         * @param dirAttrs the attributes of the new node
+         */
+        private Builder(final int childCount, final Map&lt;String, Object&gt; dirAttrs) {
+<span class="fc" id="L127">            this(null, dirAttrs);</span>
+<span class="fc" id="L128">            initChildrenCollection(childCount);</span>
+<span class="fc" id="L129">        }</span>
+
+        /**
+         * Creates a new instance of {@code Builder} and initializes the children and attributes of the new node. This
+         * constructor is used internally by the {@code ImmutableNode} class for creating instances derived from another node.
+         * The passed in collections are passed directly to the newly created instance; thus they already need to be immutable.
+         * (Background is that the creation of intermediate objects is to be avoided.)
+         *
+         * @param dirChildren the children of the new node
+         * @param dirAttrs the attributes of the new node
+         */
+<span class="fc" id="L140">        private Builder(final List&lt;ImmutableNode&gt; dirChildren, final Map&lt;String, Object&gt; dirAttrs) {</span>
+<span class="fc" id="L141">            directChildren = dirChildren;</span>
+<span class="fc" id="L142">            directAttributes = dirAttrs;</span>
+<span class="fc" id="L143">        }</span>
+
+        /**
+         * Adds an attribute to this builder. The passed in attribute key and value are stored in an internal map. If there is
+         * already an attribute with this name, it is overridden.
+         *
+         * @param name the attribute name
+         * @param value the attribute value
+         * @return a reference to this object for method chaining
+         */
+        public Builder addAttribute(final String name, final Object value) {
+<span class="fc" id="L154">            ensureAttributesExist();</span>
+<span class="fc" id="L155">            attributes.put(name, value);</span>
+<span class="fc" id="L156">            return this;</span>
+        }
+
+        /**
+         * Adds all attributes of the given map to this builder. This method works like {@link #addAttribute(String, Object)},
+         * but it allows setting multiple attributes at once.
+         *
+         * @param attrs the map with attributes to be added (may be &lt;b&gt;null&lt;/b&gt;
+         * @return a reference to this object for method chaining
+         */
+        public Builder addAttributes(final Map&lt;String, ?&gt; attrs) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (attrs != null) {</span>
+<span class="fc" id="L168">                ensureAttributesExist();</span>
+<span class="fc" id="L169">                attributes.putAll(attrs);</span>
+            }
+<span class="fc" id="L171">            return this;</span>
+        }
+
+        /**
+         * Adds a child node to this builder. The passed in node becomes a child of the newly created node. If it is
+         * &lt;b&gt;null&lt;/b&gt;, it is ignored.
+         *
+         * @param c the child node (must not be &lt;b&gt;null&lt;/b&gt;)
+         * @return a reference to this object for method chaining
+         */
+        public Builder addChild(final ImmutableNode c) {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if (c != null) {</span>
+<span class="fc" id="L183">                ensureChildrenExist();</span>
+<span class="fc" id="L184">                children.add(c);</span>
+            }
+<span class="fc" id="L186">            return this;</span>
+        }
+
+        /**
+         * Adds multiple child nodes to this builder. This method works like {@link #addChild(ImmutableNode)}, but it allows
+         * setting a number of child nodes at once.
+         *
+         *
+         * @param children a collection with the child nodes to be added
+         * @return a reference to this object for method chaining
+         */
+        public Builder addChildren(final Collection&lt;? extends ImmutableNode&gt; children) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (children != null) {</span>
+<span class="fc" id="L199">                ensureChildrenExist();</span>
+<span class="fc" id="L200">                this.children.addAll(filterNull(children));</span>
+            }
+<span class="fc" id="L202">            return this;</span>
+        }
+
+        /**
+         * Creates a new {@code ImmutableNode} instance based on the properties set for this builder.
+         *
+         * @return the newly created {@code ImmutableNode}
+         */
+        public ImmutableNode create() {
+<span class="fc" id="L211">            final ImmutableNode newNode = new ImmutableNode(this);</span>
+<span class="fc" id="L212">            children = null;</span>
+<span class="fc" id="L213">            attributes = null;</span>
+<span class="fc" id="L214">            return newNode;</span>
+        }
+
+        /**
+         * Creates a map with the attributes of the newly created node. This is an immutable map. If direct attributes were set,
+         * they are returned. Otherwise an unmodifiable map from the attributes passed to this builder is constructed.
+         *
+         * @return a map with the attributes for the new node
+         */
+        private Map&lt;String, Object&gt; createAttributes() {
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (directAttributes != null) {</span>
+<span class="fc" id="L225">                return directAttributes;</span>
+            }
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            if (attributes != null) {</span>
+<span class="fc" id="L228">                return Collections.unmodifiableMap(attributes);</span>
+            }
+<span class="fc" id="L230">            return Collections.emptyMap();</span>
+        }
+
+        /**
+         * Creates a list with the children of the newly created node. The list returned here is always immutable. It depends on
+         * the way this builder was populated.
+         *
+         * @return the list with the children of the new node
+         */
+        List&lt;ImmutableNode&gt; createChildren() {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">            if (directChildren != null) {</span>
+<span class="fc" id="L241">                return directChildren;</span>
+            }
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (children != null) {</span>
+<span class="fc" id="L244">                return Collections.unmodifiableList(children);</span>
+            }
+<span class="fc" id="L246">            return Collections.emptyList();</span>
+        }
+
+        /**
+         * Ensures that the map for the attributes exists. It is created on demand.
+         */
+        private void ensureAttributesExist() {
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            if (attributes == null) {</span>
+<span class="fc" id="L254">                attributes = new HashMap&lt;&gt;();</span>
+            }
+<span class="fc" id="L256">        }</span>
+
+        /**
+         * Ensures that the collection for the child nodes exists. It is created on demand.
+         */
+        private void ensureChildrenExist() {
+<span class="fc bfc" id="L262" title="All 2 branches covered.">            if (children == null) {</span>
+<span class="fc" id="L263">                children = new LinkedList&lt;&gt;();</span>
+            }
+<span class="fc" id="L265">        }</span>
+
+        /**
+         * Creates the collection for child nodes based on the expected number of children.
+         *
+         * @param childCount the expected number of new children
+         */
+        private void initChildrenCollection(final int childCount) {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            if (childCount &gt; 0) {</span>
+<span class="fc" id="L274">                children = new ArrayList&lt;&gt;(childCount);</span>
+            }
+<span class="fc" id="L276">        }</span>
+
+        /**
+         * Sets the name of the node to be created.
+         *
+         * @param n the node name
+         * @return a reference to this object for method chaining
+         */
+        public Builder name(final String n) {
+<span class="fc" id="L285">            name = n;</span>
+<span class="fc" id="L286">            return this;</span>
+        }
+
+        /**
+         * Sets the value of the node to be created.
+         *
+         * @param v the value
+         * @return a reference to this object for method chaining
+         */
+        public Builder value(final Object v) {
+<span class="fc" id="L296">            value = v;</span>
+<span class="fc" id="L297">            return this;</span>
+        }
+    }
+
+    /**
+     * Checks whether the given child node is not null. This check is done at multiple places to ensure that newly added
+     * child nodes are always defined.
+     *
+     * @param child the child node to be checked
+     * @throws IllegalArgumentException if the child node is &lt;b&gt;null&lt;/b&gt;
+     */
+    private static void checkChildNode(final ImmutableNode child) {
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (child == null) {</span>
+<span class="fc" id="L310">            throw new IllegalArgumentException(&quot;Child node must not be null!&quot;);</span>
+        }
+<span class="fc" id="L312">    }</span>
+
+    /** The name of this node. */
+    private final String nodeName;
+
+    /** The value of this node. */
+    private final Object value;
+
+    /** A collection with the child nodes of this node. */
+    private final List&lt;ImmutableNode&gt; children;
+
+    /** A map with the attributes of this node. */
+    private final Map&lt;String, Object&gt; attributes;
+
+    /**
+     * Creates a new instance of {@code ImmutableNode} from the given {@code Builder} object.
+     *
+     * @param b the {@code Builder}
+     */
+<span class="fc" id="L331">    private ImmutableNode(final Builder b) {</span>
+<span class="fc" id="L332">        children = b.createChildren();</span>
+<span class="fc" id="L333">        attributes = b.createAttributes();</span>
+<span class="fc" id="L334">        nodeName = b.name;</span>
+<span class="fc" id="L335">        value = b.value;</span>
+<span class="fc" id="L336">    }</span>
+
+    /**
+     * Creates a new {@code ImmutableNode} instance which is a copy of this object, but has the given child node added.
+     *
+     * @param child the child node to be added (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return the new node with the child node added
+     * @throws IllegalArgumentException if the child node is &lt;b&gt;null&lt;/b&gt;
+     */
+    public ImmutableNode addChild(final ImmutableNode child) {
+<span class="fc" id="L346">        checkChildNode(child);</span>
+<span class="fc" id="L347">        final Builder builder = new Builder(children.size() + 1, attributes);</span>
+<span class="fc" id="L348">        builder.addChildren(children).addChild(child);</span>
+<span class="fc" id="L349">        return createWithBasicProperties(builder);</span>
+    }
+
+    /**
+     * Initializes the given builder with basic properties (node name and value) and returns the newly created node. This is
+     * a helper method for updating a node when only children or attributes are affected.
+     *
+     * @param builder the already prepared builder
+     * @return the newly created node
+     */
+    private ImmutableNode createWithBasicProperties(final Builder builder) {
+<span class="fc" id="L360">        return builder.name(nodeName).value(value).create();</span>
+    }
+
+    /**
+     * Creates a new {@code ImmutableNode} instance with the same properties as this object, but with the given new
+     * attributes.
+     *
+     * @param newAttrs the new attributes
+     * @return the new node instance
+     */
+    private ImmutableNode createWithNewAttributes(final Map&lt;String, Object&gt; newAttrs) {
+<span class="fc" id="L371">        return createWithBasicProperties(new Builder(children, null).addAttributes(newAttrs));</span>
+    }
+
+    /**
+     * Gets a map with the attributes of this node. This map cannot be modified.
+     *
+     * @return a map with this node's attributes
+     */
+    public Map&lt;String, Object&gt; getAttributes() {
+<span class="fc" id="L380">        return attributes;</span>
+    }
+
+    /**
+     * Gets a list with the children of this node. This list cannot be modified.
+     *
+     * @return a list with the child nodes
+     */
+    public List&lt;ImmutableNode&gt; getChildren() {
+<span class="fc" id="L389">        return children;</span>
+    }
+
+    /**
+     * Returns a list with the children of this node.
+     *
+     * @param name the node name to find
+     *
+     * @return a list with the child nodes
+     */
+    public List&lt;ImmutableNode&gt; getChildren(final String name) {
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        if (name == null) {</span>
+<span class="fc" id="L401">            return new ArrayList&lt;&gt;();</span>
+        }
+<span class="fc" id="L403">        return children.stream().filter(in -&gt; name.equals(in.getNodeName())).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Gets the name of this node.
+     *
+     * @return the name of this node
+     */
+    public String getNodeName() {
+<span class="fc" id="L412">        return nodeName;</span>
+    }
+
+    /**
+     * Gets the value of this node.
+     *
+     * @return the value of this node
+     */
+    public Object getValue() {
+<span class="fc" id="L421">        return value;</span>
+    }
+
+    /**
+     * @return An iterator of {@link #children child nodes.}
+     * @since 2.8.0
+     */
+    @Override
+    public Iterator&lt;ImmutableNode&gt; iterator() {
+<span class="fc" id="L430">        return children.iterator();</span>
+    }
+
+    /**
+     * Returns a new {@code ImmutableNode} instance which is a copy of this object, but with the specified attribute
+     * removed. If there is no attribute with the given name, the same node instance is returned.
+     *
+     * @param name the name of the attribute
+     * @return the new node without this attribute
+     */
+    public ImmutableNode removeAttribute(final String name) {
+<span class="fc" id="L441">        final Map&lt;String, Object&gt; newAttrs = new HashMap&lt;&gt;(attributes);</span>
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        if (newAttrs.remove(name) != null) {</span>
+<span class="fc" id="L443">            return createWithNewAttributes(newAttrs);</span>
+        }
+<span class="fc" id="L445">        return this;</span>
+    }
+
+    /**
+     * Returns a new {@code ImmutableNode} instance which is a copy of this object, but with the given child node removed.
+     * If the child node does not belong to this node, the same node instance is returned.
+     *
+     * @param child the child node to be removed
+     * @return the new node with the child node removed
+     */
+    public ImmutableNode removeChild(final ImmutableNode child) {
+        // use same size of children in case the child does not exist
+<span class="fc" id="L457">        final Builder builder = new Builder(children.size(), attributes);</span>
+<span class="fc" id="L458">        boolean foundChild = false;</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        for (final ImmutableNode c : children) {</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">            if (c == child) {</span>
+<span class="fc" id="L461">                foundChild = true;</span>
+            } else {
+<span class="fc" id="L463">                builder.addChild(c);</span>
+            }
+<span class="fc" id="L465">        }</span>
+
+<span class="fc bfc" id="L467" title="All 2 branches covered.">        return foundChild ? createWithBasicProperties(builder) : this;</span>
+    }
+
+    /**
+     * Returns a new {@code ImmutableNode} instance which is a copy of this object, but with the given child replaced by the
+     * new one. If the child to be replaced cannot be found, the same node instance is returned.
+     *
+     * @param oldChild the child node to be replaced
+     * @param newChild the replacing child node (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return the new node with the child replaced
+     * @throws IllegalArgumentException if the new child node is &lt;b&gt;null&lt;/b&gt;
+     */
+    public ImmutableNode replaceChild(final ImmutableNode oldChild, final ImmutableNode newChild) {
+<span class="fc" id="L480">        checkChildNode(newChild);</span>
+<span class="fc" id="L481">        final Builder builder = new Builder(children.size(), attributes);</span>
+<span class="fc" id="L482">        boolean foundChild = false;</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">        for (final ImmutableNode c : children) {</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">            if (c == oldChild) {</span>
+<span class="fc" id="L485">                builder.addChild(newChild);</span>
+<span class="fc" id="L486">                foundChild = true;</span>
+            } else {
+<span class="fc" id="L488">                builder.addChild(c);</span>
+            }
+<span class="fc" id="L490">        }</span>
+
+<span class="fc bfc" id="L492" title="All 2 branches covered.">        return foundChild ? createWithBasicProperties(builder) : this;</span>
+    }
+
+    /**
+     * Returns a new {@code ImmutableNode} instance which is a copy of this object, but with the children replaced by the
+     * ones in the passed in collection. With this method all children can be replaced in a single step. For the collection
+     * the same rules apply as for {@link Builder#addChildren(Collection)}.
+     *
+     * @param newChildren the collection with the new children (may be &lt;b&gt;null&lt;/b&gt;)
+     * @return the new node with replaced children
+     */
+    public ImmutableNode replaceChildren(final Collection&lt;ImmutableNode&gt; newChildren) {
+<span class="fc" id="L504">        final Builder builder = new Builder(null, attributes);</span>
+<span class="fc" id="L505">        builder.addChildren(newChildren);</span>
+<span class="fc" id="L506">        return createWithBasicProperties(builder);</span>
+    }
+
+    /**
+     * Returns a new {@code ImmutableNode} instance which is a copy of this object, but with the specified attribute set to
+     * the given value. If an attribute with this name does not exist, it is created now. Otherwise, the new value overrides
+     * the old one.
+     *
+     * @param name the name of the attribute
+     * @param value the attribute value
+     * @return the new node with this attribute
+     */
+    public ImmutableNode setAttribute(final String name, final Object value) {
+<span class="fc" id="L519">        final Map&lt;String, Object&gt; newAttrs = new HashMap&lt;&gt;(attributes);</span>
+<span class="fc" id="L520">        newAttrs.put(name, value);</span>
+<span class="fc" id="L521">        return createWithNewAttributes(newAttrs);</span>
+    }
+
+    /**
+     * Returns a new {@code ImmutableNode} instance which is a copy of this object, but with all attributes added defined by
+     * the given map. This method is analogous to {@link #setAttribute(String, Object)}, but all attributes in the given map
+     * are added. If the map is &lt;b&gt;null&lt;/b&gt; or empty, this method has no effect.
+     *
+     * @param newAttributes the map with attributes to be added
+     * @return the new node with these attributes
+     */
+    public ImmutableNode setAttributes(final Map&lt;String, ?&gt; newAttributes) {
+<span class="fc bfc" id="L533" title="All 4 branches covered.">        if (newAttributes == null || newAttributes.isEmpty()) {</span>
+<span class="fc" id="L534">            return this;</span>
+        }
+
+<span class="fc" id="L537">        final Map&lt;String, Object&gt; newAttrs = new HashMap&lt;&gt;(attributes);</span>
+<span class="fc" id="L538">        newAttrs.putAll(newAttributes);</span>
+<span class="fc" id="L539">        return createWithNewAttributes(newAttrs);</span>
+    }
+
+    /**
+     * Creates a new {@code ImmutableNode} instance which is a copy of this object with the name changed to the passed in
+     * value.
+     *
+     * @param name the name of the newly created node
+     * @return the new node with the changed name
+     */
+    public ImmutableNode setName(final String name) {
+<span class="fc" id="L550">        return new Builder(children, attributes).name(name).value(value).create();</span>
+    }
+
+    /**
+     * Creates a new {@code ImmutableNode} instance which is a copy of this object with the value changed to the passed in
+     * value.
+     *
+     * @param newValue the value of the newly created node
+     * @return the new node with the changed value
+     */
+    public ImmutableNode setValue(final Object newValue) {
+<span class="fc" id="L561">        return new Builder(children, attributes).name(nodeName).value(newValue).create();</span>
+    }
+
+    /**
+     * Returns a sequential {@code Stream} with this node as its source.
+     *
+     * @return a sequential {@code Stream} over the elements in this node.
+     * @since 2.9.0
+     */
+    public Stream&lt;ImmutableNode&gt; stream() {
+<span class="fc" id="L571">        return StreamSupport.stream(spliterator(), false);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L576">        return super.toString() + &quot;(&quot; + nodeName + &quot;)&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CachedRandomBits.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">CachedRandomBits.java</span></div><h1>CachedRandomBits.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.util.Objects;
+import java.util.Random;
+
+/**
+ * Generates random integers of specific bit length.
+ *
+ * &lt;p&gt;
+ * It is more efficient than calling Random.nextInt(1 &lt;&lt; nbBits). It uses a cache of cacheSize random bytes that it replenishes when it gets empty. This is
+ * especially beneficial for SecureRandom Drbg implementations, which incur a constant cost at each randomness generation.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Used internally by RandomStringUtils.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * #NotThreadSafe#
+ * &lt;/p&gt;
+ */
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">final class CachedRandomBits {</span>
+
+    private final Random random;
+
+    private final byte[] cache;
+
+    /**
+     * Index of the next bit in the cache to be used.
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;bitIndex=0 means the cache is fully random and none of the bits have been used yet.&lt;/li&gt;
+     * &lt;li&gt;bitIndex=1 means that only the LSB of cache[0] has been used and all other bits can be used.&lt;/li&gt;
+     * &lt;li&gt;bitIndex=8 means that only the 8 bits of cache[0] has been used.&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    private int bitIndex;
+
+    /**
+     * Creates a new instance.
+     *
+     * @param cacheSize number of bytes cached (only affects performance)
+     * @param random random source
+     */
+<span class="fc" id="L61">    CachedRandomBits(final int cacheSize, final Random random) {</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (cacheSize &lt;= 0) {</span>
+<span class="nc" id="L63">            throw new IllegalArgumentException(&quot;cacheSize must be positive&quot;);</span>
+        }
+<span class="fc" id="L65">        this.cache = new byte[cacheSize];</span>
+<span class="fc" id="L66">        this.random = Objects.requireNonNull(random, &quot;random&quot;);</span>
+<span class="fc" id="L67">        this.random.nextBytes(this.cache);</span>
+<span class="fc" id="L68">        this.bitIndex = 0;</span>
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * Generates a random integer with the specified number of bits.
+     *
+     * @param bits number of bits to generate, MUST be between 1 and 32
+     * @return random integer with {@code bits} bits
+     */
+    public int nextBits(final int bits) {
+<span class="fc bfc" id="L78" title="All 4 branches covered.">        if (bits &gt; 32 || bits &lt;= 0) {</span>
+<span class="fc" id="L79">            throw new IllegalArgumentException(&quot;number of bits must be between 1 and 32&quot;);</span>
+        }
+<span class="fc" id="L81">        int result = 0;</span>
+<span class="fc" id="L82">        int generatedBits = 0; // number of generated bits up to now</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        while (generatedBits &lt; bits) {</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (bitIndex &gt;&gt; 3 &gt;= cache.length) {</span>
+                // we exhausted the number of bits in the cache
+                // this should only happen if the bitIndex is exactly matching the cache length
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">                assert bitIndex == cache.length * 8;</span>
+<span class="fc" id="L88">                random.nextBytes(cache);</span>
+<span class="fc" id="L89">                bitIndex = 0;</span>
+            }
+            // generatedBitsInIteration is the number of bits that we will generate
+            // in this iteration of the while loop
+<span class="fc" id="L93">            int generatedBitsInIteration = Math.min(8 - (bitIndex &amp; 0x7), bits - generatedBits);</span>
+<span class="fc" id="L94">            result = result &lt;&lt; generatedBitsInIteration;</span>
+<span class="fc" id="L95">            result |= (cache[bitIndex &gt;&gt; 3] &gt;&gt; (bitIndex &amp; 0x7)) &amp; ((1 &lt;&lt; generatedBitsInIteration) - 1);</span>
+<span class="fc" id="L96">            generatedBits += generatedBitsInIteration;</span>
+<span class="fc" id="L97">            bitIndex += generatedBitsInIteration;</span>
+<span class="fc" id="L98">        }</span>
+<span class="fc" id="L99">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

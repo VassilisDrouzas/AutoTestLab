@@ -1,0 +1,541 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DaitchMokotoffSoundex.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.language</a> &gt; <span class="el_source">DaitchMokotoffSoundex.java</span></div><h1>DaitchMokotoffSoundex.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.codec.language;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.Set;
+
+import org.apache.commons.codec.CharEncoding;
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.Resources;
+import org.apache.commons.codec.StringEncoder;
+
+/**
+ * Encodes a string into a Daitch-Mokotoff Soundex value.
+ * &lt;p&gt;
+ * The Daitch-Mokotoff Soundex algorithm is a refinement of the Russel and American Soundex algorithms, yielding greater
+ * accuracy in matching especially Slavish and Yiddish surnames with similar pronunciation but differences in spelling.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The main differences compared to the other soundex variants are:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;coded names are 6 digits long
+ * &lt;li&gt;the initial character of the name is coded
+ * &lt;li&gt;rules to encoded multi-character n-grams
+ * &lt;li&gt;multiple possible encodings for the same name (branching)
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * This implementation supports branching, depending on the used method:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #encode(String)} - branching disabled, only the first code will be returned
+ * &lt;li&gt;{@link #soundex(String)} - branching enabled, all codes will be returned, separated by '|'
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Note: this implementation has additional branching rules compared to the original description of the algorithm. The
+ * rules can be customized by overriding the default rules contained in the resource file
+ * {@code org/apache/commons/codec/language/dmrules.txt}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is thread-safe.
+ * &lt;/p&gt;
+ *
+ * @see Soundex
+ * @see &lt;a href=&quot;https://en.wikipedia.org/wiki/Daitch%E2%80%93Mokotoff_Soundex&quot;&gt; Wikipedia - Daitch-Mokotoff Soundex&lt;/a&gt;
+ * @see &lt;a href=&quot;http://www.avotaynu.com/soundex.htm&quot;&gt;Avotaynu - Soundexing and Genealogy&lt;/a&gt;
+ *
+ * @since 1.10
+ */
+public class DaitchMokotoffSoundex implements StringEncoder {
+
+    /**
+     * Inner class representing a branch during DM soundex encoding.
+     */
+    private static final class Branch {
+        private final StringBuilder builder;
+        private String cachedString;
+        private String lastReplacement;
+
+<span class="fc" id="L80">        private Branch() {</span>
+<span class="fc" id="L81">            builder = new StringBuilder();</span>
+<span class="fc" id="L82">            lastReplacement = null;</span>
+<span class="fc" id="L83">            cachedString = null;</span>
+<span class="fc" id="L84">        }</span>
+
+        /**
+         * Creates a new branch, identical to this branch.
+         *
+         * @return a new, identical branch
+         */
+        public Branch createBranch() {
+<span class="fc" id="L92">            final Branch branch = new Branch();</span>
+<span class="fc" id="L93">            branch.builder.append(toString());</span>
+<span class="fc" id="L94">            branch.lastReplacement = this.lastReplacement;</span>
+<span class="fc" id="L95">            return branch;</span>
+        }
+
+        @Override
+        public boolean equals(final Object other) {
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (this == other) {</span>
+<span class="nc" id="L101">                return true;</span>
+            }
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            if (!(other instanceof Branch)) {</span>
+<span class="nc" id="L104">                return false;</span>
+            }
+
+<span class="fc" id="L107">            return toString().equals(((Branch) other).toString());</span>
+        }
+
+        /**
+         * Finish this branch by appending '0's until the maximum code length has been reached.
+         */
+        public void finish() {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            while (builder.length() &lt; MAX_LENGTH) {</span>
+<span class="fc" id="L115">                builder.append('0');</span>
+<span class="fc" id="L116">                cachedString = null;</span>
+            }
+<span class="fc" id="L118">        }</span>
+
+        @Override
+        public int hashCode() {
+<span class="fc" id="L122">            return toString().hashCode();</span>
+        }
+
+        /**
+         * Process the next replacement to be added to this branch.
+         *
+         * @param replacement
+         *            the next replacement to append
+         * @param forceAppend
+         *            indicates if the default processing shall be overridden
+         */
+        public void processNextReplacement(final String replacement, final boolean forceAppend) {
+<span class="pc bpc" id="L134" title="1 of 6 branches missed.">            final boolean append = lastReplacement == null || !lastReplacement.endsWith(replacement) || forceAppend;</span>
+
+<span class="fc bfc" id="L136" title="All 4 branches covered.">            if (append &amp;&amp; builder.length() &lt; MAX_LENGTH) {</span>
+<span class="fc" id="L137">                builder.append(replacement);</span>
+                // remove all characters after the maximum length
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                if (builder.length() &gt; MAX_LENGTH) {</span>
+<span class="fc" id="L140">                    builder.delete(MAX_LENGTH, builder.length());</span>
+                }
+<span class="fc" id="L142">                cachedString = null;</span>
+            }
+
+<span class="fc" id="L145">            lastReplacement = replacement;</span>
+<span class="fc" id="L146">        }</span>
+
+        @Override
+        public String toString() {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (cachedString == null) {</span>
+<span class="fc" id="L151">                cachedString = builder.toString();</span>
+            }
+<span class="fc" id="L153">            return cachedString;</span>
+        }
+    }
+
+    /**
+     * Inner class for storing rules.
+     */
+    private static final class Rule {
+        private final String pattern;
+        private final String[] replacementAtStart;
+        private final String[] replacementBeforeVowel;
+        private final String[] replacementDefault;
+
+        protected Rule(final String pattern, final String replacementAtStart, final String replacementBeforeVowel,
+<span class="fc" id="L167">                final String replacementDefault) {</span>
+<span class="fc" id="L168">            this.pattern = pattern;</span>
+<span class="fc" id="L169">            this.replacementAtStart = replacementAtStart.split(&quot;\\|&quot;);</span>
+<span class="fc" id="L170">            this.replacementBeforeVowel = replacementBeforeVowel.split(&quot;\\|&quot;);</span>
+<span class="fc" id="L171">            this.replacementDefault = replacementDefault.split(&quot;\\|&quot;);</span>
+<span class="fc" id="L172">        }</span>
+
+        public int getPatternLength() {
+<span class="fc" id="L175">            return pattern.length();</span>
+        }
+
+        public String[] getReplacements(final String context, final boolean atStart) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            if (atStart) {</span>
+<span class="fc" id="L180">                return replacementAtStart;</span>
+            }
+
+<span class="fc" id="L183">            final int nextIndex = getPatternLength();</span>
+<span class="fc bfc" id="L184" title="All 4 branches covered.">            final boolean nextCharIsVowel = nextIndex &lt; context.length() &amp;&amp; isVowel(context.charAt(nextIndex));</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            if (nextCharIsVowel) {</span>
+<span class="fc" id="L186">                return replacementBeforeVowel;</span>
+            }
+
+<span class="fc" id="L189">            return replacementDefault;</span>
+        }
+
+        private boolean isVowel(final char ch) {
+<span class="fc bfc" id="L193" title="All 10 branches covered.">            return ch == 'a' || ch == 'e' || ch == 'i' || ch == 'o' || ch == 'u';</span>
+        }
+
+        public boolean matches(final String context) {
+<span class="fc" id="L197">            return context.startsWith(pattern);</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc" id="L202">            return String.format(&quot;%s=(%s,%s,%s)&quot;, pattern, Arrays.asList(replacementAtStart),</span>
+<span class="nc" id="L203">                    Arrays.asList(replacementBeforeVowel), Arrays.asList(replacementDefault));</span>
+        }
+    }
+
+    private static final String COMMENT = &quot;//&quot;;
+
+    private static final String DOUBLE_QUOTE = &quot;\&quot;&quot;;
+
+    private static final String MULTILINE_COMMENT_END = &quot;*/&quot;;
+
+    private static final String MULTILINE_COMMENT_START = &quot;/*&quot;;
+
+    /** The resource file containing the replacement and folding rules */
+    private static final String RESOURCE_FILE = &quot;org/apache/commons/codec/language/dmrules.txt&quot;;
+
+    /** The code length of a DM soundex value. */
+    private static final int MAX_LENGTH = 6;
+
+    /** Transformation rules indexed by the first character of their pattern. */
+<span class="fc" id="L222">    private static final Map&lt;Character, List&lt;Rule&gt;&gt; RULES = new HashMap&lt;&gt;();</span>
+
+    /** Folding rules. */
+<span class="fc" id="L225">    private static final Map&lt;Character, Character&gt; FOLDINGS = new HashMap&lt;&gt;();</span>
+
+    static {
+<span class="fc" id="L228">        try (final Scanner scanner = new Scanner(Resources.getInputStream(RESOURCE_FILE), CharEncoding.UTF_8)) {</span>
+<span class="fc" id="L229">            parseRules(scanner, RESOURCE_FILE, RULES, FOLDINGS);</span>
+        }
+
+        // sort RULES by pattern length in descending order
+<span class="fc" id="L233">        RULES.forEach((k, v) -&gt; v.sort((rule1, rule2) -&gt; rule2.getPatternLength() - rule1.getPatternLength()));</span>
+<span class="fc" id="L234">    }</span>
+
+    private static void parseRules(final Scanner scanner, final String location,
+            final Map&lt;Character, List&lt;Rule&gt;&gt; ruleMapping, final Map&lt;Character, Character&gt; asciiFoldings) {
+<span class="fc" id="L238">        int currentLine = 0;</span>
+<span class="fc" id="L239">        boolean inMultilineComment = false;</span>
+
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        while (scanner.hasNextLine()) {</span>
+<span class="fc" id="L242">            currentLine++;</span>
+<span class="fc" id="L243">            final String rawLine = scanner.nextLine();</span>
+<span class="fc" id="L244">            String line = rawLine;</span>
+
+<span class="fc bfc" id="L246" title="All 2 branches covered.">            if (inMultilineComment) {</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                if (line.endsWith(MULTILINE_COMMENT_END)) {</span>
+<span class="fc" id="L248">                    inMultilineComment = false;</span>
+                }
+                continue;
+            }
+
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            if (line.startsWith(MULTILINE_COMMENT_START)) {</span>
+<span class="fc" id="L254">                inMultilineComment = true;</span>
+            } else {
+                // discard comments
+<span class="fc" id="L257">                final int cmtI = line.indexOf(COMMENT);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                if (cmtI &gt;= 0) {</span>
+<span class="fc" id="L259">                    line = line.substring(0, cmtI);</span>
+                }
+
+                // trim leading-trailing whitespace
+<span class="fc" id="L263">                line = line.trim();</span>
+
+<span class="fc bfc" id="L265" title="All 2 branches covered.">                if (line.isEmpty()) {</span>
+<span class="fc" id="L266">                    continue; // empty lines can be safely skipped</span>
+                }
+
+<span class="fc bfc" id="L269" title="All 2 branches covered.">                if (line.contains(&quot;=&quot;)) {</span>
+                    // folding
+<span class="fc" id="L271">                    final String[] parts = line.split(&quot;=&quot;);</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">                    if (parts.length != 2) {</span>
+<span class="nc" id="L273">                        throw new IllegalArgumentException(&quot;Malformed folding statement split into &quot; + parts.length +</span>
+                                &quot; parts: &quot; + rawLine + &quot; in &quot; + location);
+                    }
+<span class="fc" id="L276">                    final String leftCharacter = parts[0];</span>
+<span class="fc" id="L277">                    final String rightCharacter = parts[1];</span>
+
+<span class="pc bpc" id="L279" title="2 of 4 branches missed.">                    if (leftCharacter.length() != 1 || rightCharacter.length() != 1) {</span>
+<span class="nc" id="L280">                        throw new IllegalArgumentException(&quot;Malformed folding statement - &quot; +</span>
+                                &quot;patterns are not single characters: &quot; + rawLine + &quot; in &quot; + location);
+                    }
+
+<span class="fc" id="L284">                    asciiFoldings.put(leftCharacter.charAt(0), rightCharacter.charAt(0));</span>
+<span class="fc" id="L285">                } else {</span>
+                    // rule
+<span class="fc" id="L287">                    final String[] parts = line.split(&quot;\\s+&quot;);</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                    if (parts.length != 4) {</span>
+<span class="nc" id="L289">                        throw new IllegalArgumentException(&quot;Malformed rule statement split into &quot; + parts.length +</span>
+                                &quot; parts: &quot; + rawLine + &quot; in &quot; + location);
+                    }
+                    try {
+<span class="fc" id="L293">                        final String pattern = stripQuotes(parts[0]);</span>
+<span class="fc" id="L294">                        final String replacement1 = stripQuotes(parts[1]);</span>
+<span class="fc" id="L295">                        final String replacement2 = stripQuotes(parts[2]);</span>
+<span class="fc" id="L296">                        final String replacement3 = stripQuotes(parts[3]);</span>
+
+<span class="fc" id="L298">                        final Rule r = new Rule(pattern, replacement1, replacement2, replacement3);</span>
+<span class="fc" id="L299">                        final char patternKey = r.pattern.charAt(0);</span>
+<span class="fc" id="L300">                        final List&lt;Rule&gt; rules = ruleMapping.computeIfAbsent(patternKey, k -&gt; new ArrayList&lt;&gt;());</span>
+<span class="fc" id="L301">                        rules.add(r);</span>
+<span class="nc" id="L302">                    } catch (final IllegalArgumentException e) {</span>
+<span class="nc" id="L303">                        throw new IllegalStateException(</span>
+                                &quot;Problem parsing line '&quot; + currentLine + &quot;' in &quot; + location, e);
+<span class="fc" id="L305">                    }</span>
+                }
+            }
+<span class="fc" id="L308">        }</span>
+<span class="fc" id="L309">    }</span>
+
+    private static String stripQuotes(String str) {
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">        if (str.startsWith(DOUBLE_QUOTE)) {</span>
+<span class="fc" id="L313">            str = str.substring(1);</span>
+        }
+
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">        if (str.endsWith(DOUBLE_QUOTE)) {</span>
+<span class="fc" id="L317">            str = str.substring(0, str.length() - 1);</span>
+        }
+
+<span class="fc" id="L320">        return str;</span>
+    }
+
+    /** Whether to use ASCII folding prior to encoding. */
+    private final boolean folding;
+
+    /**
+     * Creates a new instance with ASCII-folding enabled.
+     */
+    public DaitchMokotoffSoundex() {
+<span class="fc" id="L330">        this(true);</span>
+<span class="fc" id="L331">    }</span>
+
+    /**
+     * Creates a new instance.
+     * &lt;p&gt;
+     * With ASCII-folding enabled, certain accented characters will be transformed to equivalent ASCII characters, e.g.
+     * è -&amp;gt; e.
+     * &lt;/p&gt;
+     *
+     * @param folding
+     *            if ASCII-folding shall be performed before encoding
+     */
+<span class="fc" id="L343">    public DaitchMokotoffSoundex(final boolean folding) {</span>
+<span class="fc" id="L344">        this.folding = folding;</span>
+<span class="fc" id="L345">    }</span>
+
+    /**
+     * Performs a cleanup of the input string before the actual soundex transformation.
+     * &lt;p&gt;
+     * Removes all whitespace characters and performs ASCII folding if enabled.
+     * &lt;/p&gt;
+     *
+     * @param input
+     *            the input string to clean up
+     * @return a cleaned up string
+     */
+    private String cleanup(final String input) {
+<span class="fc" id="L358">        final StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        for (char ch : input.toCharArray()) {</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">            if (Character.isWhitespace(ch)) {</span>
+<span class="fc" id="L361">                continue;</span>
+            }
+
+<span class="fc" id="L364">            ch = Character.toLowerCase(ch);</span>
+<span class="fc" id="L365">            final Character character = FOLDINGS.get(ch);</span>
+<span class="pc bpc" id="L366" title="1 of 4 branches missed.">            if (folding &amp;&amp; character != null) {</span>
+<span class="fc" id="L367">                ch = character;</span>
+            }
+<span class="fc" id="L369">            sb.append(ch);</span>
+        }
+<span class="fc" id="L371">        return sb.toString();</span>
+    }
+
+    /**
+     * Encodes an Object using the Daitch-Mokotoff soundex algorithm without branching.
+     * &lt;p&gt;
+     * This method is provided in order to satisfy the requirements of the Encoder interface, and will throw an
+     * EncoderException if the supplied object is not of type {@link String}.
+     * &lt;/p&gt;
+     *
+     * @see #soundex(String)
+     *
+     * @param obj
+     *            Object to encode
+     * @return An object (of type {@link String}) containing the DM soundex code, which corresponds to the String
+     *         supplied.
+     * @throws EncoderException
+     *             if the parameter supplied is not of type {@link String}
+     * @throws IllegalArgumentException
+     *             if a character is not mapped
+     */
+    @Override
+    public Object encode(final Object obj) throws EncoderException {
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        if (!(obj instanceof String)) {</span>
+<span class="fc" id="L395">            throw new EncoderException(</span>
+                    &quot;Parameter supplied to DaitchMokotoffSoundex encode is not of type java.lang.String&quot;);
+        }
+<span class="fc" id="L398">        return encode((String) obj);</span>
+    }
+
+    /**
+     * Encodes a String using the Daitch-Mokotoff soundex algorithm without branching.
+     *
+     * @see #soundex(String)
+     *
+     * @param source
+     *            A String object to encode
+     * @return A DM Soundex code corresponding to the String supplied
+     * @throws IllegalArgumentException
+     *             if a character is not mapped
+     */
+    @Override
+    public String encode(final String source) {
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        if (source == null) {</span>
+<span class="fc" id="L415">            return null;</span>
+        }
+<span class="fc" id="L417">        return soundex(source, false)[0];</span>
+    }
+
+    /**
+     * Encodes a String using the Daitch-Mokotoff soundex algorithm with branching.
+     * &lt;p&gt;
+     * In case a string is encoded into multiple codes (see branching rules), the result will contain all codes,
+     * separated by '|'.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Example: the name &quot;AUERBACH&quot; is encoded as both
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;097400&lt;/li&gt;
+     * &lt;li&gt;097500&lt;/li&gt;
+     * &lt;/ul&gt;
+     * &lt;p&gt;
+     * Thus the result will be &quot;097400|097500&quot;.
+     * &lt;/p&gt;
+     *
+     * @param source
+     *            A String object to encode
+     * @return A string containing a set of DM Soundex codes corresponding to the String supplied
+     * @throws IllegalArgumentException
+     *             if a character is not mapped
+     */
+    public String soundex(final String source) {
+<span class="fc" id="L444">        final String[] branches = soundex(source, true);</span>
+<span class="fc" id="L445">        final StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L446">        int index = 0;</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">        for (final String branch : branches) {</span>
+<span class="fc" id="L448">            sb.append(branch);</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">            if (++index &lt; branches.length) {</span>
+<span class="fc" id="L450">                sb.append('|');</span>
+            }
+        }
+<span class="fc" id="L453">        return sb.toString();</span>
+    }
+
+    /**
+     * Perform the actual DM Soundex algorithm on the input string.
+     *
+     * @param source
+     *            A String object to encode
+     * @param branching
+     *            If branching shall be performed
+     * @return A string array containing all DM Soundex codes corresponding to the String supplied depending on the
+     *         selected branching mode
+     */
+    private String[] soundex(final String source, final boolean branching) {
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L468">            return null;</span>
+        }
+
+<span class="fc" id="L471">        final String input = cleanup(source);</span>
+
+<span class="fc" id="L473">        final Set&lt;Branch&gt; currentBranches = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L474">        currentBranches.add(new Branch());</span>
+
+<span class="fc" id="L476">        char lastChar = '\0';</span>
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        for (int index = 0; index &lt; input.length(); index++) {</span>
+<span class="fc" id="L478">            final char ch = input.charAt(index);</span>
+
+            // ignore whitespace inside a name
+<span class="pc bpc" id="L481" title="1 of 2 branches missed.">            if (Character.isWhitespace(ch)) {</span>
+<span class="nc" id="L482">                continue;</span>
+            }
+
+<span class="fc" id="L485">            final String inputContext = input.substring(index);</span>
+<span class="fc" id="L486">            final List&lt;Rule&gt; rules = RULES.get(ch);</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">            if (rules == null) {</span>
+<span class="fc" id="L488">                continue;</span>
+            }
+
+            // use an EMPTY_LIST to avoid false positive warnings wrt potential null pointer access
+<span class="fc bfc" id="L492" title="All 2 branches covered.">            final List&lt;Branch&gt; nextBranches = branching ? new ArrayList&lt;&gt;() : Collections.emptyList();</span>
+
+<span class="pc bpc" id="L494" title="1 of 2 branches missed.">            for (final Rule rule : rules) {</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">                if (rule.matches(inputContext)) {</span>
+<span class="fc bfc" id="L496" title="All 2 branches covered.">                    if (branching) {</span>
+<span class="fc" id="L497">                        nextBranches.clear();</span>
+                    }
+<span class="fc bfc" id="L499" title="All 2 branches covered.">                    final String[] replacements = rule.getReplacements(inputContext, lastChar == '\0');</span>
+<span class="pc bpc" id="L500" title="1 of 4 branches missed.">                    final boolean branchingRequired = replacements.length &gt; 1 &amp;&amp; branching;</span>
+
+<span class="fc bfc" id="L502" title="All 2 branches covered.">                    for (final Branch branch : currentBranches) {</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">                        for (final String nextReplacement : replacements) {</span>
+                            // if we have multiple replacements, always create a new branch
+<span class="fc bfc" id="L505" title="All 2 branches covered.">                            final Branch nextBranch = branchingRequired ? branch.createBranch() : branch;</span>
+
+                            // special rule: occurrences of mn or nm are treated differently
+<span class="pc bpc" id="L508" title="2 of 8 branches missed.">                            final boolean force = lastChar == 'm' &amp;&amp; ch == 'n' || lastChar == 'n' &amp;&amp; ch == 'm';</span>
+
+<span class="fc" id="L510">                            nextBranch.processNextReplacement(nextReplacement, force);</span>
+
+<span class="fc bfc" id="L512" title="All 2 branches covered.">                            if (!branching) {</span>
+<span class="fc" id="L513">                                break;</span>
+                            }
+<span class="fc" id="L515">                            nextBranches.add(nextBranch);</span>
+                        }
+<span class="fc" id="L517">                    }</span>
+
+<span class="fc bfc" id="L519" title="All 2 branches covered.">                    if (branching) {</span>
+<span class="fc" id="L520">                        currentBranches.clear();</span>
+<span class="fc" id="L521">                        currentBranches.addAll(nextBranches);</span>
+                    }
+<span class="fc" id="L523">                    index += rule.getPatternLength() - 1;</span>
+<span class="fc" id="L524">                    break;</span>
+                }
+<span class="fc" id="L526">            }</span>
+
+<span class="fc" id="L528">            lastChar = ch;</span>
+        }
+
+<span class="fc" id="L531">        final String[] result = new String[currentBranches.size()];</span>
+<span class="fc" id="L532">        int index = 0;</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        for (final Branch branch : currentBranches) {</span>
+<span class="fc" id="L534">            branch.finish();</span>
+<span class="fc" id="L535">            result[index++] = branch.toString();</span>
+<span class="fc" id="L536">        }</span>
+
+<span class="fc" id="L538">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

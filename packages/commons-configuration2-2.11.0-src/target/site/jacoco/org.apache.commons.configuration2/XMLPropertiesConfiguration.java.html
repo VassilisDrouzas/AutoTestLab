@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XMLPropertiesConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">XMLPropertiesConfiguration.java</span></div><h1>XMLPropertiesConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import org.apache.commons.configuration2.convert.ListDelimiterHandler;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.FileLocator;
+import org.apache.commons.configuration2.io.FileLocatorAware;
+import org.apache.commons.text.StringEscapeUtils;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.XMLReader;
+import org.xml.sax.helpers.DefaultHandler;
+
+/**
+ * This configuration implements the XML properties format introduced in Java, see
+ * https://docs.oracle.com/javase/8/docs/api/java/util/Properties.html. An XML properties file looks like this:
+ *
+ * &lt;pre&gt;
+ * &amp;lt;?xml version=&quot;1.0&quot;?&amp;gt;
+ * &amp;lt;!DOCTYPE properties SYSTEM &quot;http://java.sun.com/dtd/properties.dtd&quot;&amp;gt;
+ * &amp;lt;properties&amp;gt;
+ *   &amp;lt;comment&amp;gt;Description of the property list&amp;lt;/comment&amp;gt;
+ *   &amp;lt;entry key=&quot;key1&quot;&amp;gt;value1&amp;lt;/entry&amp;gt;
+ *   &amp;lt;entry key=&quot;key2&quot;&amp;gt;value2&amp;lt;/entry&amp;gt;
+ *   &amp;lt;entry key=&quot;key3&quot;&amp;gt;value3&amp;lt;/entry&amp;gt;
+ * &amp;lt;/properties&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * The Java runtime is not required to use this class. The default encoding for this configuration format is UTF-8.
+ * Note that unlike {@code PropertiesConfiguration}, {@code XMLPropertiesConfiguration} does not support includes.
+ *
+ * &lt;em&gt;Note:&lt;/em&gt;Configuration objects of this type can be read concurrently by multiple threads. However if one of
+ * these threads modifies the object, synchronization has to be performed manually.
+ *
+ * @since 1.1
+ */
+public class XMLPropertiesConfiguration extends BaseConfiguration implements FileBasedConfiguration, FileLocatorAware {
+
+    /**
+     * SAX Handler to parse a XML properties file.
+     *
+     * @since 1.2
+     */
+<span class="fc" id="L75">    private final class XMLPropertiesHandler extends DefaultHandler {</span>
+        /** The key of the current entry being parsed. */
+        private String key;
+
+        /** The value of the current entry being parsed. */
+<span class="fc" id="L80">        private StringBuilder value = new StringBuilder();</span>
+
+        /** Indicates that a comment is being parsed. */
+        private boolean inCommentElement;
+
+        /** Indicates that an entry is being parsed. */
+        private boolean inEntryElement;
+
+        @Override
+        public void characters(final char[] chars, final int start, final int length) {
+            /**
+             * We're currently processing an element. All character data from now until the next endElement() call will be the data
+             * for this element.
+             */
+<span class="fc" id="L94">            value.append(chars, start, length);</span>
+<span class="fc" id="L95">        }</span>
+
+        @Override
+        public void endElement(final String uri, final String localName, final String qName) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (inCommentElement) {</span>
+                // We've just finished a &lt;comment&gt; element so set the header
+<span class="fc" id="L101">                setHeader(value.toString());</span>
+<span class="fc" id="L102">                inCommentElement = false;</span>
+            }
+
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (inEntryElement) {</span>
+                // We've just finished an &lt;entry&gt; element, so add the key/value pair
+<span class="fc" id="L107">                addProperty(key, value.toString());</span>
+<span class="fc" id="L108">                inEntryElement = false;</span>
+            }
+
+            // Clear the element value buffer
+<span class="fc" id="L112">            value = new StringBuilder();</span>
+<span class="fc" id="L113">        }</span>
+
+        @Override
+        public void startElement(final String uri, final String localName, final String qName, final Attributes attrs) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            if (&quot;comment&quot;.equals(qName)) {</span>
+<span class="fc" id="L118">                inCommentElement = true;</span>
+            }
+
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (&quot;entry&quot;.equals(qName)) {</span>
+<span class="fc" id="L122">                key = attrs.getValue(&quot;key&quot;);</span>
+<span class="fc" id="L123">                inEntryElement = true;</span>
+            }
+<span class="fc" id="L125">        }</span>
+    }
+
+    /**
+     * The default encoding (UTF-8 as specified by https://docs.oracle.com/javase/8/docs/api/java/util/Properties.html)
+     */
+<span class="fc" id="L131">    public static final String DEFAULT_ENCODING = StandardCharsets.UTF_8.name();</span>
+
+    /**
+     * Default string used when the XML is malformed
+     */
+    private static final String MALFORMED_XML_EXCEPTION = &quot;Malformed XML&quot;;
+
+    /** The temporary file locator. */
+    private FileLocator locator;
+
+    /** Stores a header comment. */
+    private String header;
+
+    /**
+     * Creates an empty XMLPropertyConfiguration object which can be used to synthesize a new Properties file by adding
+     * values and then saving(). An object constructed by this C'tor can not be tickled into loading included files because
+     * it cannot supply a base for relative includes.
+     */
+<span class="fc" id="L149">    public XMLPropertiesConfiguration() {</span>
+<span class="fc" id="L150">    }</span>
+
+    /**
+     * Creates and loads the XML properties from the specified DOM node.
+     *
+     * @param element The non-null DOM element.
+     * @throws ConfigurationException Error while loading the Element.
+     * @since 2.0
+     */
+<span class="fc" id="L159">    public XMLPropertiesConfiguration(final Element element) throws ConfigurationException {</span>
+<span class="fc" id="L160">        load(Objects.requireNonNull(element, &quot;element&quot;));</span>
+<span class="fc" id="L161">    }</span>
+
+    /**
+     * Escapes a property value before it is written to disk.
+     *
+     * @param value the value to be escaped
+     * @return the escaped value
+     */
+    private String escapeValue(final Object value) {
+<span class="fc" id="L170">        final String v = StringEscapeUtils.escapeXml10(String.valueOf(value));</span>
+<span class="fc" id="L171">        return String.valueOf(getListDelimiterHandler().escape(v, ListDelimiterHandler.NOOP_TRANSFORMER));</span>
+    }
+
+    /**
+     * Gets the header comment of this configuration.
+     *
+     * @return the header comment
+     */
+    public String getHeader() {
+<span class="fc" id="L180">        return header;</span>
+    }
+
+    /**
+     * Initializes this object with a {@code FileLocator}. The locator is accessed during load and save operations.
+     *
+     * @param locator the associated {@code FileLocator}
+     */
+    @Override
+    public void initFileLocator(final FileLocator locator) {
+<span class="fc" id="L190">        this.locator = locator;</span>
+<span class="fc" id="L191">    }</span>
+
+    /**
+     * Parses a DOM element containing the properties. The DOM element has to follow the XML properties format introduced in
+     * Java, see https://docs.oracle.com/javase/8/docs/api/java/util/Properties.html
+     *
+     * @param element The DOM element
+     * @throws ConfigurationException Error while interpreting the DOM
+     * @since 2.0
+     */
+    public void load(final Element element) throws ConfigurationException {
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        if (!element.getNodeName().equals(&quot;properties&quot;)) {</span>
+<span class="nc" id="L203">            throw new ConfigurationException(MALFORMED_XML_EXCEPTION);</span>
+        }
+<span class="fc" id="L205">        final NodeList childNodes = element.getChildNodes();</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (int i = 0; i &lt; childNodes.getLength(); i++) {</span>
+<span class="fc" id="L207">            final Node item = childNodes.item(i);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (item instanceof Element) {</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                if (item.getNodeName().equals(&quot;comment&quot;)) {</span>
+<span class="fc" id="L210">                    setHeader(item.getTextContent());</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                } else if (item.getNodeName().equals(&quot;entry&quot;)) {</span>
+<span class="fc" id="L212">                    final String key = ((Element) item).getAttribute(&quot;key&quot;);</span>
+<span class="fc" id="L213">                    addProperty(key, item.getTextContent());</span>
+<span class="fc" id="L214">                } else {</span>
+<span class="nc" id="L215">                    throw new ConfigurationException(MALFORMED_XML_EXCEPTION);</span>
+                }
+            }
+        }
+<span class="fc" id="L219">    }</span>
+
+    @Override
+    public void read(final Reader in) throws ConfigurationException {
+<span class="fc" id="L223">        final SAXParserFactory factory = SAXParserFactory.newInstance();</span>
+<span class="fc" id="L224">        factory.setNamespaceAware(false);</span>
+<span class="fc" id="L225">        factory.setValidating(true);</span>
+
+        try {
+<span class="fc" id="L228">            final SAXParser parser = factory.newSAXParser();</span>
+
+<span class="fc" id="L230">            final XMLReader xmlReader = parser.getXMLReader();</span>
+<span class="fc" id="L231">            xmlReader.setEntityResolver((publicId, systemId) -&gt; new InputSource(getClass().getClassLoader().getResourceAsStream(&quot;properties.dtd&quot;)));</span>
+<span class="fc" id="L232">            xmlReader.setContentHandler(new XMLPropertiesHandler());</span>
+<span class="fc" id="L233">            xmlReader.parse(new InputSource(in));</span>
+<span class="nc" id="L234">        } catch (final Exception e) {</span>
+<span class="nc" id="L235">            throw new ConfigurationException(&quot;Unable to parse the configuration file&quot;, e);</span>
+<span class="fc" id="L236">        }</span>
+
+        // todo: support included properties ?
+<span class="fc" id="L239">    }</span>
+
+    /**
+     * Writes the configuration as child to the given DOM node
+     *
+     * @param document The DOM document to add the configuration to
+     * @param parent The DOM parent node
+     * @since 2.0
+     */
+    public void save(final Document document, final Node parent) {
+<span class="fc" id="L249">        final Element properties = document.createElement(&quot;properties&quot;);</span>
+<span class="fc" id="L250">        parent.appendChild(properties);</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        if (getHeader() != null) {</span>
+<span class="fc" id="L252">            final Element comment = document.createElement(&quot;comment&quot;);</span>
+<span class="fc" id="L253">            properties.appendChild(comment);</span>
+<span class="fc" id="L254">            comment.setTextContent(StringEscapeUtils.escapeXml10(getHeader()));</span>
+        }
+
+<span class="fc" id="L257">        final Iterator&lt;String&gt; keys = getKeys();</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        while (keys.hasNext()) {</span>
+<span class="fc" id="L259">            final String key = keys.next();</span>
+<span class="fc" id="L260">            final Object value = getProperty(key);</span>
+
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">            if (value instanceof List) {</span>
+<span class="nc" id="L263">                writeProperty(document, properties, key, (List&lt;?&gt;) value);</span>
+            } else {
+<span class="fc" id="L265">                writeProperty(document, properties, key, value);</span>
+            }
+<span class="fc" id="L267">        }</span>
+<span class="fc" id="L268">    }</span>
+
+    /**
+     * Sets the header comment of this configuration.
+     *
+     * @param header the header comment
+     */
+    public void setHeader(final String header) {
+<span class="fc" id="L276">        this.header = header;</span>
+<span class="fc" id="L277">    }</span>
+
+    @Override
+    public void write(final Writer out) throws ConfigurationException {
+<span class="fc" id="L281">        final PrintWriter writer = new PrintWriter(out);</span>
+
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        String encoding = locator != null ? locator.getEncoding() : null;</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">        if (encoding == null) {</span>
+<span class="fc" id="L285">            encoding = DEFAULT_ENCODING;</span>
+        }
+<span class="fc" id="L287">        writer.println(&quot;&lt;?xml version=\&quot;1.0\&quot; encoding=\&quot;&quot; + encoding + &quot;\&quot;?&gt;&quot;);</span>
+<span class="fc" id="L288">        writer.println(&quot;&lt;!DOCTYPE properties SYSTEM \&quot;http://java.sun.com/dtd/properties.dtd\&quot;&gt;&quot;);</span>
+<span class="fc" id="L289">        writer.println(&quot;&lt;properties&gt;&quot;);</span>
+
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">        if (getHeader() != null) {</span>
+<span class="fc" id="L292">            writer.println(&quot;  &lt;comment&gt;&quot; + StringEscapeUtils.escapeXml10(getHeader()) + &quot;&lt;/comment&gt;&quot;);</span>
+        }
+
+<span class="fc" id="L295">        final Iterator&lt;String&gt; keys = getKeys();</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        while (keys.hasNext()) {</span>
+<span class="fc" id="L297">            final String key = keys.next();</span>
+<span class="fc" id="L298">            final Object value = getProperty(key);</span>
+
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">            if (value instanceof List) {</span>
+<span class="nc" id="L301">                writeProperty(writer, key, (List&lt;?&gt;) value);</span>
+            } else {
+<span class="fc" id="L303">                writeProperty(writer, key, value);</span>
+            }
+<span class="fc" id="L305">        }</span>
+
+<span class="fc" id="L307">        writer.println(&quot;&lt;/properties&gt;&quot;);</span>
+<span class="fc" id="L308">        writer.flush();</span>
+<span class="fc" id="L309">    }</span>
+
+    private void writeProperty(final Document document, final Node properties, final String key, final List&lt;?&gt; values) {
+<span class="nc" id="L312">        values.forEach(value -&gt; writeProperty(document, properties, key, value));</span>
+<span class="nc" id="L313">    }</span>
+
+    private void writeProperty(final Document document, final Node properties, final String key, final Object value) {
+<span class="fc" id="L316">        final Element entry = document.createElement(&quot;entry&quot;);</span>
+<span class="fc" id="L317">        properties.appendChild(entry);</span>
+
+        // escape the key
+<span class="fc" id="L320">        final String k = StringEscapeUtils.escapeXml10(key);</span>
+<span class="fc" id="L321">        entry.setAttribute(&quot;key&quot;, k);</span>
+
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">        if (value != null) {</span>
+<span class="fc" id="L324">            final String v = escapeValue(value);</span>
+<span class="fc" id="L325">            entry.setTextContent(v);</span>
+        }
+<span class="fc" id="L327">    }</span>
+
+    /**
+     * Write a list property.
+     *
+     * @param out the output stream
+     * @param key the key of the property
+     * @param values a list with all property values
+     */
+    private void writeProperty(final PrintWriter out, final String key, final List&lt;?&gt; values) {
+<span class="nc" id="L337">        values.forEach(value -&gt; writeProperty(out, key, value));</span>
+<span class="nc" id="L338">    }</span>
+
+    /**
+     * Write a property.
+     *
+     * @param out the output stream
+     * @param key the key of the property
+     * @param value the value of the property
+     */
+    private void writeProperty(final PrintWriter out, final String key, final Object value) {
+        // escape the key
+<span class="fc" id="L349">        final String k = StringEscapeUtils.escapeXml10(key);</span>
+
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">        if (value != null) {</span>
+<span class="fc" id="L352">            final String v = escapeValue(value);</span>
+<span class="fc" id="L353">            out.println(&quot;  &lt;entry key=\&quot;&quot; + k + &quot;\&quot;&gt;&quot; + v + &quot;&lt;/entry&gt;&quot;);</span>
+<span class="fc" id="L354">        } else {</span>
+<span class="nc" id="L355">            out.println(&quot;  &lt;entry key=\&quot;&quot; + k + &quot;\&quot;/&gt;&quot;);</span>
+        }
+<span class="fc" id="L357">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,1098 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IterableUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4</a> &gt; <span class="el_source">IterableUtils.java</span></div><h1>IterableUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+import org.apache.commons.collections4.functors.EqualPredicate;
+import org.apache.commons.collections4.iterators.LazyIteratorChain;
+import org.apache.commons.collections4.iterators.ReverseListIterator;
+import org.apache.commons.collections4.iterators.UniqueFilterIterator;
+
+/**
+ * Provides utility methods and decorators for {@link Iterable} instances.
+ * &lt;p&gt;
+ * &lt;b&gt;Note&lt;/b&gt;: this util class has been designed for fail-fast argument checking.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * all decorator methods are &lt;b&gt;NOT&lt;/b&gt; null-safe wrt the provided Iterable argument, i.e.
+ * they will throw a {@link NullPointerException} if a null Iterable is passed as argument.
+ * &lt;li&gt;
+ * all other utility methods are null-safe wrt the provided Iterable argument, i.e. they will
+ * treat a null Iterable the same way as an empty one. Other arguments which are null,
+ * e.g. a {@link Predicate}, will result in a {@link NullPointerException}. Exception: passing
+ * a null {@link Comparator} is equivalent to a Comparator with natural ordering.
+ * &lt;/ul&gt;
+ *
+ * @since 4.1
+ */
+public class IterableUtils {
+
+    /**
+     * Inner class to distinguish unmodifiable instances.
+     */
+    private static final class UnmodifiableIterable&lt;E&gt; extends FluentIterable&lt;E&gt; {
+        private final Iterable&lt;E&gt; unmodifiable;
+
+<span class="fc" id="L59">        UnmodifiableIterable(final Iterable&lt;E&gt; iterable) {</span>
+<span class="fc" id="L60">            this.unmodifiable = iterable;</span>
+<span class="fc" id="L61">        }</span>
+
+        @Override
+        public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L65">            return IteratorUtils.unmodifiableIterator(unmodifiable.iterator());</span>
+        }
+    }
+
+    /**
+     * An empty iterable.
+     */
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L73">    static final FluentIterable EMPTY_ITERABLE = new FluentIterable&lt;Object&gt;() {</span>
+        @Override
+        public Iterator&lt;Object&gt; iterator() {
+<span class="fc" id="L76">            return IteratorUtils.emptyIterator();</span>
+        }
+    };
+
+    /**
+     * Returns a view of the given iterable that contains at most the given number
+     * of elements.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to limit, may not be null
+     * @param maxSize  the maximum number of elements, must not be negative
+     * @return a bounded view on the specified iterable
+     * @throws IllegalArgumentException if maxSize is negative
+     * @throws NullPointerException if iterable is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; boundedIterable(final Iterable&lt;E&gt; iterable, final long maxSize) {
+<span class="fc" id="L96">        checkNotNull(iterable);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (maxSize &lt; 0) {</span>
+<span class="fc" id="L98">            throw new IllegalArgumentException(&quot;MaxSize parameter must not be negative.&quot;);</span>
+        }
+
+<span class="fc" id="L101">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L104">                return IteratorUtils.boundedIterator(iterable.iterator(), maxSize);</span>
+            }
+        };
+    }
+
+    /**
+     * Combines the provided iterables into a single iterable.
+     * &lt;p&gt;
+     * The returned iterable has an iterator that traverses the elements in the order
+     * of the arguments, i.e. iterables[0], iterables[1], .... The source iterators
+     * are not polled until necessary.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterables  the iterables to combine, may not be null
+     * @return a new iterable, combining the provided iterables
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; chainedIterable(final Iterable&lt;? extends E&gt;... iterables) {
+<span class="fc" id="L127">        checkNotNull(iterables);</span>
+<span class="fc" id="L128">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L131">                return new LazyIteratorChain&lt;E&gt;() {</span>
+                    @Override
+                    protected Iterator&lt;? extends E&gt; nextIterator(final int count) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                        if (count &gt; iterables.length) {</span>
+<span class="fc" id="L135">                            return null;</span>
+                        }
+<span class="fc" id="L137">                        return iterables[count - 1].iterator();</span>
+                    }
+                };
+            }
+        };
+    }
+
+    /**
+     * Combines two iterables into a single iterable.
+     * &lt;p&gt;
+     * The returned iterable has an iterator that traverses the elements in {@code a},
+     * followed by the elements in {@code b}. The source iterators are not polled until
+     * necessary.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param a  the first iterable, may not be null
+     * @param b  the second iterable, may not be null
+     * @return a new iterable, combining the provided iterables
+     * @throws NullPointerException if either a or b is null
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;E&gt; Iterable&lt;E&gt; chainedIterable(final Iterable&lt;? extends E&gt; a,
+                                                  final Iterable&lt;? extends E&gt; b) {
+<span class="fc" id="L165">        return chainedIterable(new Iterable[] {a, b});</span>
+    }
+
+    /**
+     * Combines three iterables into a single iterable.
+     * &lt;p&gt;
+     * The returned iterable has an iterator that traverses the elements in {@code a},
+     * followed by the elements in {@code b} and {@code c}. The source iterators are
+     * not polled until necessary.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param a  the first iterable, may not be null
+     * @param b  the second iterable, may not be null
+     * @param c  the third iterable, may not be null
+     * @return a new iterable, combining the provided iterables
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;E&gt; Iterable&lt;E&gt; chainedIterable(final Iterable&lt;? extends E&gt; a,
+                                                  final Iterable&lt;? extends E&gt; b,
+                                                  final Iterable&lt;? extends E&gt; c) {
+<span class="nc" id="L191">        return chainedIterable(new Iterable[] {a, b, c});</span>
+    }
+
+    /**
+     * Combines four iterables into a single iterable.
+     * &lt;p&gt;
+     * The returned iterable has an iterator that traverses the elements in {@code a},
+     * followed by the elements in {@code b}, {@code c} and {@code d}. The source
+     * iterators are not polled until necessary.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param a  the first iterable, may not be null
+     * @param b  the second iterable, may not be null
+     * @param c  the third iterable, may not be null
+     * @param d  the fourth iterable, may not be null
+     * @return a new iterable, combining the provided iterables
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;E&gt; Iterable&lt;E&gt; chainedIterable(final Iterable&lt;? extends E&gt; a,
+                                                  final Iterable&lt;? extends E&gt; b,
+                                                  final Iterable&lt;? extends E&gt; c,
+                                                  final Iterable&lt;? extends E&gt; d) {
+<span class="nc" id="L219">        return chainedIterable(new Iterable[] {a, b, c, d});</span>
+    }
+
+    /**
+     * Fail-fast check for null arguments.
+     *
+     * @param iterable  the iterable to check
+     * @throws NullPointerException if iterable is null
+     */
+    static void checkNotNull(final Iterable&lt;?&gt; iterable) {
+<span class="fc" id="L229">        Objects.requireNonNull(iterable, &quot;iterable&quot;);</span>
+<span class="fc" id="L230">    }</span>
+
+    /**
+     * Fail-fast check for null arguments.
+     *
+     * @param iterables  the iterables to check
+     * @throws NullPointerException if the argument or any of its contents is null
+     */
+    static void checkNotNull(final Iterable&lt;?&gt;... iterables) {
+<span class="fc" id="L239">        Objects.requireNonNull(iterables, &quot;iterables&quot;);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        for (final Iterable&lt;?&gt; iterable : iterables) {</span>
+<span class="fc" id="L241">            checkNotNull(iterable);</span>
+        }
+<span class="fc" id="L243">    }</span>
+
+    /**
+     * Combines the two provided iterables into an ordered iterable using the
+     * provided comparator. If the comparator is null, natural ordering will be
+     * used.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the
+     * corresponding input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param comparator  the comparator defining an ordering over the elements,
+     *   may be null, in which case natural ordering will be used
+     * @param a  the first iterable, may not be null
+     * @param b  the second iterable, may not be null
+     * @return a filtered view on the specified iterable
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; collatedIterable(final Comparator&lt;? super E&gt; comparator,
+                                                   final Iterable&lt;? extends E&gt; a,
+                                                   final Iterable&lt;? extends E&gt; b) {
+<span class="fc" id="L265">        checkNotNull(a, b);</span>
+<span class="fc" id="L266">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L269">                return IteratorUtils.collatedIterator(comparator, a.iterator(), b.iterator());</span>
+            }
+        };
+    }
+
+    /**
+     * Combines the two provided iterables into an ordered iterable using
+     * natural ordering.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the
+     * corresponding input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param a  the first iterable, must not be null
+     * @param b  the second iterable, must not be null
+     * @return a filtered view on the specified iterable
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; collatedIterable(final Iterable&lt;? extends E&gt; a,
+                                                   final Iterable&lt;? extends E&gt; b) {
+<span class="fc" id="L290">        checkNotNull(a, b);</span>
+<span class="fc" id="L291">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L294">                return IteratorUtils.collatedIterator(null, a.iterator(), b.iterator());</span>
+            }
+        };
+    }
+
+    /**
+     * Checks if the object is contained in the given iterable. Object equality
+     * is tested with an {@code equator} unlike {@link #contains(Iterable, Object)}
+     * which uses {@link Object#equals(Object)}.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns false.
+     * A {@code null} object will not be passed to the equator, instead a
+     * {@link org.apache.commons.collections4.functors.NullPredicate NullPredicate}
+     * will be used.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of object the {@link Iterable} contains
+     * @param iterable  the iterable to check, may be null
+     * @param object  the object to check
+     * @param equator  the equator to use to check, may not be null
+     * @return true if the object is contained in the iterable, false otherwise
+     * @throws NullPointerException if equator is null
+     */
+    public static &lt;E&gt; boolean contains(final Iterable&lt;? extends E&gt; iterable, final E object,
+                                       final Equator&lt;? super E&gt; equator) {
+<span class="fc" id="L319">        Objects.requireNonNull(equator, &quot;equator&quot;);</span>
+<span class="fc" id="L320">        return matchesAny(iterable, EqualPredicate.equalPredicate(object, equator));</span>
+    }
+
+    /**
+     * Checks if the object is contained in the given iterable.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns false.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of object the {@link Iterable} contains
+     * @param iterable  the iterable to check, may be null
+     * @param object  the object to check
+     * @return true if the object is contained in the iterable, false otherwise
+     */
+    public static &lt;E&gt; boolean contains(final Iterable&lt;E&gt; iterable, final Object object) {
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (iterable instanceof Collection&lt;?&gt;) {</span>
+<span class="fc" id="L336">            return ((Collection&lt;E&gt;) iterable).contains(object);</span>
+        }
+<span class="fc" id="L338">        return IteratorUtils.contains(emptyIteratorIfNull(iterable), object);</span>
+    }
+
+    /**
+     * Counts the number of elements in the input iterable that match the predicate.
+     * &lt;p&gt;
+     * A {@code null} iterable matches no elements.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of object the {@link Iterable} contains
+     * @param input  the {@link Iterable} to get the input from, may be null
+     * @param predicate  the predicate to use, may not be null
+     * @return the number of matches for the predicate in the collection
+     * @throws NullPointerException if predicate is null
+     */
+    public static &lt;E&gt; long countMatches(final Iterable&lt;E&gt; input, final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L354">        Objects.requireNonNull(predicate, &quot;predicate&quot;);</span>
+<span class="fc" id="L355">        return size(filteredIterable(emptyIfNull(input), predicate));</span>
+    }
+
+    /**
+     * Returns an immutable empty iterable if the argument is null,
+     * or the argument itself otherwise.
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable, may be null
+     * @return an empty iterable if the argument is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; emptyIfNull(final Iterable&lt;E&gt; iterable) {
+<span class="fc bfc" id="L367" title="All 2 branches covered.">        return iterable == null ? IterableUtils.&lt;E&gt;emptyIterable() : iterable;</span>
+    }
+
+    /**
+     * Gets an empty iterable.
+     * &lt;p&gt;
+     * This iterable does not contain any elements.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @return an empty iterable
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // OK, empty collection is compatible with any type
+    public static &lt;E&gt; Iterable&lt;E&gt; emptyIterable() {
+<span class="fc" id="L381">        return EMPTY_ITERABLE;</span>
+    }
+
+    /**
+     * Returns an empty iterator if the argument is {@code null},
+     * or {@code iterable.iterator()} otherwise.
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable, possibly {@code null}
+     * @return an empty iterator if the argument is {@code null}
+     */
+    private static &lt;E&gt; Iterator&lt;E&gt; emptyIteratorIfNull(final Iterable&lt;E&gt; iterable) {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        return iterable != null ? iterable.iterator() : IteratorUtils.&lt;E&gt;emptyIterator();</span>
+    }
+
+    /**
+     * Returns a view of the given iterable that only contains elements matching
+     * the provided predicate.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the
+     * corresponding input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to filter, may not be null
+     * @param predicate  the predicate used to filter elements, may not be null
+     * @return a filtered view on the specified iterable
+     * @throws NullPointerException if either iterable or predicate is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; filteredIterable(final Iterable&lt;E&gt; iterable,
+                                                   final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L412">        checkNotNull(iterable);</span>
+<span class="fc" id="L413">        Objects.requireNonNull(predicate, &quot;predicate&quot;);</span>
+<span class="fc" id="L414">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L417">                return IteratorUtils.filteredIterator(emptyIteratorIfNull(iterable), predicate);</span>
+            }
+        };
+    }
+
+    /**
+     * Finds the first element in the given iterable which matches the given predicate.
+     * &lt;p&gt;
+     * A {@code null} or empty iterator returns null.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to search, may be null
+     * @param predicate  the predicate to use, must not be null
+     * @return the first element of the iterable which matches the predicate or null if none could be found
+     * @throws NullPointerException if predicate is null
+     */
+    public static &lt;E&gt; E find(final Iterable&lt;E&gt; iterable, final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L435">        return IteratorUtils.find(emptyIteratorIfNull(iterable), predicate);</span>
+    }
+
+    /**
+     * Shortcut for {@code get(iterator, 0)}.
+     * &lt;p&gt;
+     * Returns the {@code first} value in the {@code iterable}'s {@link Iterator}, throwing
+     * {@code IndexOutOfBoundsException} if there is no such element.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * If the {@link Iterable} is a {@link List}, then it will use {@link List#get(int)}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;T&gt; the type of object in the {@link Iterable}.
+     * @param iterable  the {@link Iterable} to get a value from, may be null
+     * @return the first object
+     * @throws IndexOutOfBoundsException if the request  is invalid
+     * @since 4.2
+     */
+    public static &lt;T&gt; T first(final Iterable&lt;T&gt; iterable) {
+<span class="nc" id="L455">        return get(iterable, 0);</span>
+    }
+
+    /**
+     * Applies the closure to each element of the provided iterable.
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterator to use, may be null
+     * @param closure  the closure to apply to each element, may not be null
+     * @throws NullPointerException if closure is null
+     */
+    public static &lt;E&gt; void forEach(final Iterable&lt;E&gt; iterable, final Closure&lt;? super E&gt; closure) {
+<span class="fc" id="L467">        IteratorUtils.forEach(emptyIteratorIfNull(iterable), closure);</span>
+<span class="fc" id="L468">    }</span>
+
+    /**
+     * Executes the given closure on each but the last element in the iterable.
+     * &lt;p&gt;
+     * If the input iterable is null no change is made.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of object the {@link Iterable} contains
+     * @param iterable  the iterable to get the input from, may be null
+     * @param closure  the closure to perform, may not be null
+     * @return the last element in the iterable, or null if iterable is null or empty
+     */
+    public static &lt;E&gt; E forEachButLast(final Iterable&lt;E&gt; iterable, final Closure&lt;? super E&gt; closure) {
+<span class="fc" id="L482">        return IteratorUtils.forEachButLast(emptyIteratorIfNull(iterable), closure);</span>
+    }
+
+    /**
+     * Returns the number of occurrences of the provided object in the iterable.
+     *
+     * @param &lt;E&gt; the element type that the {@link Iterable} may contain
+     * @param &lt;T&gt; the element type of the object to find
+     * @param iterable  the {@link Iterable} to search
+     * @param obj  the object to find the cardinality of
+     * @return the number of occurrences of obj in iterable
+     */
+    public static &lt;E, T extends E&gt; int frequency(final Iterable&lt;E&gt; iterable, final T obj) {
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        if (iterable instanceof Set&lt;?&gt;) {</span>
+<span class="fc bfc" id="L496" title="All 2 branches covered.">            return ((Set&lt;E&gt;) iterable).contains(obj) ? 1 : 0;</span>
+        }
+<span class="fc bfc" id="L498" title="All 2 branches covered.">        if (iterable instanceof Bag&lt;?&gt;) {</span>
+<span class="fc" id="L499">            return ((Bag&lt;E&gt;) iterable).getCount(obj);</span>
+        }
+<span class="fc" id="L501">        return size(filteredIterable(emptyIfNull(iterable), EqualPredicate.&lt;E&gt;equalPredicate(obj)));</span>
+    }
+
+    /**
+     * Returns the {@code index}-th value in the {@code iterable}'s {@link Iterator}, throwing
+     * {@code IndexOutOfBoundsException} if there is no such element.
+     * &lt;p&gt;
+     * If the {@link Iterable} is a {@link List}, then it will use {@link List#get(int)}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;T&gt; the type of object in the {@link Iterable}.
+     * @param iterable  the {@link Iterable} to get a value from, may be null
+     * @param index  the index to get
+     * @return the object at the specified index
+     * @throws IndexOutOfBoundsException if the index is invalid
+     */
+    public static &lt;T&gt; T get(final Iterable&lt;T&gt; iterable, final int index) {
+<span class="fc" id="L518">        CollectionUtils.checkIndexBounds(index);</span>
+<span class="fc bfc" id="L519" title="All 2 branches covered.">        if (iterable instanceof List&lt;?&gt;) {</span>
+<span class="fc" id="L520">            return ((List&lt;T&gt;) iterable).get(index);</span>
+        }
+<span class="fc" id="L522">        return IteratorUtils.get(emptyIteratorIfNull(iterable), index);</span>
+    }
+
+    /**
+     * Returns the index of the first element in the specified iterable that
+     * matches the given predicate.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns -1.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to search, may be null
+     * @param predicate  the predicate to use, must not be null
+     * @return the index of the first element which matches the predicate or -1 if none matches
+     * @throws NullPointerException if predicate is null
+     */
+    public static &lt;E&gt; int indexOf(final Iterable&lt;E&gt; iterable, final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L539">        return IteratorUtils.indexOf(emptyIteratorIfNull(iterable), predicate);</span>
+    }
+
+    /**
+     * Answers true if the provided iterable is empty.
+     * &lt;p&gt;
+     * A {@code null} iterable returns true.
+     * &lt;/p&gt;
+     *
+     * @param iterable  the {@link Iterable to use}, may be null
+     * @return true if the iterable is null or empty, false otherwise
+     */
+    public static boolean isEmpty(final Iterable&lt;?&gt; iterable) {
+<span class="fc bfc" id="L552" title="All 2 branches covered.">        if (iterable instanceof Collection&lt;?&gt;) {</span>
+<span class="fc" id="L553">            return ((Collection&lt;?&gt;) iterable).isEmpty();</span>
+        }
+<span class="fc" id="L555">        return IteratorUtils.isEmpty(emptyIteratorIfNull(iterable));</span>
+    }
+
+    /**
+     * Returns a view of the given iterable which will cycle infinitely over
+     * its elements.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} if
+     * {@code iterable.iterator()} does. After {@code remove()} is called, subsequent
+     * cycles omit the removed element, which is no longer in {@code iterable}. The
+     * iterator's {@code hasNext()} method returns {@code true} until {@code iterable}
+     * is empty.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to loop, may not be null
+     * @return a view of the iterable, providing an infinite loop over its elements
+     * @throws NullPointerException if iterable is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; loopingIterable(final Iterable&lt;E&gt; iterable) {
+<span class="fc" id="L575">        checkNotNull(iterable);</span>
+<span class="fc" id="L576">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L579">                return new LazyIteratorChain&lt;E&gt;() {</span>
+                    @Override
+                    protected Iterator&lt;? extends E&gt; nextIterator(final int count) {
+<span class="fc bfc" id="L582" title="All 2 branches covered.">                        if (IterableUtils.isEmpty(iterable)) {</span>
+<span class="fc" id="L583">                            return null;</span>
+                        }
+<span class="fc" id="L585">                        return iterable.iterator();</span>
+                    }
+                };
+            }
+        };
+    }
+
+    /**
+     * Answers true if a predicate is true for every element of an iterable.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns true.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of object the {@link Iterable} contains
+     * @param iterable  the {@link Iterable} to use, may be null
+     * @param predicate  the predicate to use, may not be null
+     * @return true if every element of the collection matches the predicate or if the
+     *   collection is empty, false otherwise
+     * @throws NullPointerException if predicate is null
+     */
+    public static &lt;E&gt; boolean matchesAll(final Iterable&lt;E&gt; iterable, final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L606">        return IteratorUtils.matchesAll(emptyIteratorIfNull(iterable), predicate);</span>
+    }
+
+    /**
+     * Answers true if a predicate is true for any element of the iterable.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns false.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of object the {@link Iterable} contains
+     * @param iterable  the {@link Iterable} to use, may be null
+     * @param predicate  the predicate to use, may not be null
+     * @return true if any element of the collection matches the predicate, false otherwise
+     * @throws NullPointerException if predicate is null
+     */
+    public static &lt;E&gt; boolean matchesAny(final Iterable&lt;E&gt; iterable, final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L622">        return IteratorUtils.matchesAny(emptyIteratorIfNull(iterable), predicate);</span>
+    }
+
+    /**
+     * Partitions all elements from iterable into separate output collections,
+     * based on the evaluation of the given predicates.
+     * &lt;p&gt;
+     * For each predicate, the returned list will contain a collection holding
+     * all elements of the input iterable matching the predicate. The last collection
+     * contained in the list will hold all elements which didn't match any predicate:
+     * &lt;/p&gt;
+     * &lt;pre&gt;
+     *  [C1, C2, R] = partition(I, P1, P2) with
+     *  I = input
+     *  P1 = first predicate
+     *  P2 = second predicate
+     *  C1 = collection of elements matching P1
+     *  C2 = collection of elements matching P2
+     *  R = collection of elements rejected by all predicates
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * &lt;b&gt;Note&lt;/b&gt;: elements are only added to the output collection of the first matching
+     * predicate, determined by the order of arguments.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * If the input iterable is {@code null}, the same is returned as for an
+     * empty iterable.
+     * If no predicates have been provided, all elements of the input collection
+     * will be added to the rejected collection.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Example: for an input list [1, 2, 3, 4, 5] calling partition with predicates [x &amp;lt; 3]
+     * and [x &amp;lt; 5] will result in the following output: [[1, 2], [3, 4], [5]].
+     * &lt;/p&gt;
+     *
+     * @param &lt;O&gt;  the type of object the {@link Iterable} contains
+     * @param &lt;R&gt;  the type of the output {@link Collection}
+     * @param iterable  the collection to get the input from, may be null
+     * @param partitionFactory  the factory used to create the output collections
+     * @param predicates  the predicates to use, may not be null
+     * @return a list containing the output collections
+     * @throws NullPointerException if any predicate is null
+     */
+    public static &lt;O, R extends Collection&lt;O&gt;&gt; List&lt;R&gt; partition(final Iterable&lt;? extends O&gt; iterable,
+            final Factory&lt;R&gt; partitionFactory, final Predicate&lt;? super O&gt;... predicates) {
+
+<span class="fc bfc" id="L668" title="All 2 branches covered.">        if (iterable == null) {</span>
+<span class="fc" id="L669">            final Iterable&lt;O&gt; empty = emptyIterable();</span>
+<span class="fc" id="L670">            return partition(empty, partitionFactory, predicates);</span>
+        }
+
+<span class="fc" id="L673">        Objects.requireNonNull(predicates, &quot;predicates&quot;);</span>
+
+<span class="fc bfc" id="L675" title="All 2 branches covered.">        for (final Predicate&lt;?&gt; predicate : predicates) {</span>
+<span class="fc" id="L676">            Objects.requireNonNull(predicate, &quot;predicate&quot;);</span>
+        }
+
+<span class="fc bfc" id="L679" title="All 2 branches covered.">        if (predicates.length &lt; 1) {</span>
+            // return the entire input collection as a single partition
+<span class="fc" id="L681">            final R singlePartition = partitionFactory.create();</span>
+<span class="fc" id="L682">            CollectionUtils.addAll(singlePartition, iterable);</span>
+<span class="fc" id="L683">            return Collections.singletonList(singlePartition);</span>
+        }
+
+        // create the empty partitions
+<span class="fc" id="L687">        final int numberOfPredicates = predicates.length;</span>
+<span class="fc" id="L688">        final int numberOfPartitions = numberOfPredicates + 1;</span>
+<span class="fc" id="L689">        final List&lt;R&gt; partitions = new ArrayList&lt;&gt;(numberOfPartitions);</span>
+<span class="fc bfc" id="L690" title="All 2 branches covered.">        for (int i = 0; i &lt; numberOfPartitions; ++i) {</span>
+<span class="fc" id="L691">            partitions.add(partitionFactory.create());</span>
+        }
+
+        // for each element in inputCollection:
+        // find the first predicate that evaluates to true.
+        // if there is a predicate, add the element to the corresponding partition.
+        // if there is no predicate, add it to the last, catch-all partition.
+<span class="fc bfc" id="L698" title="All 2 branches covered.">        for (final O element : iterable) {</span>
+<span class="fc" id="L699">            boolean elementAssigned = false;</span>
+<span class="fc bfc" id="L700" title="All 2 branches covered.">            for (int i = 0; i &lt; numberOfPredicates; ++i) {</span>
+<span class="fc bfc" id="L701" title="All 2 branches covered.">                if (predicates[i].evaluate(element)) {</span>
+<span class="fc" id="L702">                    partitions.get(i).add(element);</span>
+<span class="fc" id="L703">                    elementAssigned = true;</span>
+<span class="fc" id="L704">                    break;</span>
+                }
+            }
+
+<span class="fc bfc" id="L708" title="All 2 branches covered.">            if (!elementAssigned) {</span>
+                // no predicates evaluated to true
+                // add element to last partition
+<span class="fc" id="L711">                partitions.get(numberOfPredicates).add(element);</span>
+            }
+<span class="fc" id="L713">        }</span>
+
+<span class="fc" id="L715">        return partitions;</span>
+    }
+
+    /**
+     * Partitions all elements from iterable into separate output collections,
+     * based on the evaluation of the given predicate.
+     * &lt;p&gt;
+     * For each predicate, the result will contain a list holding all elements of the
+     * input iterable matching the predicate. The last list will hold all elements
+     * which didn't match any predicate:
+     * &lt;/p&gt;
+     * &lt;pre&gt;
+     *  [C1, R] = partition(I, P1) with
+     *  I = input
+     *  P1 = first predicate
+     *  C1 = collection of elements matching P1
+     *  R = collection of elements rejected by all predicates
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * If the input iterable is {@code null}, the same is returned as for an
+     * empty iterable.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Example: for an input list [1, 2, 3, 4, 5] calling partition with a predicate [x &amp;lt; 3]
+     * will result in the following output: [[1, 2], [3, 4, 5]].
+     * &lt;/p&gt;
+     *
+     * @param &lt;O&gt;  the type of object the {@link Iterable} contains
+     * @param iterable  the iterable to partition, may be null
+     * @param predicate  the predicate to use, may not be null
+     * @return a list containing the output collections
+     * @throws NullPointerException if predicate is null
+     */
+    public static &lt;O&gt; List&lt;List&lt;O&gt;&gt; partition(final Iterable&lt;? extends O&gt; iterable,
+                                              final Predicate&lt;? super O&gt; predicate) {
+<span class="fc" id="L750">        Objects.requireNonNull(predicate, &quot;predicate&quot;);</span>
+        @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; }) // safe
+<span class="fc" id="L752">        final Factory&lt;List&lt;O&gt;&gt; factory = FactoryUtils.instantiateFactory((Class) ArrayList.class);</span>
+        @SuppressWarnings(&quot;unchecked&quot;) // safe
+<span class="fc" id="L754">        final Predicate&lt;? super O&gt;[] predicates = new Predicate[] { predicate };</span>
+<span class="fc" id="L755">        return partition(iterable, factory, predicates);</span>
+    }
+
+    /**
+     * Partitions all elements from iterable into separate output collections,
+     * based on the evaluation of the given predicates.
+     * &lt;p&gt;
+     * For each predicate, the result will contain a list holding all elements of the
+     * input iterable matching the predicate. The last list will hold all elements
+     * which didn't match any predicate:
+     * &lt;/p&gt;
+     * &lt;pre&gt;
+     *  [C1, C2, R] = partition(I, P1, P2) with
+     *  I = input
+     *  P1 = first predicate
+     *  P2 = second predicate
+     *  C1 = collection of elements matching P1
+     *  C2 = collection of elements matching P2
+     *  R = collection of elements rejected by all predicates
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * &lt;b&gt;Note&lt;/b&gt;: elements are only added to the output collection of the first matching
+     * predicate, determined by the order of arguments.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * If the input iterable is {@code null}, the same is returned as for an
+     * empty iterable.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Example: for an input list [1, 2, 3, 4, 5] calling partition with predicates [x &amp;lt; 3]
+     * and [x &amp;lt; 5] will result in the following output: [[1, 2], [3, 4], [5]].
+     * &lt;/p&gt;
+     *
+     * @param &lt;O&gt;  the type of object the {@link Iterable} contains
+     * @param iterable  the collection to get the input from, may be null
+     * @param predicates  the predicates to use, may not be null
+     * @return a list containing the output collections
+     * @throws NullPointerException if any predicate is null
+     */
+    public static &lt;O&gt; List&lt;List&lt;O&gt;&gt; partition(final Iterable&lt;? extends O&gt; iterable,
+                                              final Predicate&lt;? super O&gt;... predicates) {
+
+        @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; }) // safe
+<span class="fc" id="L798">        final Factory&lt;List&lt;O&gt;&gt; factory = FactoryUtils.instantiateFactory((Class) ArrayList.class);</span>
+<span class="fc" id="L799">        return partition(iterable, factory, predicates);</span>
+    }
+
+    /**
+     * Returns a reversed view of the given iterable.
+     * &lt;p&gt;
+     * In case the provided iterable is a {@link List} instance, a
+     * {@link ReverseListIterator} will be used to reverse the traversal
+     * order, otherwise an intermediate {@link List} needs to be created.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} if the
+     * provided iterable is a {@link List} instance.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to use, may not be null
+     * @return a reversed view of the specified iterable
+     * @throws NullPointerException if iterable is null
+     * @see ReverseListIterator
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; reversedIterable(final Iterable&lt;E&gt; iterable) {
+<span class="fc" id="L821">        checkNotNull(iterable);</span>
+<span class="fc" id="L822">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="pc bpc" id="L825" title="1 of 2 branches missed.">                final List&lt;E&gt; list = iterable instanceof List&lt;?&gt; ?</span>
+                        (List&lt;E&gt;) iterable :
+<span class="pc" id="L827">                        IteratorUtils.toList(iterable.iterator());</span>
+<span class="fc" id="L828">                return new ReverseListIterator&lt;&gt;(list);</span>
+            }
+        };
+    }
+
+    /**
+     * Returns the number of elements contained in the given iterator.
+     * &lt;p&gt;
+     * A {@code null} or empty iterator returns {@code 0}.
+     * &lt;/p&gt;
+     *
+     * @param iterable  the iterable to check, may be null
+     * @return the number of elements contained in the iterable
+     */
+    public static int size(final Iterable&lt;?&gt; iterable) {
+<span class="fc bfc" id="L843" title="All 2 branches covered.">        if (iterable == null) {</span>
+<span class="fc" id="L844">            return 0;</span>
+        }
+<span class="fc bfc" id="L846" title="All 2 branches covered.">        if (iterable instanceof Collection&lt;?&gt;) {</span>
+<span class="fc" id="L847">            return ((Collection&lt;?&gt;) iterable).size();</span>
+        }
+<span class="fc" id="L849">        return IteratorUtils.size(emptyIteratorIfNull(iterable));</span>
+    }
+
+    /**
+     * Returns a view of the given iterable that skips the first N elements.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to use, may not be null
+     * @param elementsToSkip  the number of elements to skip from the start, must not be negative
+     * @return a view of the specified iterable, skipping the first N elements
+     * @throws IllegalArgumentException if elementsToSkip is negative
+     * @throws NullPointerException if iterable is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; skippingIterable(final Iterable&lt;E&gt; iterable, final long elementsToSkip) {
+<span class="fc" id="L867">        checkNotNull(iterable);</span>
+<span class="fc bfc" id="L868" title="All 2 branches covered.">        if (elementsToSkip &lt; 0) {</span>
+<span class="fc" id="L869">            throw new IllegalArgumentException(&quot;ElementsToSkip parameter must not be negative.&quot;);</span>
+        }
+
+<span class="fc" id="L872">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L875">                return IteratorUtils.skippingIterator(iterable.iterator(), elementsToSkip);</span>
+            }
+        };
+    }
+
+    /**
+     * Gets a new list with the contents of the provided iterable.
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to use, may be null
+     * @return a list of the iterator contents
+     */
+    public static &lt;E&gt; List&lt;E&gt; toList(final Iterable&lt;E&gt; iterable) {
+<span class="fc" id="L888">        return IteratorUtils.toList(emptyIteratorIfNull(iterable));</span>
+    }
+
+    /**
+     * Returns a string representation of the elements of the specified iterable.
+     * &lt;p&gt;
+     * The string representation consists of a list of the iterable's elements,
+     * enclosed in square brackets ({@code &quot;[]&quot;}). Adjacent elements are separated
+     * by the characters {@code &quot;, &quot;} (a comma followed by a space). Elements are
+     * converted to strings as by {@code String.valueOf(Object)}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to convert to a string, may be null
+     * @return a string representation of {@code iterable}
+     */
+    public static &lt;E&gt; String toString(final Iterable&lt;E&gt; iterable) {
+<span class="fc" id="L905">        return IteratorUtils.toString(emptyIteratorIfNull(iterable));</span>
+    }
+
+    /**
+     * Returns a string representation of the elements of the specified iterable.
+     * &lt;p&gt;
+     * The string representation consists of a list of the iterable's elements,
+     * enclosed in square brackets ({@code &quot;[]&quot;}). Adjacent elements are separated
+     * by the characters {@code &quot;, &quot;} (a comma followed by a space). Elements are
+     * converted to strings as by using the provided {@code transformer}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to convert to a string, may be null
+     * @param transformer  the transformer used to get a string representation of an element
+     * @return a string representation of {@code iterable}
+     * @throws NullPointerException if {@code transformer} is null
+     */
+    public static &lt;E&gt; String toString(final Iterable&lt;E&gt; iterable,
+                                      final Transformer&lt;? super E, String&gt; transformer) {
+<span class="fc" id="L925">        Objects.requireNonNull(transformer, &quot;transformer&quot;);</span>
+<span class="fc" id="L926">        return IteratorUtils.toString(emptyIteratorIfNull(iterable), transformer);</span>
+    }
+
+    /**
+     * Returns a string representation of the elements of the specified iterable.
+     * &lt;p&gt;
+     * The string representation consists of a list of the iterable's elements,
+     * enclosed by the provided {@code prefix} and {@code suffix}. Adjacent elements
+     * are separated by the provided {@code delimiter}. Elements are converted to
+     * strings as by using the provided {@code transformer}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to convert to a string, may be null
+     * @param transformer  the transformer used to get a string representation of an element
+     * @param delimiter  the string to delimit elements
+     * @param prefix  the prefix, prepended to the string representation
+     * @param suffix  the suffix, appended to the string representation
+     * @return a string representation of {@code iterable}
+     * @throws NullPointerException if either transformer, delimiter, prefix or suffix is null
+     */
+    public static &lt;E&gt; String toString(final Iterable&lt;E&gt; iterable,
+                                      final Transformer&lt;? super E, String&gt; transformer,
+                                      final String delimiter,
+                                      final String prefix,
+                                      final String suffix) {
+<span class="fc" id="L952">        return IteratorUtils.toString(emptyIteratorIfNull(iterable),</span>
+                                      transformer, delimiter, prefix, suffix);
+    }
+
+    /**
+     * Returns a transformed view of the given iterable where all of its elements
+     * have been transformed by the provided transformer.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;I&gt;  the input element type
+     * @param &lt;O&gt;  the output element type
+     * @param iterable  the iterable to transform, may not be null
+     * @param transformer  the transformer, must not be null
+     * @return a transformed view of the specified iterable
+     * @throws NullPointerException if either iterable or transformer is null
+     */
+    public static &lt;I, O&gt; Iterable&lt;O&gt; transformedIterable(final Iterable&lt;I&gt; iterable,
+                                                         final Transformer&lt;? super I, ? extends O&gt; transformer) {
+<span class="fc" id="L973">        checkNotNull(iterable);</span>
+<span class="fc" id="L974">        Objects.requireNonNull(transformer, &quot;transformer&quot;);</span>
+<span class="fc" id="L975">        return new FluentIterable&lt;O&gt;() {</span>
+            @Override
+            public Iterator&lt;O&gt; iterator() {
+<span class="fc" id="L978">                return IteratorUtils.transformedIterator(iterable.iterator(), transformer);</span>
+            }
+        };
+    }
+
+    /**
+     * Returns a unique view of the given iterable.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the
+     * corresponding input iterator supports it. Calling {@code remove()}
+     * will only remove a single element from the underlying iterator.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to use, may not be null
+     * @return a unique view of the specified iterable
+     * @throws NullPointerException if iterable is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; uniqueIterable(final Iterable&lt;E&gt; iterable) {
+<span class="fc" id="L997">        checkNotNull(iterable);</span>
+<span class="fc" id="L998">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L1001">                return new UniqueFilterIterator&lt;&gt;(iterable.iterator());</span>
+            }
+        };
+    }
+
+    /**
+     * Returns an unmodifiable view of the given iterable.
+     * &lt;p&gt;
+     * The returned iterable's iterator does not support {@code remove()}.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param iterable  the iterable to use, may not be null
+     * @return an unmodifiable view of the specified iterable
+     * @throws NullPointerException if iterable is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; unmodifiableIterable(final Iterable&lt;E&gt; iterable) {
+<span class="fc" id="L1018">        checkNotNull(iterable);</span>
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">        if (iterable instanceof UnmodifiableIterable&lt;?&gt;) {</span>
+<span class="fc" id="L1020">            return iterable;</span>
+        }
+<span class="fc" id="L1022">        return new UnmodifiableIterable&lt;&gt;(iterable);</span>
+    }
+
+    /**
+     * Interleaves two iterables into a single iterable.
+     * &lt;p&gt;
+     * The returned iterable has an iterator that traverses the elements in {@code a}
+     * and {@code b} in alternating order. The source iterators are not polled until
+     * necessary.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding
+     * input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the element type
+     * @param a  the first iterable, may not be null
+     * @param b  the second iterable, may not be null
+     * @return a new iterable, interleaving the provided iterables
+     * @throws NullPointerException if either a or b is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; zippingIterable(final Iterable&lt;? extends E&gt; a,
+                                                  final Iterable&lt;? extends E&gt; b) {
+<span class="fc" id="L1045">        checkNotNull(a);</span>
+<span class="fc" id="L1046">        checkNotNull(b);</span>
+<span class="fc" id="L1047">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L1050">                return IteratorUtils.zippingIterator(a.iterator(), b.iterator());</span>
+            }
+        };
+    }
+
+    /**
+     * Interleaves two iterables into a single iterable.
+     * &lt;p&gt;
+     * The returned iterable has an iterator that traverses the elements in {@code a} and {@code b} in alternating order. The source iterators are not polled
+     * until necessary.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the corresponding input iterator supports it.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt;    the element type
+     * @param first  the first iterable, may not be null
+     * @param others the array of iterables to interleave, may not be null
+     * @return a new iterable, interleaving the provided iterables
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    public static &lt;E&gt; Iterable&lt;E&gt; zippingIterable(final Iterable&lt;? extends E&gt; first, final Iterable&lt;? extends E&gt;... others) {
+<span class="fc" id="L1072">        checkNotNull(first);</span>
+<span class="fc" id="L1073">        checkNotNull(others);</span>
+<span class="fc" id="L1074">        return new FluentIterable&lt;E&gt;() {</span>
+            @Override
+            public Iterator&lt;E&gt; iterator() {
+                @SuppressWarnings(&quot;unchecked&quot;) // safe
+<span class="fc" id="L1078">                final Iterator&lt;? extends E&gt;[] iterators = new Iterator[others.length + 1];</span>
+<span class="fc" id="L1079">                iterators[0] = first.iterator();</span>
+<span class="fc bfc" id="L1080" title="All 2 branches covered.">                for (int i = 0; i &lt; others.length; i++) {</span>
+<span class="fc" id="L1081">                    iterators[i + 1] = others[i].iterator();</span>
+                }
+<span class="fc" id="L1083">                return IteratorUtils.zippingIterator(iterators);</span>
+            }
+        };
+    }
+
+    /**
+     * Make private in 5.0.
+     *
+     * @deprecated TODO Make private in 5.0.
+     */
+    @Deprecated
+<span class="nc" id="L1094">    public IterableUtils() {</span>
+        // empty
+<span class="nc" id="L1096">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

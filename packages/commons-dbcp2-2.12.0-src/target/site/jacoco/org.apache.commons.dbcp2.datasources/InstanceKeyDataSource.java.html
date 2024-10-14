@@ -1,0 +1,1328 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstanceKeyDataSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.datasources</a> &gt; <span class="el_source">InstanceKeyDataSource.java</span></div><h1>InstanceKeyDataSource.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.datasources;
+
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.time.Duration;
+import java.util.Properties;
+import java.util.logging.Logger;
+
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.Referenceable;
+import javax.sql.ConnectionPoolDataSource;
+import javax.sql.DataSource;
+import javax.sql.PooledConnection;
+
+import org.apache.commons.dbcp2.Utils;
+import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
+import org.apache.commons.pool2.impl.GenericObjectPool;
+
+/**
+ * &lt;p&gt;
+ * The base class for {@code SharedPoolDataSource} and {@code PerUserPoolDataSource}. Many of the
+ * configuration properties are shared and defined here. This class is declared public in order to allow particular
+ * usage with commons-beanutils; do not make direct use of it outside of &lt;em&gt;commons-dbcp2&lt;/em&gt;.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * A J2EE container will normally provide some method of initializing the {@code DataSource} whose attributes are
+ * presented as bean getters/setters and then deploying it via JNDI. It is then available to an application as a source
+ * of pooled logical connections to the database. The pool needs a source of physical connections. This source is in the
+ * form of a {@code ConnectionPoolDataSource} that can be specified via the {@link #setDataSourceName(String)} used
+ * to lookup the source via JNDI.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Although normally used within a JNDI environment, A DataSource can be instantiated and initialized as any bean. In
+ * this case the {@code ConnectionPoolDataSource} will likely be instantiated in a similar manner. This class
+ * allows the physical source of connections to be attached directly to this pool using the
+ * {@link #setConnectionPoolDataSource(ConnectionPoolDataSource)} method.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The dbcp package contains an adapter, {@link org.apache.commons.dbcp2.cpdsadapter.DriverAdapterCPDS}, that can be
+ * used to allow the use of {@code DataSource}'s based on this class with JDBC driver implementations that do not
+ * supply a {@code ConnectionPoolDataSource}, but still provide a {@link java.sql.Driver} implementation.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The &lt;a href=&quot;package-summary.html&quot;&gt;package documentation&lt;/a&gt; contains an example using Apache Tomcat and JNDI and it
+ * also contains a non-JNDI example.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public abstract class InstanceKeyDataSource implements DataSource, Referenceable, Serializable, AutoCloseable {
+
+    private static final long serialVersionUID = -6819270431752240878L;
+
+    private static final String GET_CONNECTION_CALLED = &quot;A Connection was already requested from this source, &quot;
+            + &quot;further initialization is not allowed.&quot;;
+    private static final String BAD_TRANSACTION_ISOLATION = &quot;The requested TransactionIsolation level is invalid.&quot;;
+
+    /**
+     * Internal constant to indicate the level is not set.
+     */
+    protected static final int UNKNOWN_TRANSACTIONISOLATION = -1;
+
+    /** Guards property setters - once true, setters throw IllegalStateException */
+    private volatile boolean getConnectionCalled;
+
+    /** Underlying source of PooledConnections */
+    private ConnectionPoolDataSource dataSource;
+
+    /** DataSource Name used to find the ConnectionPoolDataSource */
+    private String dataSourceName;
+
+    /** Description */
+    private String description;
+
+    /** Environment that may be used to set up a JNDI initial context. */
+    private Properties jndiEnvironment;
+
+    /** Login Timeout */
+<span class="fc" id="L106">    private Duration loginTimeoutDuration = Duration.ZERO;</span>
+
+    /** Log stream */
+    private PrintWriter logWriter;
+
+    /** Instance key */
+    private String instanceKey;
+
+    // Pool properties
+<span class="fc" id="L115">    private boolean defaultBlockWhenExhausted = BaseObjectPoolConfig.DEFAULT_BLOCK_WHEN_EXHAUSTED;</span>
+<span class="fc" id="L116">    private String defaultEvictionPolicyClassName = BaseObjectPoolConfig.DEFAULT_EVICTION_POLICY_CLASS_NAME;</span>
+<span class="fc" id="L117">    private boolean defaultLifo = BaseObjectPoolConfig.DEFAULT_LIFO;</span>
+<span class="fc" id="L118">    private int defaultMaxIdle = GenericKeyedObjectPoolConfig.DEFAULT_MAX_IDLE_PER_KEY;</span>
+<span class="fc" id="L119">    private int defaultMaxTotal = GenericKeyedObjectPoolConfig.DEFAULT_MAX_TOTAL;</span>
+<span class="fc" id="L120">    private Duration defaultMaxWaitDuration = BaseObjectPoolConfig.DEFAULT_MAX_WAIT;</span>
+<span class="fc" id="L121">    private Duration defaultMinEvictableIdleDuration = BaseObjectPoolConfig.DEFAULT_MIN_EVICTABLE_IDLE_DURATION;</span>
+<span class="fc" id="L122">    private int defaultMinIdle = GenericKeyedObjectPoolConfig.DEFAULT_MIN_IDLE_PER_KEY;</span>
+<span class="fc" id="L123">    private int defaultNumTestsPerEvictionRun = BaseObjectPoolConfig.DEFAULT_NUM_TESTS_PER_EVICTION_RUN;</span>
+<span class="fc" id="L124">    private Duration defaultSoftMinEvictableIdleDuration = BaseObjectPoolConfig.DEFAULT_SOFT_MIN_EVICTABLE_IDLE_DURATION;</span>
+<span class="fc" id="L125">    private boolean defaultTestOnCreate = BaseObjectPoolConfig.DEFAULT_TEST_ON_CREATE;</span>
+<span class="fc" id="L126">    private boolean defaultTestOnBorrow = BaseObjectPoolConfig.DEFAULT_TEST_ON_BORROW;</span>
+<span class="fc" id="L127">    private boolean defaultTestOnReturn = BaseObjectPoolConfig.DEFAULT_TEST_ON_RETURN;</span>
+<span class="fc" id="L128">    private boolean defaultTestWhileIdle = BaseObjectPoolConfig.DEFAULT_TEST_WHILE_IDLE;</span>
+<span class="fc" id="L129">    private Duration defaultDurationBetweenEvictionRuns = BaseObjectPoolConfig.DEFAULT_DURATION_BETWEEN_EVICTION_RUNS;</span>
+
+    // Connection factory properties
+    private String validationQuery;
+<span class="fc" id="L133">    private Duration validationQueryTimeoutDuration = Duration.ofSeconds(-1);</span>
+    private boolean rollbackAfterValidation;
+<span class="fc" id="L135">    private Duration maxConnDuration = Duration.ofMillis(-1);</span>
+
+    // Connection properties
+    private Boolean defaultAutoCommit;
+<span class="fc" id="L139">    private int defaultTransactionIsolation = UNKNOWN_TRANSACTIONISOLATION;</span>
+    private Boolean defaultReadOnly;
+
+    /**
+     * Default no-arg constructor for Serialization.
+     */
+<span class="fc" id="L145">    public InstanceKeyDataSource() {</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Throws an IllegalStateException, if a PooledConnection has already been requested.
+     *
+     * @throws IllegalStateException Thrown if a PooledConnection has already been requested.
+     */
+    protected void assertInitializationAllowed() throws IllegalStateException {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (getConnectionCalled) {</span>
+<span class="fc" id="L155">            throw new IllegalStateException(GET_CONNECTION_CALLED);</span>
+        }
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Closes the connection pool being maintained by this datasource.
+     */
+    @Override
+    public abstract void close() throws SQLException;
+
+    private void closeDueToException(final PooledConnectionAndInfo info) {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (info != null) {</span>
+            try {
+<span class="fc" id="L168">                info.getPooledConnection().getConnection().close();</span>
+<span class="nc" id="L169">            } catch (final Exception e) {</span>
+                // do not throw this exception because we are in the middle
+                // of handling another exception. But record it because
+                // it potentially leaks connections from the pool.
+<span class="nc" id="L173">                getLogWriter().println(&quot;[ERROR] Could not return connection to pool during exception handling. &quot; + e.getMessage());</span>
+<span class="fc" id="L174">            }</span>
+        }
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Attempts to establish a database connection.
+     */
+    @Override
+    public Connection getConnection() throws SQLException {
+<span class="fc" id="L183">        return getConnection(null, null);</span>
+    }
+
+    /**
+     * Attempts to retrieve a database connection using {@link #getPooledConnectionAndInfo(String, String)} with the
+     * provided user name and password. The password on the {@code PooledConnectionAndInfo} instance returned by
+     * {@code getPooledConnectionAndInfo} is compared to the {@code password} parameter. If the comparison
+     * fails, a database connection using the supplied user name and password is attempted. If the connection attempt
+     * fails, an SQLException is thrown, indicating that the given password did not match the password used to create
+     * the pooled connection. If the connection attempt succeeds, this means that the database password has been
+     * changed. In this case, the {@code PooledConnectionAndInfo} instance retrieved with the old password is
+     * destroyed and the {@code getPooledConnectionAndInfo} is repeatedly invoked until a
+     * {@code PooledConnectionAndInfo} instance with the new password is returned.
+     */
+    @Override
+    public Connection getConnection(final String userName, final String userPassword) throws SQLException {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (instanceKey == null) {</span>
+<span class="fc" id="L200">            throw new SQLException(&quot;Must set the ConnectionPoolDataSource &quot;</span>
+                    + &quot;through setDataSourceName or setConnectionPoolDataSource&quot; + &quot; before calling getConnection.&quot;);
+        }
+<span class="fc" id="L203">        getConnectionCalled = true;</span>
+<span class="fc" id="L204">        PooledConnectionAndInfo info = null;</span>
+        try {
+<span class="fc" id="L206">            info = getPooledConnectionAndInfo(userName, userPassword);</span>
+<span class="fc" id="L207">        } catch (final RuntimeException | SQLException e) {</span>
+<span class="fc" id="L208">            closeDueToException(info);</span>
+<span class="fc" id="L209">            throw e;</span>
+<span class="nc" id="L210">        } catch (final Exception e) {</span>
+<span class="nc" id="L211">            closeDueToException(info);</span>
+<span class="nc" id="L212">            throw new SQLException(&quot;Cannot borrow connection from pool&quot;, e);</span>
+<span class="fc" id="L213">        }</span>
+
+        // Password on PooledConnectionAndInfo does not match
+<span class="pc bpc" id="L216" title="1 of 6 branches missed.">        if (!(null == userPassword ? null == info.getPassword() : userPassword.equals(info.getPassword()))) {</span>
+            try { // See if password has changed by attempting connection
+<span class="fc" id="L218">                testCPDS(userName, userPassword);</span>
+<span class="fc" id="L219">            } catch (final SQLException ex) {</span>
+                // Password has not changed, so refuse client, but return connection to the pool
+<span class="fc" id="L221">                closeDueToException(info);</span>
+<span class="fc" id="L222">                throw new SQLException(</span>
+                        &quot;Given password did not match password used&quot; + &quot; to create the PooledConnection.&quot;, ex);
+<span class="nc" id="L224">            } catch (final javax.naming.NamingException ne) {</span>
+<span class="nc" id="L225">                throw new SQLException(&quot;NamingException encountered connecting to database&quot;, ne);</span>
+<span class="fc" id="L226">            }</span>
+            /*
+             * Password must have changed -&gt; destroy connection and keep retrying until we get a new, good one,
+             * destroying any idle connections with the old password as we pull them from the pool.
+             */
+<span class="fc" id="L231">            final UserPassKey upkey = info.getUserPassKey();</span>
+<span class="fc" id="L232">            final PooledConnectionManager manager = getConnectionManager(upkey);</span>
+            // Destroy and remove from pool
+<span class="fc" id="L234">            manager.invalidate(info.getPooledConnection());</span>
+            // Reset the password on the factory if using CPDSConnectionFactory
+<span class="fc" id="L236">            manager.setPassword(upkey.getPassword());</span>
+<span class="fc" id="L237">            info = null;</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            for (int i = 0; i &lt; 10; i++) { // Bound the number of retries - only needed if bad instances return</span>
+                try {
+<span class="fc" id="L240">                    info = getPooledConnectionAndInfo(userName, userPassword);</span>
+<span class="nc" id="L241">                } catch (final RuntimeException | SQLException e) {</span>
+<span class="nc" id="L242">                    closeDueToException(info);</span>
+<span class="nc" id="L243">                    throw e;</span>
+<span class="nc" id="L244">                } catch (final Exception e) {</span>
+<span class="nc" id="L245">                    closeDueToException(info);</span>
+<span class="nc" id="L246">                    throw new SQLException(&quot;Cannot borrow connection from pool&quot;, e);</span>
+<span class="fc" id="L247">                }</span>
+<span class="pc bpc" id="L248" title="3 of 6 branches missed.">                if (info != null &amp;&amp; userPassword != null &amp;&amp; userPassword.equals(info.getPassword())) {</span>
+<span class="fc" id="L249">                    break;</span>
+                }
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                if (info != null) {</span>
+<span class="nc" id="L252">                    manager.invalidate(info.getPooledConnection());</span>
+                }
+<span class="nc" id="L254">                info = null;</span>
+            }
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">            if (info == null) {</span>
+<span class="nc" id="L257">                throw new SQLException(&quot;Cannot borrow connection from pool - password change failure.&quot;);</span>
+            }
+        }
+
+<span class="fc" id="L261">        final Connection connection = info.getPooledConnection().getConnection();</span>
+        try {
+<span class="fc" id="L263">            setupDefaults(connection, userName);</span>
+<span class="fc" id="L264">            connection.clearWarnings();</span>
+<span class="fc" id="L265">            return connection;</span>
+<span class="nc" id="L266">        } catch (final SQLException ex) {</span>
+<span class="nc" id="L267">            Utils.close(connection, e -&gt; getLogWriter().println(&quot;ignoring exception during close: &quot; + e));</span>
+<span class="nc" id="L268">            throw ex;</span>
+        }
+    }
+
+    protected abstract PooledConnectionManager getConnectionManager(UserPassKey upkey);
+
+    /**
+     * Gets the value of connectionPoolDataSource. This method will return null, if the backing data source is being
+     * accessed via JNDI.
+     *
+     * @return value of connectionPoolDataSource.
+     */
+    public ConnectionPoolDataSource getConnectionPoolDataSource() {
+<span class="fc" id="L281">        return dataSource;</span>
+    }
+
+    /**
+     * Gets the name of the ConnectionPoolDataSource which backs this pool. This name is used to look up the data source
+     * from a JNDI service provider.
+     *
+     * @return value of dataSourceName.
+     */
+    public String getDataSourceName() {
+<span class="fc" id="L291">        return dataSourceName;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getBlockWhenExhausted()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getBlockWhenExhausted()} for each per user
+     *         pool.
+     */
+    public boolean getDefaultBlockWhenExhausted() {
+<span class="fc" id="L301">        return this.defaultBlockWhenExhausted;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for each per user pool.
+     *
+     * @return The default value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for each per user pool.
+     * @since 2.10.0
+     */
+    public Duration getDefaultDurationBetweenEvictionRuns() {
+<span class="fc" id="L311">        return this.defaultDurationBetweenEvictionRuns;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getEvictionPolicyClassName()} for each per user
+     * pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getEvictionPolicyClassName()} for each per user
+     *         pool.
+     */
+    public String getDefaultEvictionPolicyClassName() {
+<span class="fc" id="L322">        return this.defaultEvictionPolicyClassName;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getLifo()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getLifo()} for each per user pool.
+     */
+    public boolean getDefaultLifo() {
+<span class="fc" id="L331">        return this.defaultLifo;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMaxIdlePerKey()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMaxIdlePerKey()} for each per user pool.
+     */
+    public int getDefaultMaxIdle() {
+<span class="fc" id="L340">        return this.defaultMaxIdle;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMaxTotalPerKey()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMaxTotalPerKey()} for each per user pool.
+     */
+    public int getDefaultMaxTotal() {
+<span class="fc" id="L349">        return this.defaultMaxTotal;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitDuration()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitDuration()} for each per user pool.
+     * @since 2.9.0
+     */
+    public Duration getDefaultMaxWait() {
+<span class="fc" id="L359">        return this.defaultMaxWaitDuration;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitDuration()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitDuration()} for each per user pool.
+     * @deprecated Use {@link #getDefaultMaxWait()}.
+     */
+    @Deprecated
+    public long getDefaultMaxWaitMillis() {
+<span class="fc" id="L370">        return getDefaultMaxWait().toMillis();</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each per user
+     * pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each per
+     *         user pool.
+     * @since 2.10.0
+     */
+    public Duration getDefaultMinEvictableIdleDuration() {
+<span class="fc" id="L382">        return this.defaultMinEvictableIdleDuration;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each per user
+     * pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each per
+     *         user pool.
+     * @deprecated Use {@link #getDefaultMinEvictableIdleDuration()}.
+     */
+    @Deprecated
+    public long getDefaultMinEvictableIdleTimeMillis() {
+<span class="fc" id="L395">        return this.defaultMinEvictableIdleDuration.toMillis();</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getMinIdlePerKey()} for each per user pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getMinIdlePerKey()} for each per user pool.
+     */
+    public int getDefaultMinIdle() {
+<span class="fc" id="L404">        return this.defaultMinIdle;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericKeyedObjectPoolConfig#getNumTestsPerEvictionRun()} for each per user
+     * pool.
+     *
+     * @return The default value for {@link GenericKeyedObjectPoolConfig#getNumTestsPerEvictionRun()} for each per user
+     *         pool.
+     */
+    public int getDefaultNumTestsPerEvictionRun() {
+<span class="fc" id="L415">        return this.defaultNumTestsPerEvictionRun;</span>
+    }
+
+    /**
+     * Gets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     *
+     * @return The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *         GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     * @since 2.10.0
+     */
+    public Duration getDefaultSoftMinEvictableIdleDuration() {
+<span class="fc" id="L427">        return this.defaultSoftMinEvictableIdleDuration;</span>
+    }
+
+    /**
+     * Gets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     *
+     * @return The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *         GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     * @deprecated Use {@link #getDefaultSoftMinEvictableIdleDuration()}.
+     */
+    @Deprecated
+    public long getDefaultSoftMinEvictableIdleTimeMillis() {
+<span class="fc" id="L440">        return this.defaultSoftMinEvictableIdleDuration.toMillis();</span>
+    }
+
+    /**
+     * Gets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestOnBorrow()} for each per user pool.
+     *
+     * @return The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *         GenericObjectPool#getTestOnBorrow()} for each per user pool.
+     */
+    public boolean getDefaultTestOnBorrow() {
+<span class="fc" id="L451">        return this.defaultTestOnBorrow;</span>
+    }
+
+    /**
+     * Gets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestOnCreate()} for each per user pool.
+     *
+     * @return The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *         GenericObjectPool#getTestOnCreate()} for each per user pool.
+     */
+    public boolean getDefaultTestOnCreate() {
+<span class="fc" id="L462">        return this.defaultTestOnCreate;</span>
+    }
+
+    /**
+     * Gets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestOnReturn()} for each per user pool.
+     *
+     * @return The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *         GenericObjectPool#getTestOnReturn()} for each per user pool.
+     */
+    public boolean getDefaultTestOnReturn() {
+<span class="fc" id="L473">        return this.defaultTestOnReturn;</span>
+    }
+
+    /**
+     * Gets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestWhileIdle()} for each per user pool.
+     *
+     * @return The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *         GenericObjectPool#getTestWhileIdle()} for each per user pool.
+     */
+    public boolean getDefaultTestWhileIdle() {
+<span class="fc" id="L484">        return this.defaultTestWhileIdle;</span>
+    }
+
+    /**
+     * Gets the default value for {@link GenericObjectPool#getDurationBetweenEvictionRuns ()} for each per user pool.
+     *
+     * @return The default value for {@link GenericObjectPool#getDurationBetweenEvictionRuns ()} for each per user pool.
+     * @deprecated Use {@link #getDefaultDurationBetweenEvictionRuns()}.
+     */
+    @Deprecated
+    public long getDefaultTimeBetweenEvictionRunsMillis() {
+<span class="fc" id="L495">        return this.defaultDurationBetweenEvictionRuns.toMillis();</span>
+    }
+
+    /**
+     * Gets the value of defaultTransactionIsolation, which defines the state of connections handed out from this pool.
+     * The value can be changed on the Connection using Connection.setTransactionIsolation(int). If this method returns
+     * -1, the default is JDBC driver dependent.
+     *
+     * @return value of defaultTransactionIsolation.
+     */
+    public int getDefaultTransactionIsolation() {
+<span class="fc" id="L506">        return defaultTransactionIsolation;</span>
+    }
+
+    /**
+     * Gets the description. This property is defined by JDBC as for use with GUI (or other) tools that might deploy the
+     * datasource. It serves no internal purpose.
+     *
+     * @return value of description.
+     */
+    public String getDescription() {
+<span class="fc" id="L516">        return description;</span>
+    }
+
+    /**
+     * Gets the instance key.
+     *
+     * @return the instance key.
+     */
+    protected String getInstanceKey() {
+<span class="fc" id="L525">        return instanceKey;</span>
+    }
+
+    /**
+     * Gets the value of jndiEnvironment which is used when instantiating a JNDI InitialContext. This InitialContext is
+     * used to locate the back end ConnectionPoolDataSource.
+     *
+     * @param key
+     *            JNDI environment key.
+     * @return value of jndiEnvironment.
+     */
+    public String getJndiEnvironment(final String key) {
+<span class="fc" id="L537">        String value = null;</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">        if (jndiEnvironment != null) {</span>
+<span class="fc" id="L539">            value = jndiEnvironment.getProperty(key);</span>
+        }
+<span class="fc" id="L541">        return value;</span>
+    }
+
+    /**
+     * Gets the value of loginTimeout.
+     *
+     * @return value of loginTimeout.
+     * @deprecated Use {@link #getLoginTimeoutDuration()}.
+     */
+    @Deprecated
+    @Override
+    public int getLoginTimeout() {
+<span class="fc" id="L553">        return (int) loginTimeoutDuration.getSeconds();</span>
+    }
+
+    /**
+     * Gets the value of loginTimeout.
+     *
+     * @return value of loginTimeout.
+     * @since 2.10.0
+     */
+    public Duration getLoginTimeoutDuration() {
+<span class="nc" id="L563">        return loginTimeoutDuration;</span>
+    }
+
+    /**
+     * Gets the value of logWriter.
+     *
+     * @return value of logWriter.
+     */
+    @Override
+    public PrintWriter getLogWriter() {
+<span class="fc bfc" id="L573" title="All 2 branches covered.">        if (logWriter == null) {</span>
+<span class="fc" id="L574">            logWriter = new PrintWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8));</span>
+        }
+<span class="fc" id="L576">        return logWriter;</span>
+    }
+
+    /**
+     * Gets the maximum permitted lifetime of a connection. A value of zero or less indicates an
+     * infinite lifetime.
+     *
+     * @return The maximum permitted lifetime of a connection. A value of zero or less indicates an
+     *         infinite lifetime.
+     * @since 2.10.0
+     */
+    public Duration getMaxConnDuration() {
+<span class="fc" id="L588">        return maxConnDuration;</span>
+    }
+
+    /**
+     * Gets the maximum permitted lifetime of a connection. A value of zero or less indicates an
+     * infinite lifetime.
+     *
+     * @return The maximum permitted lifetime of a connection. A value of zero or less indicates an
+     *         infinite lifetime.
+     * @deprecated Use {@link #getMaxConnDuration()}.
+     */
+    @Deprecated
+    public Duration getMaxConnLifetime() {
+<span class="nc" id="L601">        return maxConnDuration;</span>
+    }
+
+    /**
+     * Gets the maximum permitted lifetime of a connection in milliseconds. A value of zero or less indicates an
+     * infinite lifetime.
+     *
+     * @return The maximum permitted lifetime of a connection in milliseconds. A value of zero or less indicates an
+     *         infinite lifetime.
+     * @deprecated Use {@link #getMaxConnLifetime()}.
+     */
+    @Deprecated
+    public long getMaxConnLifetimeMillis() {
+<span class="fc" id="L614">        return maxConnDuration.toMillis();</span>
+    }
+
+    @Override
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+<span class="nc" id="L619">        throw new SQLFeatureNotSupportedException();</span>
+    }
+
+    /**
+     * This method is protected but can only be implemented in this package because PooledConnectionAndInfo is a package
+     * private type.
+     *
+     * @param userName The user name.
+     * @param userPassword The user password.
+     * @return Matching PooledConnectionAndInfo.
+     * @throws SQLException Connection or registration failure.
+     */
+    protected abstract PooledConnectionAndInfo getPooledConnectionAndInfo(String userName, String userPassword)
+            throws SQLException;
+
+    /**
+     * Gets the SQL query that will be used to validate connections from this pool before returning them to the caller.
+     * If specified, this query &lt;strong&gt;MUST&lt;/strong&gt; be an SQL SELECT statement that returns at least one row. If not
+     * specified, {@link Connection#isValid(int)} will be used to validate connections.
+     *
+     * @return The SQL query that will be used to validate connections from this pool before returning them to the
+     *         caller.
+     */
+    public String getValidationQuery() {
+<span class="fc" id="L643">        return this.validationQuery;</span>
+    }
+
+    /**
+     * Returns the timeout in seconds before the validation query fails.
+     *
+     * @return The timeout in seconds before the validation query fails.
+     * @deprecated Use {@link #getValidationQueryTimeoutDuration()}.
+     */
+    @Deprecated
+    public int getValidationQueryTimeout() {
+<span class="fc" id="L654">        return (int) validationQueryTimeoutDuration.getSeconds();</span>
+    }
+
+    /**
+     * Returns the timeout Duration before the validation query fails.
+     *
+     * @return The timeout Duration before the validation query fails.
+     */
+    public Duration getValidationQueryTimeoutDuration() {
+<span class="fc" id="L663">        return validationQueryTimeoutDuration;</span>
+    }
+
+    /**
+     * Gets the value of defaultAutoCommit, which defines the state of connections handed out from this pool. The value
+     * can be changed on the Connection using Connection.setAutoCommit(boolean). The default is {@code null} which
+     * will use the default value for the drive.
+     *
+     * @return value of defaultAutoCommit.
+     */
+    public Boolean isDefaultAutoCommit() {
+<span class="fc" id="L674">        return defaultAutoCommit;</span>
+    }
+
+    /**
+     * Gets the value of defaultReadOnly, which defines the state of connections handed out from this pool. The value
+     * can be changed on the Connection using Connection.setReadOnly(boolean). The default is {@code null} which
+     * will use the default value for the drive.
+     *
+     * @return value of defaultReadOnly.
+     */
+    public Boolean isDefaultReadOnly() {
+<span class="fc" id="L685">        return defaultReadOnly;</span>
+    }
+
+    /**
+     * Whether a rollback will be issued after executing the SQL query that will be used to validate connections from
+     * this pool before returning them to the caller.
+     *
+     * @return true if a rollback will be issued after executing the validation query
+     */
+    public boolean isRollbackAfterValidation() {
+<span class="fc" id="L695">        return this.rollbackAfterValidation;</span>
+    }
+
+    @Override
+    public boolean isWrapperFor(final Class&lt;?&gt; iface) throws SQLException {
+<span class="fc" id="L700">        return iface.isInstance(this);</span>
+    }
+
+    /**
+     * Sets the back end ConnectionPoolDataSource. This property should not be set if using JNDI to access the
+     * data source.
+     *
+     * @param dataSource
+     *            Value to assign to connectionPoolDataSource.
+     */
+    public void setConnectionPoolDataSource(final ConnectionPoolDataSource dataSource) {
+<span class="fc" id="L711">        assertInitializationAllowed();</span>
+<span class="fc bfc" id="L712" title="All 2 branches covered.">        if (dataSourceName != null) {</span>
+<span class="fc" id="L713">            throw new IllegalStateException(&quot;Cannot set the DataSource, if JNDI is used.&quot;);</span>
+        }
+<span class="fc bfc" id="L715" title="All 2 branches covered.">        if (this.dataSource != null) {</span>
+<span class="fc" id="L716">            throw new IllegalStateException(&quot;The CPDS has already been set. It cannot be altered.&quot;);</span>
+        }
+<span class="fc" id="L718">        this.dataSource = dataSource;</span>
+<span class="fc" id="L719">        instanceKey = InstanceKeyDataSourceFactory.registerNewInstance(this);</span>
+<span class="fc" id="L720">    }</span>
+
+    /**
+     * Sets the name of the ConnectionPoolDataSource which backs this pool. This name is used to look up the data source
+     * from a JNDI service provider.
+     *
+     * @param dataSourceName
+     *            Value to assign to dataSourceName.
+     */
+    public void setDataSourceName(final String dataSourceName) {
+<span class="fc" id="L730">        assertInitializationAllowed();</span>
+<span class="fc bfc" id="L731" title="All 2 branches covered.">        if (dataSource != null) {</span>
+<span class="fc" id="L732">            throw new IllegalStateException(&quot;Cannot set the JNDI name for the DataSource, if already &quot;</span>
+                    + &quot;set using setConnectionPoolDataSource.&quot;);
+        }
+<span class="fc bfc" id="L735" title="All 2 branches covered.">        if (this.dataSourceName != null) {</span>
+<span class="fc" id="L736">            throw new IllegalStateException(&quot;The DataSourceName has already been set. &quot; + &quot;It cannot be altered.&quot;);</span>
+        }
+<span class="fc" id="L738">        this.dataSourceName = dataSourceName;</span>
+<span class="fc" id="L739">        instanceKey = InstanceKeyDataSourceFactory.registerNewInstance(this);</span>
+<span class="fc" id="L740">    }</span>
+
+    /**
+     * Sets the value of defaultAutoCommit, which defines the state of connections handed out from this pool. The value
+     * can be changed on the Connection using Connection.setAutoCommit(boolean). The default is {@code null} which
+     * will use the default value for the drive.
+     *
+     * @param defaultAutoCommit
+     *            Value to assign to defaultAutoCommit.
+     */
+    public void setDefaultAutoCommit(final Boolean defaultAutoCommit) {
+<span class="fc" id="L751">        assertInitializationAllowed();</span>
+<span class="fc" id="L752">        this.defaultAutoCommit = defaultAutoCommit;</span>
+<span class="fc" id="L753">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getBlockWhenExhausted()} for each per user pool.
+     *
+     * @param blockWhenExhausted
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getBlockWhenExhausted()} for each per user
+     *            pool.
+     */
+    public void setDefaultBlockWhenExhausted(final boolean blockWhenExhausted) {
+<span class="fc" id="L763">        assertInitializationAllowed();</span>
+<span class="fc" id="L764">        this.defaultBlockWhenExhausted = blockWhenExhausted;</span>
+<span class="fc" id="L765">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericObjectPool#getDurationBetweenEvictionRuns ()} for each per user pool.
+     *
+     * @param defaultDurationBetweenEvictionRuns The default value for
+     *        {@link GenericObjectPool#getDurationBetweenEvictionRuns ()} for each per user pool.
+     * @since 2.10.0
+     */
+    public void setDefaultDurationBetweenEvictionRuns(final Duration defaultDurationBetweenEvictionRuns) {
+<span class="fc" id="L775">        assertInitializationAllowed();</span>
+<span class="fc" id="L776">        this.defaultDurationBetweenEvictionRuns = defaultDurationBetweenEvictionRuns;</span>
+<span class="fc" id="L777">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getEvictionPolicyClassName()} for each per user
+     * pool.
+     *
+     * @param evictionPolicyClassName
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getEvictionPolicyClassName()} for each per
+     *            user pool.
+     */
+    public void setDefaultEvictionPolicyClassName(final String evictionPolicyClassName) {
+<span class="fc" id="L788">        assertInitializationAllowed();</span>
+<span class="fc" id="L789">        this.defaultEvictionPolicyClassName = evictionPolicyClassName;</span>
+<span class="fc" id="L790">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getLifo()} for each per user pool.
+     *
+     * @param lifo
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getLifo()} for each per user pool.
+     */
+    public void setDefaultLifo(final boolean lifo) {
+<span class="fc" id="L799">        assertInitializationAllowed();</span>
+<span class="fc" id="L800">        this.defaultLifo = lifo;</span>
+<span class="fc" id="L801">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMaxIdlePerKey()} for each per user pool.
+     *
+     * @param maxIdle
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMaxIdlePerKey()} for each per user pool.
+     */
+    public void setDefaultMaxIdle(final int maxIdle) {
+<span class="fc" id="L810">        assertInitializationAllowed();</span>
+<span class="fc" id="L811">        this.defaultMaxIdle = maxIdle;</span>
+<span class="fc" id="L812">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMaxTotalPerKey()} for each per user pool.
+     *
+     * @param maxTotal
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMaxTotalPerKey()} for each per user pool.
+     */
+    public void setDefaultMaxTotal(final int maxTotal) {
+<span class="fc" id="L821">        assertInitializationAllowed();</span>
+<span class="fc" id="L822">        this.defaultMaxTotal = maxTotal;</span>
+<span class="fc" id="L823">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitDuration()} for each per user pool.
+     *
+     * @param maxWaitMillis
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitDuration()} for each per user pool.
+     * @since 2.9.0
+     */
+    public void setDefaultMaxWait(final Duration maxWaitMillis) {
+<span class="fc" id="L833">        assertInitializationAllowed();</span>
+<span class="fc" id="L834">        this.defaultMaxWaitDuration = maxWaitMillis;</span>
+<span class="fc" id="L835">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitMillis()} for each per user pool.
+     *
+     * @param maxWaitMillis
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMaxWaitMillis()} for each per user pool.
+     * @deprecated Use {@link #setDefaultMaxWait(Duration)}.
+     */
+    @Deprecated
+    public void setDefaultMaxWaitMillis(final long maxWaitMillis) {
+<span class="fc" id="L846">        setDefaultMaxWait(Duration.ofMillis(maxWaitMillis));</span>
+<span class="fc" id="L847">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each per user
+     * pool.
+     *
+     * @param defaultMinEvictableIdleDuration
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each
+     *            per user pool.
+     * @since 2.10.0
+     */
+    public void setDefaultMinEvictableIdle(final Duration defaultMinEvictableIdleDuration) {
+<span class="nc" id="L859">        assertInitializationAllowed();</span>
+<span class="nc" id="L860">        this.defaultMinEvictableIdleDuration = defaultMinEvictableIdleDuration;</span>
+<span class="nc" id="L861">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each per user
+     * pool.
+     *
+     * @param minEvictableIdleTimeMillis
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMinEvictableIdleDuration()} for each
+     *            per user pool.
+     * @deprecated Use {@link #setDefaultMinEvictableIdle(Duration)}.
+     */
+    @Deprecated
+    public void setDefaultMinEvictableIdleTimeMillis(final long minEvictableIdleTimeMillis) {
+<span class="fc" id="L874">        assertInitializationAllowed();</span>
+<span class="fc" id="L875">        this.defaultMinEvictableIdleDuration = Duration.ofMillis(minEvictableIdleTimeMillis);</span>
+<span class="fc" id="L876">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getMinIdlePerKey()} for each per user pool.
+     *
+     * @param minIdle
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getMinIdlePerKey()} for each per user pool.
+     */
+    public void setDefaultMinIdle(final int minIdle) {
+<span class="fc" id="L885">        assertInitializationAllowed();</span>
+<span class="fc" id="L886">        this.defaultMinIdle = minIdle;</span>
+<span class="fc" id="L887">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericKeyedObjectPoolConfig#getNumTestsPerEvictionRun()} for each per user
+     * pool.
+     *
+     * @param numTestsPerEvictionRun
+     *            The default value for {@link GenericKeyedObjectPoolConfig#getNumTestsPerEvictionRun()} for each per
+     *            user pool.
+     */
+    public void setDefaultNumTestsPerEvictionRun(final int numTestsPerEvictionRun) {
+<span class="fc" id="L898">        assertInitializationAllowed();</span>
+<span class="fc" id="L899">        this.defaultNumTestsPerEvictionRun = numTestsPerEvictionRun;</span>
+<span class="fc" id="L900">    }</span>
+
+    /**
+     * Sets the value of defaultReadOnly, which defines the state of connections handed out from this pool. The value
+     * can be changed on the Connection using Connection.setReadOnly(boolean). The default is {@code null} which
+     * will use the default value for the drive.
+     *
+     * @param defaultReadOnly
+     *            Value to assign to defaultReadOnly.
+     */
+    public void setDefaultReadOnly(final Boolean defaultReadOnly) {
+<span class="fc" id="L911">        assertInitializationAllowed();</span>
+<span class="fc" id="L912">        this.defaultReadOnly = defaultReadOnly;</span>
+<span class="fc" id="L913">    }</span>
+
+    /**
+     * Sets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     *
+     * @param defaultSoftMinEvictableIdleDuration
+     *            The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *            GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     * @since 2.10.0
+     */
+    public void setDefaultSoftMinEvictableIdle(final Duration defaultSoftMinEvictableIdleDuration) {
+<span class="nc" id="L925">        assertInitializationAllowed();</span>
+<span class="nc" id="L926">        this.defaultSoftMinEvictableIdleDuration = defaultSoftMinEvictableIdleDuration;</span>
+<span class="nc" id="L927">    }</span>
+
+    /**
+     * Sets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     *
+     * @param softMinEvictableIdleTimeMillis
+     *            The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *            GenericObjectPool#getSoftMinEvictableIdleTimeMillis()} for each per user pool.
+     * @deprecated Use {@link #setDefaultSoftMinEvictableIdle(Duration)}.
+     */
+    @Deprecated
+    public void setDefaultSoftMinEvictableIdleTimeMillis(final long softMinEvictableIdleTimeMillis) {
+<span class="fc" id="L940">        assertInitializationAllowed();</span>
+<span class="fc" id="L941">        this.defaultSoftMinEvictableIdleDuration = Duration.ofMillis(softMinEvictableIdleTimeMillis);</span>
+<span class="fc" id="L942">    }</span>
+
+    /**
+     * Sets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestOnBorrow()} for each per user pool.
+     *
+     * @param testOnBorrow
+     *            The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *            GenericObjectPool#getTestOnBorrow()} for each per user pool.
+     */
+    public void setDefaultTestOnBorrow(final boolean testOnBorrow) {
+<span class="fc" id="L953">        assertInitializationAllowed();</span>
+<span class="fc" id="L954">        this.defaultTestOnBorrow = testOnBorrow;</span>
+<span class="fc" id="L955">    }</span>
+
+    /**
+     * Sets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestOnCreate()} for each per user pool.
+     *
+     * @param testOnCreate
+     *            The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *            GenericObjectPool#getTestOnCreate()} for each per user pool.
+     */
+    public void setDefaultTestOnCreate(final boolean testOnCreate) {
+<span class="fc" id="L966">        assertInitializationAllowed();</span>
+<span class="fc" id="L967">        this.defaultTestOnCreate = testOnCreate;</span>
+<span class="fc" id="L968">    }</span>
+
+    /**
+     * Sets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestOnReturn()} for each per user pool.
+     *
+     * @param testOnReturn
+     *            The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *            GenericObjectPool#getTestOnReturn()} for each per user pool.
+     */
+    public void setDefaultTestOnReturn(final boolean testOnReturn) {
+<span class="fc" id="L979">        assertInitializationAllowed();</span>
+<span class="fc" id="L980">        this.defaultTestOnReturn = testOnReturn;</span>
+<span class="fc" id="L981">    }</span>
+
+    /**
+     * Sets the default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     * GenericObjectPool#getTestWhileIdle()} for each per user pool.
+     *
+     * @param testWhileIdle
+     *            The default value for {@link org.apache.commons.pool2.impl.GenericObjectPool
+     *            GenericObjectPool#getTestWhileIdle()} for each per user pool.
+     */
+    public void setDefaultTestWhileIdle(final boolean testWhileIdle) {
+<span class="fc" id="L992">        assertInitializationAllowed();</span>
+<span class="fc" id="L993">        this.defaultTestWhileIdle = testWhileIdle;</span>
+<span class="fc" id="L994">    }</span>
+
+    /**
+     * Sets the default value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for each per user pool.
+     *
+     * @param timeBetweenEvictionRunsMillis The default value for
+     *        {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for each per user pool.
+     * @deprecated Use {@link #setDefaultDurationBetweenEvictionRuns(Duration)}.
+     */
+    @Deprecated
+    public void setDefaultTimeBetweenEvictionRunsMillis(final long timeBetweenEvictionRunsMillis) {
+<span class="fc" id="L1005">        assertInitializationAllowed();</span>
+<span class="fc" id="L1006">        this.defaultDurationBetweenEvictionRuns = Duration.ofMillis(timeBetweenEvictionRunsMillis);</span>
+<span class="fc" id="L1007">    }</span>
+
+    /**
+     * Sets the value of defaultTransactionIsolation, which defines the state of connections handed out from this pool.
+     * The value can be changed on the Connection using Connection.setTransactionIsolation(int). The default is JDBC
+     * driver dependent.
+     *
+     * @param defaultTransactionIsolation
+     *            Value to assign to defaultTransactionIsolation
+     */
+    public void setDefaultTransactionIsolation(final int defaultTransactionIsolation) {
+<span class="fc" id="L1018">        assertInitializationAllowed();</span>
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">        switch (defaultTransactionIsolation) {</span>
+        case Connection.TRANSACTION_NONE:
+        case Connection.TRANSACTION_READ_COMMITTED:
+        case Connection.TRANSACTION_READ_UNCOMMITTED:
+        case Connection.TRANSACTION_REPEATABLE_READ:
+        case Connection.TRANSACTION_SERIALIZABLE:
+<span class="fc" id="L1025">            break;</span>
+        default:
+<span class="fc" id="L1027">            throw new IllegalArgumentException(BAD_TRANSACTION_ISOLATION);</span>
+        }
+<span class="fc" id="L1029">        this.defaultTransactionIsolation = defaultTransactionIsolation;</span>
+<span class="fc" id="L1030">    }</span>
+
+    /**
+     * Sets the description. This property is defined by JDBC as for use with GUI (or other) tools that might deploy the
+     * datasource. It serves no internal purpose.
+     *
+     * @param description
+     *            Value to assign to description.
+     */
+    public void setDescription(final String description) {
+<span class="fc" id="L1040">        this.description = description;</span>
+<span class="fc" id="L1041">    }</span>
+
+    /**
+     * Sets the JNDI environment to be used when instantiating a JNDI InitialContext. This InitialContext is used to
+     * locate the back end ConnectionPoolDataSource.
+     *
+     * @param properties
+     *            the JNDI environment property to set which will overwrite any current settings
+     */
+    void setJndiEnvironment(final Properties properties) {
+<span class="fc bfc" id="L1051" title="All 2 branches covered.">        if (jndiEnvironment == null) {</span>
+<span class="fc" id="L1052">            jndiEnvironment = new Properties();</span>
+        } else {
+<span class="fc" id="L1054">            jndiEnvironment.clear();</span>
+        }
+<span class="fc" id="L1056">        jndiEnvironment.putAll(properties);</span>
+<span class="fc" id="L1057">    }</span>
+
+    /**
+     * Sets the value of the given JNDI environment property to be used when instantiating a JNDI InitialContext. This
+     * InitialContext is used to locate the back end ConnectionPoolDataSource.
+     *
+     * @param key
+     *            the JNDI environment property to set.
+     * @param value
+     *            the value assigned to specified JNDI environment property.
+     */
+    public void setJndiEnvironment(final String key, final String value) {
+<span class="fc bfc" id="L1069" title="All 2 branches covered.">        if (jndiEnvironment == null) {</span>
+<span class="fc" id="L1070">            jndiEnvironment = new Properties();</span>
+        }
+<span class="fc" id="L1072">        jndiEnvironment.setProperty(key, value);</span>
+<span class="fc" id="L1073">    }</span>
+
+    /**
+     * Sets the value of loginTimeout.
+     *
+     * @param loginTimeout
+     *            Value to assign to loginTimeout.
+     * @since 2.10.0
+     */
+    public void setLoginTimeout(final Duration loginTimeout) {
+<span class="nc" id="L1083">        this.loginTimeoutDuration = loginTimeout;</span>
+<span class="nc" id="L1084">    }</span>
+
+    /**
+     * Sets the value of loginTimeout.
+     *
+     * @param loginTimeout
+     *            Value to assign to loginTimeout.
+     * @deprecated Use {@link #setLoginTimeout(Duration)}.
+     */
+    @Deprecated
+    @Override
+    public void setLoginTimeout(final int loginTimeout) {
+<span class="fc" id="L1096">        this.loginTimeoutDuration = Duration.ofSeconds(loginTimeout);</span>
+<span class="fc" id="L1097">    }</span>
+
+    /**
+     * Sets the value of logWriter.
+     *
+     * @param logWriter
+     *            Value to assign to logWriter.
+     */
+    @Override
+    public void setLogWriter(final PrintWriter logWriter) {
+<span class="fc" id="L1107">        this.logWriter = logWriter;</span>
+<span class="fc" id="L1108">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Sets the maximum permitted lifetime of a connection. A value of zero or less indicates an
+     * infinite lifetime.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Note: this method currently has no effect once the pool has been initialized. The pool is initialized the first
+     * time one of the following methods is invoked: &lt;code&gt;getConnection, setLogwriter,
+     * setLoginTimeout, getLoginTimeout, getLogWriter.&lt;/code&gt;
+     * &lt;/p&gt;
+     *
+     * @param maxConnLifetimeMillis
+     *            The maximum permitted lifetime of a connection. A value of zero or less indicates an
+     *            infinite lifetime.
+     * @since 2.9.0
+     */
+    public void setMaxConnLifetime(final Duration maxConnLifetimeMillis) {
+<span class="fc" id="L1127">        this.maxConnDuration = maxConnLifetimeMillis;</span>
+<span class="fc" id="L1128">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Sets the maximum permitted lifetime of a connection in milliseconds. A value of zero or less indicates an
+     * infinite lifetime.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Note: this method currently has no effect once the pool has been initialized. The pool is initialized the first
+     * time one of the following methods is invoked: &lt;code&gt;getConnection, setLogwriter,
+     * setLoginTimeout, getLoginTimeout, getLogWriter.&lt;/code&gt;
+     * &lt;/p&gt;
+     *
+     * @param maxConnLifetimeMillis
+     *            The maximum permitted lifetime of a connection in milliseconds. A value of zero or less indicates an
+     *            infinite lifetime.
+     * @deprecated Use {@link #setMaxConnLifetime(Duration)}.
+     */
+    @Deprecated
+    public void setMaxConnLifetimeMillis(final long maxConnLifetimeMillis) {
+<span class="fc" id="L1148">        setMaxConnLifetime(Duration.ofMillis(maxConnLifetimeMillis));</span>
+<span class="fc" id="L1149">    }</span>
+
+    /**
+     * Whether a rollback will be issued after executing the SQL query that will be used to validate connections from
+     * this pool before returning them to the caller. Default behavior is NOT to issue a rollback. The setting will only
+     * have an effect if a validation query is set
+     *
+     * @param rollbackAfterValidation
+     *            new property value
+     */
+    public void setRollbackAfterValidation(final boolean rollbackAfterValidation) {
+<span class="fc" id="L1160">        assertInitializationAllowed();</span>
+<span class="fc" id="L1161">        this.rollbackAfterValidation = rollbackAfterValidation;</span>
+<span class="fc" id="L1162">    }</span>
+
+    protected abstract void setupDefaults(Connection connection, String userName) throws SQLException;
+
+    /**
+     * Sets the SQL query that will be used to validate connections from this pool before returning them to the caller.
+     * If specified, this query &lt;strong&gt;MUST&lt;/strong&gt; be an SQL SELECT statement that returns at least one row. If not
+     * specified, connections will be validated using {@link Connection#isValid(int)}.
+     *
+     * @param validationQuery
+     *            The SQL query that will be used to validate connections from this pool before returning them to the
+     *            caller.
+     */
+    public void setValidationQuery(final String validationQuery) {
+<span class="fc" id="L1176">        assertInitializationAllowed();</span>
+<span class="fc" id="L1177">        this.validationQuery = validationQuery;</span>
+<span class="fc" id="L1178">    }</span>
+
+    /**
+     * Sets the timeout duration before the validation query fails.
+     *
+     * @param validationQueryTimeoutDuration
+     *            The new timeout duration.
+     */
+    public void setValidationQueryTimeout(final Duration validationQueryTimeoutDuration) {
+<span class="nc" id="L1187">        this.validationQueryTimeoutDuration = validationQueryTimeoutDuration;</span>
+<span class="nc" id="L1188">    }</span>
+
+    /**
+     * Sets the timeout in seconds before the validation query fails.
+     *
+     * @param validationQueryTimeoutSeconds
+     *            The new timeout in seconds
+     * @deprecated Use {@link #setValidationQueryTimeout(Duration)}.
+     */
+    @Deprecated
+    public void setValidationQueryTimeout(final int validationQueryTimeoutSeconds) {
+<span class="fc" id="L1199">        this.validationQueryTimeoutDuration = Duration.ofSeconds(validationQueryTimeoutSeconds);</span>
+<span class="fc" id="L1200">    }</span>
+
+    protected ConnectionPoolDataSource testCPDS(final String userName, final String userPassword)
+            throws javax.naming.NamingException, SQLException {
+        // The source of physical db connections
+<span class="fc" id="L1205">        ConnectionPoolDataSource cpds = this.dataSource;</span>
+<span class="pc bpc" id="L1206" title="1 of 2 branches missed.">        if (cpds == null) {</span>
+<span class="nc" id="L1207">            Context ctx = null;</span>
+<span class="nc bnc" id="L1208" title="All 2 branches missed.">            if (jndiEnvironment == null) {</span>
+<span class="nc" id="L1209">                ctx = new InitialContext();</span>
+            } else {
+<span class="nc" id="L1211">                ctx = new InitialContext(jndiEnvironment);</span>
+            }
+<span class="nc" id="L1213">            final Object ds = ctx.lookup(dataSourceName);</span>
+<span class="nc bnc" id="L1214" title="All 2 branches missed.">            if (!(ds instanceof ConnectionPoolDataSource)) {</span>
+<span class="nc" id="L1215">                throw new SQLException(&quot;Illegal configuration: &quot; + &quot;DataSource &quot; + dataSourceName + &quot; (&quot;</span>
+<span class="nc" id="L1216">                        + ds.getClass().getName() + &quot;)&quot; + &quot; doesn't implement javax.sql.ConnectionPoolDataSource&quot;);</span>
+            }
+<span class="nc" id="L1218">            cpds = (ConnectionPoolDataSource) ds;</span>
+        }
+
+        // try to get a connection with the supplied userName/password
+<span class="fc" id="L1222">        PooledConnection conn = null;</span>
+        try {
+<span class="fc bfc" id="L1224" title="All 2 branches covered.">            if (userName != null) {</span>
+<span class="fc" id="L1225">                conn = cpds.getPooledConnection(userName, userPassword);</span>
+            } else {
+<span class="fc" id="L1227">                conn = cpds.getPooledConnection();</span>
+            }
+<span class="pc bpc" id="L1229" title="1 of 2 branches missed.">            if (conn == null) {</span>
+<span class="nc" id="L1230">                throw new SQLException(&quot;Cannot connect using the supplied userName/password&quot;);</span>
+            }
+        } finally {
+<span class="fc bfc" id="L1233" title="All 2 branches covered.">            if (conn != null) {</span>
+                try {
+<span class="fc" id="L1235">                    conn.close();</span>
+<span class="nc" id="L1236">                } catch (final SQLException ignored) {</span>
+                    // at least we could connect
+<span class="fc" id="L1238">                }</span>
+            }
+        }
+<span class="fc" id="L1241">        return cpds;</span>
+    }
+
+    /**
+     * @since 2.6.0
+     */
+    @Override
+    public synchronized String toString() {
+<span class="nc" id="L1249">        final StringBuilder builder = new StringBuilder(super.toString());</span>
+<span class="nc" id="L1250">        builder.append('[');</span>
+<span class="nc" id="L1251">        toStringFields(builder);</span>
+<span class="nc" id="L1252">        builder.append(']');</span>
+<span class="nc" id="L1253">        return builder.toString();</span>
+    }
+
+    protected void toStringFields(final StringBuilder builder) {
+<span class="nc" id="L1257">        builder.append(&quot;getConnectionCalled=&quot;);</span>
+<span class="nc" id="L1258">        builder.append(getConnectionCalled);</span>
+<span class="nc" id="L1259">        builder.append(&quot;, dataSource=&quot;);</span>
+<span class="nc" id="L1260">        builder.append(dataSource);</span>
+<span class="nc" id="L1261">        builder.append(&quot;, dataSourceName=&quot;);</span>
+<span class="nc" id="L1262">        builder.append(dataSourceName);</span>
+<span class="nc" id="L1263">        builder.append(&quot;, description=&quot;);</span>
+<span class="nc" id="L1264">        builder.append(description);</span>
+<span class="nc" id="L1265">        builder.append(&quot;, jndiEnvironment=&quot;);</span>
+<span class="nc" id="L1266">        builder.append(jndiEnvironment);</span>
+<span class="nc" id="L1267">        builder.append(&quot;, loginTimeoutDuration=&quot;);</span>
+<span class="nc" id="L1268">        builder.append(loginTimeoutDuration);</span>
+<span class="nc" id="L1269">        builder.append(&quot;, logWriter=&quot;);</span>
+<span class="nc" id="L1270">        builder.append(logWriter);</span>
+<span class="nc" id="L1271">        builder.append(&quot;, instanceKey=&quot;);</span>
+<span class="nc" id="L1272">        builder.append(instanceKey);</span>
+<span class="nc" id="L1273">        builder.append(&quot;, defaultBlockWhenExhausted=&quot;);</span>
+<span class="nc" id="L1274">        builder.append(defaultBlockWhenExhausted);</span>
+<span class="nc" id="L1275">        builder.append(&quot;, defaultEvictionPolicyClassName=&quot;);</span>
+<span class="nc" id="L1276">        builder.append(defaultEvictionPolicyClassName);</span>
+<span class="nc" id="L1277">        builder.append(&quot;, defaultLifo=&quot;);</span>
+<span class="nc" id="L1278">        builder.append(defaultLifo);</span>
+<span class="nc" id="L1279">        builder.append(&quot;, defaultMaxIdle=&quot;);</span>
+<span class="nc" id="L1280">        builder.append(defaultMaxIdle);</span>
+<span class="nc" id="L1281">        builder.append(&quot;, defaultMaxTotal=&quot;);</span>
+<span class="nc" id="L1282">        builder.append(defaultMaxTotal);</span>
+<span class="nc" id="L1283">        builder.append(&quot;, defaultMaxWaitDuration=&quot;);</span>
+<span class="nc" id="L1284">        builder.append(defaultMaxWaitDuration);</span>
+<span class="nc" id="L1285">        builder.append(&quot;, defaultMinEvictableIdleDuration=&quot;);</span>
+<span class="nc" id="L1286">        builder.append(defaultMinEvictableIdleDuration);</span>
+<span class="nc" id="L1287">        builder.append(&quot;, defaultMinIdle=&quot;);</span>
+<span class="nc" id="L1288">        builder.append(defaultMinIdle);</span>
+<span class="nc" id="L1289">        builder.append(&quot;, defaultNumTestsPerEvictionRun=&quot;);</span>
+<span class="nc" id="L1290">        builder.append(defaultNumTestsPerEvictionRun);</span>
+<span class="nc" id="L1291">        builder.append(&quot;, defaultSoftMinEvictableIdleDuration=&quot;);</span>
+<span class="nc" id="L1292">        builder.append(defaultSoftMinEvictableIdleDuration);</span>
+<span class="nc" id="L1293">        builder.append(&quot;, defaultTestOnCreate=&quot;);</span>
+<span class="nc" id="L1294">        builder.append(defaultTestOnCreate);</span>
+<span class="nc" id="L1295">        builder.append(&quot;, defaultTestOnBorrow=&quot;);</span>
+<span class="nc" id="L1296">        builder.append(defaultTestOnBorrow);</span>
+<span class="nc" id="L1297">        builder.append(&quot;, defaultTestOnReturn=&quot;);</span>
+<span class="nc" id="L1298">        builder.append(defaultTestOnReturn);</span>
+<span class="nc" id="L1299">        builder.append(&quot;, defaultTestWhileIdle=&quot;);</span>
+<span class="nc" id="L1300">        builder.append(defaultTestWhileIdle);</span>
+<span class="nc" id="L1301">        builder.append(&quot;, defaultDurationBetweenEvictionRuns=&quot;);</span>
+<span class="nc" id="L1302">        builder.append(defaultDurationBetweenEvictionRuns);</span>
+<span class="nc" id="L1303">        builder.append(&quot;, validationQuery=&quot;);</span>
+<span class="nc" id="L1304">        builder.append(validationQuery);</span>
+<span class="nc" id="L1305">        builder.append(&quot;, validationQueryTimeoutDuration=&quot;);</span>
+<span class="nc" id="L1306">        builder.append(validationQueryTimeoutDuration);</span>
+<span class="nc" id="L1307">        builder.append(&quot;, rollbackAfterValidation=&quot;);</span>
+<span class="nc" id="L1308">        builder.append(rollbackAfterValidation);</span>
+<span class="nc" id="L1309">        builder.append(&quot;, maxConnDuration=&quot;);</span>
+<span class="nc" id="L1310">        builder.append(maxConnDuration);</span>
+<span class="nc" id="L1311">        builder.append(&quot;, defaultAutoCommit=&quot;);</span>
+<span class="nc" id="L1312">        builder.append(defaultAutoCommit);</span>
+<span class="nc" id="L1313">        builder.append(&quot;, defaultTransactionIsolation=&quot;);</span>
+<span class="nc" id="L1314">        builder.append(defaultTransactionIsolation);</span>
+<span class="nc" id="L1315">        builder.append(&quot;, defaultReadOnly=&quot;);</span>
+<span class="nc" id="L1316">        builder.append(defaultReadOnly);</span>
+<span class="nc" id="L1317">    }</span>
+
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T&gt; T unwrap(final Class&lt;T&gt; iface) throws SQLException {
+<span class="pc bpc" id="L1322" title="1 of 2 branches missed.">        if (isWrapperFor(iface)) {</span>
+<span class="fc" id="L1323">            return (T) this;</span>
+        }
+<span class="nc" id="L1325">        throw new SQLException(this + &quot; is not a wrapper for &quot; + iface);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

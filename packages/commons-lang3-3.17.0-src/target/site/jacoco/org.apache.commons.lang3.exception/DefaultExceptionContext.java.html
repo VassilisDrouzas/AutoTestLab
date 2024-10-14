@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultExceptionContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.exception</a> &gt; <span class="el_source">DefaultExceptionContext.java</span></div><h1>DefaultExceptionContext.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.exception;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
+
+/**
+ * Default implementation of the context storing the label-value pairs for contexted exceptions.
+ * &lt;p&gt;
+ * This implementation is serializable, however this is dependent on the values that
+ * are added also being serializable.
+ * &lt;/p&gt;
+ *
+ * @see ContextedException
+ * @see ContextedRuntimeException
+ * @since 3.0
+ */
+public class DefaultExceptionContext implements ExceptionContext, Serializable {
+
+    /** The serialization version. */
+    private static final long serialVersionUID = 20110706L;
+
+    /** The list storing the label-data pairs. */
+<span class="fc" id="L48">    private final List&lt;Pair&lt;String, Object&gt;&gt; contextValues = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Constructs a new instance.
+     */
+<span class="fc" id="L53">    public DefaultExceptionContext() {</span>
+        // empty
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DefaultExceptionContext addContextValue(final String label, final Object value) {
+<span class="fc" id="L62">        contextValues.add(new ImmutablePair&lt;&gt;(label, value));</span>
+<span class="fc" id="L63">        return this;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;Pair&lt;String, Object&gt;&gt; getContextEntries() {
+<span class="fc" id="L71">        return contextValues;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Set&lt;String&gt; getContextLabels() {
+<span class="fc" id="L79">        return stream().map(Pair::getKey).collect(Collectors.toSet());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;Object&gt; getContextValues(final String label) {
+<span class="fc" id="L87">        return stream().filter(pair -&gt; StringUtils.equals(label, pair.getKey())).map(Pair::getValue).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Object getFirstContextValue(final String label) {
+<span class="fc" id="L95">        return stream().filter(pair -&gt; StringUtils.equals(label, pair.getKey())).findFirst().map(Pair::getValue).orElse(null);</span>
+    }
+
+    /**
+     * Builds the message containing the contextual information.
+     *
+     * @param baseMessage  the base exception message &lt;b&gt;without&lt;/b&gt; context information appended
+     * @return the exception message &lt;b&gt;with&lt;/b&gt; context information appended, never null
+     */
+    @Override
+    public String getFormattedExceptionMessage(final String baseMessage) {
+<span class="fc" id="L106">        final StringBuilder buffer = new StringBuilder(256);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (baseMessage != null) {</span>
+<span class="fc" id="L108">            buffer.append(baseMessage);</span>
+        }
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!contextValues.isEmpty()) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (buffer.length() &gt; 0) {</span>
+<span class="fc" id="L112">                buffer.append('\n');</span>
+            }
+<span class="fc" id="L114">            buffer.append(&quot;Exception Context:\n&quot;);</span>
+<span class="fc" id="L115">            int i = 0;</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            for (final Pair&lt;String, Object&gt; pair : contextValues) {</span>
+<span class="fc" id="L117">                buffer.append(&quot;\t[&quot;);</span>
+<span class="fc" id="L118">                buffer.append(++i);</span>
+<span class="fc" id="L119">                buffer.append(':');</span>
+<span class="fc" id="L120">                buffer.append(pair.getKey());</span>
+<span class="fc" id="L121">                buffer.append(&quot;=&quot;);</span>
+<span class="fc" id="L122">                final Object value = pair.getValue();</span>
+                try {
+<span class="fc" id="L124">                    buffer.append(Objects.toString(value));</span>
+<span class="fc" id="L125">                } catch (final Exception e) {</span>
+<span class="fc" id="L126">                    buffer.append(&quot;Exception thrown on toString(): &quot;);</span>
+<span class="fc" id="L127">                    buffer.append(ExceptionUtils.getStackTrace(e));</span>
+<span class="fc" id="L128">                }</span>
+<span class="fc" id="L129">                buffer.append(&quot;]\n&quot;);</span>
+<span class="fc" id="L130">            }</span>
+<span class="fc" id="L131">            buffer.append(&quot;---------------------------------&quot;);</span>
+        }
+<span class="fc" id="L133">        return buffer.toString();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DefaultExceptionContext setContextValue(final String label, final Object value) {
+<span class="fc" id="L141">        contextValues.removeIf(p -&gt; StringUtils.equals(label, p.getKey()));</span>
+<span class="fc" id="L142">        addContextValue(label, value);</span>
+<span class="fc" id="L143">        return this;</span>
+    }
+
+    private Stream&lt;Pair&lt;String, Object&gt;&gt; stream() {
+<span class="fc" id="L147">        return contextValues.stream();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

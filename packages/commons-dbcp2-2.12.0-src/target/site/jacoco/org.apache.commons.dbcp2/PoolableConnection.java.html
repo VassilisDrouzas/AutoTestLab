@@ -1,0 +1,426 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PoolableConnection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">PoolableConnection.java</span></div><h1>PoolableConnection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.lang.management.ManagementFactory;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.Collection;
+import java.util.concurrent.Executor;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
+
+import org.apache.commons.pool2.ObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPool;
+
+/**
+ * A delegating connection that, rather than closing the underlying connection, returns itself to an {@link ObjectPool}
+ * when closed.
+ *
+ * @since 2.0
+ */
+public class PoolableConnection extends DelegatingConnection&lt;Connection&gt; implements PoolableConnectionMXBean {
+
+    private static MBeanServer MBEAN_SERVER;
+
+    static {
+        try {
+<span class="fc" id="L51">            MBEAN_SERVER = ManagementFactory.getPlatformMBeanServer();</span>
+<span class="nc" id="L52">        } catch (final NoClassDefFoundError | Exception ignored) {</span>
+            // ignore - JMX not available
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">    }</span>
+
+    /** The pool to which I should return. */
+    private final ObjectPool&lt;PoolableConnection&gt; pool;
+
+    private final ObjectNameWrapper jmxObjectName;
+
+    // Use a prepared statement for validation, retaining the last used SQL to
+    // check if the validation query has changed.
+    private PreparedStatement validationPreparedStatement;
+    private String lastValidationSql;
+
+    /**
+     * Indicate that unrecoverable SQLException was thrown when using this connection. Such a connection should be
+     * considered broken and not pass validation in the future.
+     */
+    private boolean fatalSqlExceptionThrown;
+
+    /**
+     * SQL_STATE codes considered to signal fatal conditions. Overrides the defaults in
+     * {@link Utils#getDisconnectionSqlCodes()} (plus anything starting with {@link Utils#DISCONNECTION_SQL_CODE_PREFIX}).
+     */
+    private final Collection&lt;String&gt; disconnectionSqlCodes;
+
+    /** Whether or not to fast fail validation after fatal connection errors */
+    private final boolean fastFailValidation;
+
+<span class="fc" id="L82">    private final Lock lock = new ReentrantLock();</span>
+
+    /**
+     *
+     * @param conn
+     *            my underlying connection
+     * @param pool
+     *            the pool to which I should return when closed
+     * @param jmxName
+     *            JMX name
+     */
+    public PoolableConnection(final Connection conn, final ObjectPool&lt;PoolableConnection&gt; pool,
+            final ObjectName jmxName) {
+<span class="nc" id="L95">        this(conn, pool, jmxName, null, true);</span>
+<span class="nc" id="L96">    }</span>
+
+    /**
+     *
+     * @param conn
+     *            my underlying connection
+     * @param pool
+     *            the pool to which I should return when closed
+     * @param jmxObjectName
+     *            JMX name
+     * @param disconnectSqlCodes
+     *            SQL_STATE codes considered fatal disconnection errors
+     * @param fastFailValidation
+     *            true means fatal disconnection errors cause subsequent validations to fail immediately (no attempt to
+     *            run query or isValid)
+     */
+    public PoolableConnection(final Connection conn, final ObjectPool&lt;PoolableConnection&gt; pool,
+            final ObjectName jmxObjectName, final Collection&lt;String&gt; disconnectSqlCodes,
+            final boolean fastFailValidation) {
+<span class="fc" id="L115">        super(conn);</span>
+<span class="fc" id="L116">        this.pool = pool;</span>
+<span class="fc" id="L117">        this.jmxObjectName = ObjectNameWrapper.wrap(jmxObjectName);</span>
+<span class="fc" id="L118">        this.disconnectionSqlCodes = disconnectSqlCodes;</span>
+<span class="fc" id="L119">        this.fastFailValidation = fastFailValidation;</span>
+
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (jmxObjectName != null) {</span>
+            try {
+<span class="fc" id="L123">                MBEAN_SERVER.registerMBean(this, jmxObjectName);</span>
+<span class="fc" id="L124">            } catch (InstanceAlreadyExistsException | MBeanRegistrationException | NotCompliantMBeanException ignored) {</span>
+                // For now, simply skip registration
+<span class="fc" id="L126">            }</span>
+        }
+<span class="fc" id="L128">    }</span>
+
+    /**
+     * Abort my underlying {@link Connection}.
+     *
+     * @since 2.9.0
+     */
+    @Override
+    public void abort(final Executor executor) throws SQLException {
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (jmxObjectName != null) {</span>
+<span class="nc" id="L138">            jmxObjectName.unregisterMBean();</span>
+        }
+<span class="nc" id="L140">        super.abort(executor);</span>
+<span class="nc" id="L141">    }</span>
+
+    /**
+     * Returns me to my pool.
+     */
+    @Override
+    public void close() throws SQLException {
+<span class="fc" id="L148">        lock.lock();</span>
+        try {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            if (isClosedInternal()) {</span>
+                // already closed
+<span class="nc" id="L152">                return;</span>
+            }
+
+            boolean isUnderlyingConnectionClosed;
+            try {
+<span class="fc" id="L157">                isUnderlyingConnectionClosed = getDelegateInternal().isClosed();</span>
+<span class="fc" id="L158">            } catch (final SQLException e) {</span>
+                try {
+<span class="fc" id="L160">                    pool.invalidateObject(this);</span>
+<span class="nc" id="L161">                } catch (final IllegalStateException ise) {</span>
+                    // pool is closed, so close the connection
+<span class="nc" id="L163">                    passivate();</span>
+<span class="nc" id="L164">                    getInnermostDelegate().close();</span>
+<span class="fc" id="L165">                } catch (final Exception ignored) {</span>
+                    // DO NOTHING the original exception will be rethrown
+<span class="pc" id="L167">                }</span>
+<span class="fc" id="L168">                throw new SQLException(&quot;Cannot close connection (isClosed check failed)&quot;, e);</span>
+<span class="fc" id="L169">            }</span>
+
+            /*
+             * Can't set close before this code block since the connection needs to be open when validation runs. Can't set
+             * close after this code block since by then the connection will have been returned to the pool and may have
+             * been borrowed by another thread. Therefore, the close flag is set in passivate().
+             */
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (isUnderlyingConnectionClosed) {</span>
+                // Abnormal close: underlying connection closed unexpectedly, so we
+                // must destroy this proxy
+                try {
+<span class="fc" id="L180">                    pool.invalidateObject(this);</span>
+<span class="nc" id="L181">                } catch (final IllegalStateException e) {</span>
+                    // pool is closed, so close the connection
+<span class="nc" id="L183">                    passivate();</span>
+<span class="nc" id="L184">                    getInnermostDelegate().close();</span>
+<span class="nc" id="L185">                } catch (final Exception e) {</span>
+<span class="nc" id="L186">                    throw new SQLException(&quot;Cannot close connection (invalidating pooled object failed)&quot;, e);</span>
+<span class="pc" id="L187">                }</span>
+            } else {
+                // Normal close: underlying connection is still open, so we
+                // simply need to return this proxy to the pool
+                try {
+<span class="fc" id="L192">                    pool.returnObject(this);</span>
+<span class="fc" id="L193">                } catch (final IllegalStateException e) {</span>
+                    // pool is closed, so close the connection
+<span class="fc" id="L195">                    passivate();</span>
+<span class="fc" id="L196">                    getInnermostDelegate().close();</span>
+<span class="nc" id="L197">                } catch (final SQLException | RuntimeException e) {</span>
+<span class="nc" id="L198">                    throw e;</span>
+<span class="nc" id="L199">                } catch (final Exception e) {</span>
+<span class="nc" id="L200">                    throw new SQLException(&quot;Cannot close connection (return to pool failed)&quot;, e);</span>
+<span class="fc" id="L201">                }</span>
+            }
+        } finally {
+<span class="fc" id="L204">            lock.unlock();</span>
+        }
+<span class="fc" id="L206">    }</span>
+
+    /**
+     * @return The disconnection SQL codes.
+     * @since 2.6.0
+     */
+    public Collection&lt;String&gt; getDisconnectionSqlCodes() {
+<span class="nc" id="L213">        return disconnectionSqlCodes;</span>
+    }
+
+    /**
+     * Expose the {@link #toString()} method via a bean getter, so it can be read as a property via JMX.
+     */
+    @Override
+    public String getToString() {
+<span class="nc" id="L221">        return toString();</span>
+    }
+
+    @Override
+    protected void handleException(final SQLException e) throws SQLException {
+<span class="fc" id="L226">        fatalSqlExceptionThrown |= isFatalException(e);</span>
+<span class="nc" id="L227">        super.handleException(e);</span>
+<span class="nc" id="L228">    }</span>
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * This method should not be used by a client to determine whether or not a connection should be return to the
+     * connection pool (by calling {@link #close()}). Clients should always attempt to return a connection to the pool
+     * once it is no longer required.
+     */
+    @Override
+    public boolean isClosed() throws SQLException {
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (isClosedInternal()) {</span>
+<span class="fc" id="L240">            return true;</span>
+        }
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (getDelegateInternal().isClosed()) {</span>
+            // Something has gone wrong. The underlying connection has been
+            // closed without the connection being returned to the pool. Return
+            // it now.
+<span class="fc" id="L247">            close();</span>
+<span class="fc" id="L248">            return true;</span>
+        }
+
+<span class="fc" id="L251">        return false;</span>
+    }
+
+    /**
+     * Checks the SQLState of the input exception.
+     * &lt;p&gt;
+     * If {@link #disconnectionSqlCodes} has been set, sql states are compared to those in the configured list of fatal
+     * exception codes. If this property is not set, codes are compared against the default codes in
+     * {@link Utils#getDisconnectionSqlCodes()} and in this case anything starting with #{link
+     * Utils.DISCONNECTION_SQL_CODE_PREFIX} is considered a disconnection.
+     * &lt;/p&gt;
+     *
+     * @param e SQLException to be examined
+     * @return true if the exception signals a disconnection
+     */
+    boolean isDisconnectionSqlException(final SQLException e) {
+<span class="fc" id="L267">        boolean fatalException = false;</span>
+<span class="fc" id="L268">        final String sqlState = e.getSQLState();</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (sqlState != null) {</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">            fatalException = disconnectionSqlCodes == null</span>
+<span class="pc bpc" id="L271" title="1 of 4 branches missed.">                ? sqlState.startsWith(Utils.DISCONNECTION_SQL_CODE_PREFIX) || Utils.getDisconnectionSqlCodes().contains(sqlState)</span>
+<span class="fc" id="L272">                : disconnectionSqlCodes.contains(sqlState);</span>
+        }
+<span class="fc" id="L274">        return fatalException;</span>
+    }
+
+    /**
+     * @return Whether to fail-fast.
+     * @since 2.6.0
+     */
+    public boolean isFastFailValidation() {
+<span class="nc" id="L282">        return fastFailValidation;</span>
+    }
+
+    /**
+     * Checks the SQLState of the input exception and any nested SQLExceptions it wraps.
+     * &lt;p&gt;
+     * If {@link #disconnectionSqlCodes} has been set, sql states are compared to those in the
+     * configured list of fatal exception codes. If this property is not set, codes are compared against the default
+     * codes in {@link Utils#getDisconnectionSqlCodes()} and in this case anything starting with #{link
+     * Utils.DISCONNECTION_SQL_CODE_PREFIX} is considered a disconnection.
+     * &lt;/p&gt;
+     *
+     * @param e
+     *            SQLException to be examined
+     * @return true if the exception signals a disconnection
+     */
+    boolean isFatalException(final SQLException e) {
+<span class="fc" id="L299">        boolean fatalException = isDisconnectionSqlException(e);</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (!fatalException) {</span>
+<span class="fc" id="L301">            SQLException parentException = e;</span>
+<span class="fc" id="L302">            SQLException nextException = e.getNextException();</span>
+<span class="pc bpc" id="L303" title="2 of 6 branches missed.">            while (nextException != null &amp;&amp; nextException != parentException &amp;&amp; !fatalException) {</span>
+<span class="fc" id="L304">                fatalException = isDisconnectionSqlException(nextException);</span>
+<span class="fc" id="L305">                parentException = nextException;</span>
+<span class="fc" id="L306">                nextException = parentException.getNextException();</span>
+            }
+        }
+<span class="fc" id="L309">        return fatalException;</span>
+    }
+
+    @Override
+    protected void passivate() throws SQLException {
+<span class="fc" id="L314">        super.passivate();</span>
+<span class="fc" id="L315">        setClosedInternal(true);</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (getDelegateInternal() instanceof PoolingConnection) {</span>
+<span class="fc" id="L317">            ((PoolingConnection) getDelegateInternal()).connectionReturnedToPool();</span>
+        }
+<span class="fc" id="L319">    }</span>
+
+    /**
+     * Actually close my underlying {@link Connection}.
+     */
+    @Override
+    public void reallyClose() throws SQLException {
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">        if (jmxObjectName != null) {</span>
+<span class="fc" id="L327">            jmxObjectName.unregisterMBean();</span>
+        }
+
+<span class="fc bfc" id="L330" title="All 2 branches covered.">        if (validationPreparedStatement != null) {</span>
+<span class="fc" id="L331">            Utils.closeQuietly((AutoCloseable) validationPreparedStatement);</span>
+        }
+
+<span class="fc" id="L334">        super.closeInternal();</span>
+<span class="fc" id="L335">    }</span>
+
+    @Override
+    public void setLastUsed() {
+<span class="fc" id="L339">        super.setLastUsed();</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">        if (pool instanceof GenericObjectPool&lt;?&gt;) {</span>
+<span class="fc" id="L341">            final GenericObjectPool&lt;PoolableConnection&gt; gop = (GenericObjectPool&lt;PoolableConnection&gt;) pool;</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">            if (gop.isAbandonedConfig()) {</span>
+<span class="fc" id="L343">                gop.use(this);</span>
+            }
+        }
+<span class="fc" id="L346">    }</span>
+
+    /**
+     * Validates the connection, using the following algorithm:
+     * &lt;ol&gt;
+     * &lt;li&gt;If {@code fastFailValidation} (constructor argument) is {@code true} and this connection has previously
+     * thrown a fatal disconnection exception, a {@code SQLException} is thrown.&lt;/li&gt;
+     * &lt;li&gt;If {@code sql} is null, the driver's #{@link Connection#isValid(int) isValid(timeout)} is called. If it
+     * returns {@code false}, {@code SQLException} is thrown; otherwise, this method returns successfully.&lt;/li&gt;
+     * &lt;li&gt;If {@code sql} is not null, it is executed as a query and if the resulting {@code ResultSet} contains at
+     * least one row, this method returns successfully. If not, {@code SQLException} is thrown.&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param sql
+     *            The validation SQL query.
+     * @param timeoutDuration
+     *            The validation timeout in seconds.
+     * @throws SQLException
+     *             Thrown when validation fails or an SQLException occurs during validation
+     * @since 2.10.0
+     */
+    public void validate(final String sql, Duration timeoutDuration) throws SQLException {
+<span class="fc bfc" id="L368" title="All 4 branches covered.">        if (fastFailValidation &amp;&amp; fatalSqlExceptionThrown) {</span>
+<span class="fc" id="L369">            throw new SQLException(Utils.getMessage(&quot;poolableConnection.validate.fastFail&quot;));</span>
+        }
+
+<span class="pc bpc" id="L372" title="1 of 4 branches missed.">        if (sql == null || sql.isEmpty()) {</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">            if (timeoutDuration.isNegative()) {</span>
+<span class="fc" id="L374">                timeoutDuration = Duration.ZERO;</span>
+            }
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">            if (!isValid(timeoutDuration)) {</span>
+<span class="nc" id="L377">                throw new SQLException(&quot;isValid() returned false&quot;);</span>
+            }
+<span class="fc" id="L379">            return;</span>
+        }
+
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (!sql.equals(lastValidationSql)) {</span>
+<span class="fc" id="L383">            lastValidationSql = sql;</span>
+            // Has to be the innermost delegate else the prepared statement will
+            // be closed when the pooled connection is passivated.
+<span class="fc" id="L386">            validationPreparedStatement = getInnermostDelegateInternal().prepareStatement(sql);</span>
+        }
+
+<span class="fc bfc" id="L389" title="All 2 branches covered.">        if (timeoutDuration.compareTo(Duration.ZERO) &gt; 0) {</span>
+<span class="fc" id="L390">            validationPreparedStatement.setQueryTimeout((int) timeoutDuration.getSeconds());</span>
+        }
+
+<span class="fc" id="L393">        try (ResultSet rs = validationPreparedStatement.executeQuery()) {</span>
+<span class="pc bpc" id="L394" title="1 of 2 branches missed.">            if (!rs.next()) {</span>
+<span class="nc" id="L395">                throw new SQLException(&quot;validationQuery didn't return a row&quot;);</span>
+            }
+<span class="fc" id="L397">        } catch (final SQLException sqle) {</span>
+<span class="fc" id="L398">            throw sqle;</span>
+<span class="fc" id="L399">        }</span>
+<span class="fc" id="L400">    }</span>
+
+    /**
+     * Validates the connection, using the following algorithm:
+     * &lt;ol&gt;
+     * &lt;li&gt;If {@code fastFailValidation} (constructor argument) is {@code true} and this connection has previously
+     * thrown a fatal disconnection exception, a {@code SQLException} is thrown.&lt;/li&gt;
+     * &lt;li&gt;If {@code sql} is null, the driver's #{@link Connection#isValid(int) isValid(timeout)} is called. If it
+     * returns {@code false}, {@code SQLException} is thrown; otherwise, this method returns successfully.&lt;/li&gt;
+     * &lt;li&gt;If {@code sql} is not null, it is executed as a query and if the resulting {@code ResultSet} contains at
+     * least one row, this method returns successfully. If not, {@code SQLException} is thrown.&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param sql
+     *            The validation SQL query.
+     * @param timeoutSeconds
+     *            The validation timeout in seconds.
+     * @throws SQLException
+     *             Thrown when validation fails or an SQLException occurs during validation
+     * @deprecated Use {@link #validate(String, Duration)}.
+     */
+    @Deprecated
+    public void validate(final String sql, final int timeoutSeconds) throws SQLException {
+<span class="fc" id="L423">        validate(sql, Duration.ofSeconds(timeoutSeconds));</span>
+<span class="fc" id="L424">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

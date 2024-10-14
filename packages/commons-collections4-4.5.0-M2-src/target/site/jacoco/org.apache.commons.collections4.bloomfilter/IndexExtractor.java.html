@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexExtractor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">IndexExtractor.java</span></div><h1>IndexExtractor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.Objects;
+import java.util.function.IntPredicate;
+import java.util.function.LongPredicate;
+
+/**
+ * An object that produces indices of a Bloom filter.
+ * &lt;p&gt;&lt;em&gt;
+ * The default implementation of {@code asIndexArray} is slow. Implementers should reimplement the
+ * method where possible.&lt;/em&gt;&lt;/p&gt;
+ *
+ * @since 4.5
+ */
+@FunctionalInterface
+public interface IndexExtractor {
+
+    /**
+     * Creates an IndexExtractor from a {@code BitMapExtractor}.
+     * @param bitMapExtractor the {@code BitMapExtractor}
+     * @return a new {@code IndexExtractor}.
+     */
+    static IndexExtractor fromBitMapExtractor(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L42">        Objects.requireNonNull(bitMapExtractor, &quot;bitMapExtractor&quot;);</span>
+<span class="fc" id="L43">        return consumer -&gt; {</span>
+<span class="fc" id="L44">            final LongPredicate longPredicate = new LongPredicate() {</span>
+                int wordIdx;
+
+                @Override
+                public boolean test(long word) {
+<span class="fc" id="L49">                    int i = wordIdx;</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                    while (word != 0) {</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">                        if ((word &amp; 1) == 1 &amp;&amp; !consumer.test(i)) {</span>
+<span class="fc" id="L52">                            return false;</span>
+                        }
+<span class="fc" id="L54">                        word &gt;&gt;&gt;= 1;</span>
+<span class="fc" id="L55">                        i++;</span>
+                    }
+<span class="fc" id="L57">                    wordIdx += 64;</span>
+<span class="fc" id="L58">                    return true;</span>
+                }
+            };
+<span class="fc" id="L61">            return bitMapExtractor.processBitMaps(longPredicate::test);</span>
+        };
+    }
+
+    /**
+     * Creates an IndexExtractor from an array of integers.
+     * @param values the index values
+     * @return an IndexExtractor that uses the values.
+     */
+    static IndexExtractor fromIndexArray(final int... values) {
+<span class="fc" id="L71">        return new IndexExtractor() {</span>
+
+            @Override
+            public int[] asIndexArray() {
+<span class="fc" id="L75">                return values.clone();</span>
+            }
+
+            @Override
+            public boolean processIndices(final IntPredicate predicate) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                for (final int value : values) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                    if (!predicate.test(value)) {</span>
+<span class="fc" id="L82">                        return false;</span>
+                    }
+                }
+<span class="fc" id="L85">                return true;</span>
+            }
+        };
+    }
+
+    /**
+     * Return a copy of the IndexExtractor data as an int array.
+     *
+     * &lt;p&gt;Indices ordering and uniqueness is not guaranteed.&lt;/p&gt;
+     *
+     * &lt;p&gt;&lt;em&gt;
+     * The default implementation of this method creates an array and populates
+     * it.  Implementations that have access to an index array should consider
+     * returning a copy of that array if possible.
+     * &lt;/em&gt;&lt;/p&gt;
+     *
+     * @return An int array of the data.
+     */
+    default int[] asIndexArray() {
+<span class="fc" id="L104">        class Indices {</span>
+<span class="fc" id="L105">            private int[] data = new int[32];</span>
+            private int size;
+
+            boolean add(final int index) {
+<span class="fc" id="L109">                data = IndexUtils.ensureCapacityForAdd(data, size);</span>
+<span class="fc" id="L110">                data[size++] = index;</span>
+<span class="fc" id="L111">                return true;</span>
+            }
+
+            int[] toArray() {
+                // Edge case to avoid a large array copy
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                return size == data.length ? data : Arrays.copyOf(data, size);</span>
+            }
+        }
+<span class="fc" id="L119">        final Indices indices = new Indices();</span>
+<span class="fc" id="L120">        processIndices(indices::add);</span>
+<span class="fc" id="L121">        return indices.toArray();</span>
+    }
+
+    /**
+     * Each index is passed to the predicate. The predicate is applied to each
+     * index value, if the predicate returns {@code false} the execution is stopped, {@code false}
+     * is returned, and no further indices are processed.
+     *
+     * &lt;p&gt;Any exceptions thrown by the action are relayed to the caller.&lt;/p&gt;
+     *
+     * &lt;p&gt;Indices ordering and uniqueness is not guaranteed.&lt;/p&gt;
+     *
+     * @param predicate the action to be performed for each non-zero bit index.
+     * @return {@code true} if all indexes return true from consumer, {@code false} otherwise.
+     * @throws NullPointerException if the specified action is null
+     */
+    boolean processIndices(IntPredicate predicate);
+
+    /**
+     * Creates an IndexExtractor comprising the unique indices for this extractor.
+     *
+     * &lt;p&gt;By default creates a new extractor with some overhead to remove
+     * duplicates.  IndexExtractors that return unique indices by default
+     * should override this to return {@code this}.&lt;/p&gt;
+     *
+     * &lt;p&gt;The default implementation will filter the indices from this instance
+     * and return them in ascending order.&lt;/p&gt;
+     *
+     * @return the IndexExtractor of unique values.
+     * @throws IndexOutOfBoundsException if any index is less than zero.
+     */
+    default IndexExtractor uniqueIndices() {
+<span class="fc" id="L153">        final BitSet bitSet = new BitSet();</span>
+<span class="fc" id="L154">        processIndices(i -&gt; {</span>
+<span class="fc" id="L155">            bitSet.set(i);</span>
+<span class="fc" id="L156">            return true;</span>
+        });
+
+<span class="fc" id="L159">        return new IndexExtractor() {</span>
+            @Override
+            public boolean processIndices(final IntPredicate predicate) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                for (int idx = bitSet.nextSetBit(0); idx &gt;= 0; idx = bitSet.nextSetBit(idx + 1)) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                    if (!predicate.test(idx)) {</span>
+<span class="fc" id="L164">                        return false;</span>
+                    }
+                }
+<span class="fc" id="L167">                return true;</span>
+            }
+
+            @Override
+            public IndexExtractor uniqueIndices() {
+<span class="fc" id="L172">                return this;</span>
+            }
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

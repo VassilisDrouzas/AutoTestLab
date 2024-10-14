@@ -1,0 +1,994 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DoubleMetaphone.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.language</a> &gt; <span class="el_source">DoubleMetaphone.java</span></div><h1>DoubleMetaphone.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.language;
+
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.StringEncoder;
+import org.apache.commons.codec.binary.StringUtils;
+
+/**
+ * Encodes a string into a double metaphone value. This Implementation is based on the algorithm by &lt;CITE&gt;Lawrence
+ * Philips&lt;/CITE&gt;.
+ * &lt;p&gt;
+ * This class is conditionally thread-safe. The instance field for the maximum code length is mutable
+ * {@link #setMaxCodeLen(int)} but is not volatile, and accesses are not synchronized. If an instance of the class is
+ * shared between threads, the caller needs to ensure that suitable synchronization is used to ensure safe publication
+ * of the value between threads, and must not invoke {@link #setMaxCodeLen(int)} after initial setup.
+ * &lt;/p&gt;
+ *
+ * @see &lt;a href=&quot;https://drdobbs.com/the-double-metaphone-search-algorithm/184401251?pgno=2&quot;&gt;Dr. Dobbs Original Article&lt;/a&gt;
+ * @see &lt;a href=&quot;https://en.wikipedia.org/wiki/Metaphone&quot;&gt;Wikipedia Metaphone&lt;/a&gt;
+ */
+<span class="fc" id="L37">public class DoubleMetaphone implements StringEncoder {</span>
+
+    /**
+     * Inner class for storing results, since there is the optional alternate encoding.
+     */
+    public class DoubleMetaphoneResult {
+
+<span class="fc" id="L44">        private final StringBuilder primary = new StringBuilder(getMaxCodeLen());</span>
+<span class="fc" id="L45">        private final StringBuilder alternate = new StringBuilder(getMaxCodeLen());</span>
+        private final int maxLength;
+
+<span class="fc" id="L48">        public DoubleMetaphoneResult(final int maxLength) {</span>
+<span class="fc" id="L49">            this.maxLength = maxLength;</span>
+<span class="fc" id="L50">        }</span>
+
+        public void append(final char value) {
+<span class="fc" id="L53">            appendPrimary(value);</span>
+<span class="fc" id="L54">            appendAlternate(value);</span>
+<span class="fc" id="L55">        }</span>
+
+        public void append(final char primary, final char alternate) {
+<span class="fc" id="L58">            appendPrimary(primary);</span>
+<span class="fc" id="L59">            appendAlternate(alternate);</span>
+<span class="fc" id="L60">        }</span>
+
+        public void append(final String value) {
+<span class="fc" id="L63">            appendPrimary(value);</span>
+<span class="fc" id="L64">            appendAlternate(value);</span>
+<span class="fc" id="L65">        }</span>
+
+        public void append(final String primary, final String alternate) {
+<span class="fc" id="L68">            appendPrimary(primary);</span>
+<span class="fc" id="L69">            appendAlternate(alternate);</span>
+<span class="fc" id="L70">        }</span>
+
+        public void appendAlternate(final char value) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (this.alternate.length() &lt; this.maxLength) {</span>
+<span class="fc" id="L74">                this.alternate.append(value);</span>
+            }
+<span class="fc" id="L76">        }</span>
+
+        public void appendAlternate(final String value) {
+<span class="fc" id="L79">            final int addChars = this.maxLength - this.alternate.length();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (value.length() &lt;= addChars) {</span>
+<span class="fc" id="L81">                this.alternate.append(value);</span>
+            } else {
+<span class="fc" id="L83">                this.alternate.append(value, 0, addChars);</span>
+            }
+<span class="fc" id="L85">        }</span>
+
+        public void appendPrimary(final char value) {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (this.primary.length() &lt; this.maxLength) {</span>
+<span class="fc" id="L89">                this.primary.append(value);</span>
+            }
+<span class="fc" id="L91">        }</span>
+
+        public void appendPrimary(final String value) {
+<span class="fc" id="L94">            final int addChars = this.maxLength - this.primary.length();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            if (value.length() &lt;= addChars) {</span>
+<span class="fc" id="L96">                this.primary.append(value);</span>
+            } else {
+<span class="fc" id="L98">                this.primary.append(value, 0, addChars);</span>
+            }
+<span class="fc" id="L100">        }</span>
+
+        public String getAlternate() {
+<span class="fc" id="L103">            return this.alternate.toString();</span>
+        }
+
+        public String getPrimary() {
+<span class="fc" id="L107">            return this.primary.toString();</span>
+        }
+
+        public boolean isComplete() {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            return this.primary.length() &gt;= this.maxLength &amp;&amp;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                   this.alternate.length() &gt;= this.maxLength;</span>
+        }
+    }
+
+    /**
+     * &quot;Vowels&quot; to test for
+     */
+    private static final String VOWELS = &quot;AEIOUY&quot;;
+    /**
+     * Prefixes when present which are not pronounced
+     */
+<span class="fc" id="L123">    private static final String[] SILENT_START =</span>
+        { &quot;GN&quot;, &quot;KN&quot;, &quot;PN&quot;, &quot;WR&quot;, &quot;PS&quot; };
+<span class="fc" id="L125">    private static final String[] L_R_N_M_B_H_F_V_W_SPACE =</span>
+        { &quot;L&quot;, &quot;R&quot;, &quot;N&quot;, &quot;M&quot;, &quot;B&quot;, &quot;H&quot;, &quot;F&quot;, &quot;V&quot;, &quot;W&quot;, &quot; &quot; };
+<span class="fc" id="L127">    private static final String[] ES_EP_EB_EL_EY_IB_IL_IN_IE_EI_ER =</span>
+        { &quot;ES&quot;, &quot;EP&quot;, &quot;EB&quot;, &quot;EL&quot;, &quot;EY&quot;, &quot;IB&quot;, &quot;IL&quot;, &quot;IN&quot;, &quot;IE&quot;, &quot;EI&quot;, &quot;ER&quot; };
+
+<span class="fc" id="L130">    private static final String[] L_T_K_S_N_M_B_Z =</span>
+        { &quot;L&quot;, &quot;T&quot;, &quot;K&quot;, &quot;S&quot;, &quot;N&quot;, &quot;M&quot;, &quot;B&quot;, &quot;Z&quot; };
+
+    /*
+     * Determines whether {@code value} contains any of the criteria starting at index {@code start} and
+     * matching up to length {@code length}.
+     */
+    protected static boolean contains(final String value, final int start, final int length,
+                                      final String... criteria) {
+<span class="fc" id="L139">        boolean result = false;</span>
+<span class="fc bfc" id="L140" title="All 4 branches covered.">        if (start &gt;= 0 &amp;&amp; start + length &lt;= value.length()) {</span>
+<span class="fc" id="L141">            final String target = value.substring(start, start + length);</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            for (final String element : criteria) {</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                if (target.equals(element)) {</span>
+<span class="fc" id="L145">                    result = true;</span>
+<span class="fc" id="L146">                    break;</span>
+                }
+            }
+        }
+<span class="fc" id="L150">        return result;</span>
+    }
+
+    /**
+     * Maximum length of an encoding, default is 4
+     */
+<span class="fc" id="L156">    private int maxCodeLen = 4;</span>
+
+    /*
+     * Gets the character at index {@code index} if available, otherwise
+     * it returns {@code Character.MIN_VALUE} so that there is some sort
+     * of default.
+     */
+    protected char charAt(final String value, final int index) {
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">        if (index &lt; 0 || index &gt;= value.length()) {</span>
+<span class="fc" id="L165">            return Character.MIN_VALUE;</span>
+        }
+<span class="fc" id="L167">        return value.charAt(index);</span>
+    }
+
+    /**
+     * Cleans the input.
+     */
+    private String cleanInput(String input) {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (input == null) {</span>
+<span class="fc" id="L175">            return null;</span>
+        }
+<span class="fc" id="L177">        input = input.trim();</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (input.isEmpty()) {</span>
+<span class="fc" id="L179">            return null;</span>
+        }
+<span class="fc" id="L181">        return input.toUpperCase(java.util.Locale.ENGLISH);</span>
+    }
+
+    /**
+     * Complex condition 0 for 'C'.
+     */
+    private boolean conditionC0(final String value, final int index) {
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (contains(value, index, 4, &quot;CHIA&quot;)) {</span>
+<span class="fc" id="L189">            return true;</span>
+        }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (index &lt;= 1) {</span>
+<span class="fc" id="L192">            return false;</span>
+        }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (isVowel(charAt(value, index - 2))) {</span>
+<span class="fc" id="L195">            return false;</span>
+        }
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (!contains(value, index - 1, 3, &quot;ACH&quot;)) {</span>
+<span class="fc" id="L198">            return false;</span>
+        }
+<span class="fc" id="L200">        final char c = charAt(value, index + 2);</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">        return c != 'I' &amp;&amp; c != 'E' ||</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">                contains(value, index - 2, 6, &quot;BACHER&quot;, &quot;MACHER&quot;);</span>
+    }
+
+    /**
+     * Complex condition 0 for 'CH'.
+     */
+    private boolean conditionCH0(final String value, final int index) {
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        if (index != 0) {</span>
+<span class="fc" id="L210">            return false;</span>
+        }
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (!contains(value, index + 1, 5, &quot;HARAC&quot;, &quot;HARIS&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                   !contains(value, index + 1, 3, &quot;HOR&quot;, &quot;HYM&quot;, &quot;HIA&quot;, &quot;HEM&quot;)) {</span>
+<span class="fc" id="L214">            return false;</span>
+        }
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        return !contains(value, 0, 5, &quot;CHORE&quot;);</span>
+    }
+
+    /**
+     * Complex condition 1 for 'CH'.
+     */
+    private boolean conditionCH1(final String value, final int index) {
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">        return contains(value, 0, 4, &quot;VAN &quot;, &quot;VON &quot;) || contains(value, 0, 3, &quot;SCH&quot;) ||</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                contains(value, index - 2, 6, &quot;ORCHES&quot;, &quot;ARCHIT&quot;, &quot;ORCHID&quot;) ||</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                contains(value, index + 2, 1, &quot;T&quot;, &quot;S&quot;) ||</span>
+<span class="fc bfc" id="L226" title="All 4 branches covered.">                (contains(value, index - 1, 1, &quot;A&quot;, &quot;O&quot;, &quot;U&quot;, &quot;E&quot;) || index == 0) &amp;&amp;</span>
+<span class="fc bfc" id="L227" title="All 4 branches covered.">                 (contains(value, index + 2, 1, L_R_N_M_B_H_F_V_W_SPACE) || index + 1 == value.length() - 1);</span>
+    }
+
+    /**
+     * Complex condition 0 for 'L'.
+     */
+    private boolean conditionL0(final String value, final int index) {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (index == value.length() - 3 &amp;&amp;</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">            contains(value, index - 1, 4, &quot;ILLO&quot;, &quot;ILLA&quot;, &quot;ALLE&quot;)) {</span>
+<span class="fc" id="L236">            return true;</span>
+        }
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        return (contains(value, value.length() - 2, 2, &quot;AS&quot;, &quot;OS&quot;) ||</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                contains(value, value.length() - 1, 1, &quot;A&quot;, &quot;O&quot;)) &amp;&amp;</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                contains(value, index - 1, 4, &quot;ALLE&quot;);</span>
+    }
+
+    //-- BEGIN HANDLERS --//
+
+    /**
+     * Complex condition 0 for 'M'.
+     */
+    private boolean conditionM0(final String value, final int index) {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (charAt(value, index + 1) == 'M') {</span>
+<span class="fc" id="L250">            return true;</span>
+        }
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        return contains(value, index - 1, 3, &quot;UMB&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L253" title="1 of 4 branches missed.">               (index + 1 == value.length() - 1 || contains(value, index + 2, 2, &quot;ER&quot;));</span>
+    }
+
+    /**
+     * Encode a value with Double Metaphone.
+     *
+     * @param value String to encode
+     * @return an encoded string
+     */
+    public String doubleMetaphone(final String value) {
+<span class="fc" id="L263">        return doubleMetaphone(value, false);</span>
+    }
+
+    /**
+     * Encode a value with Double Metaphone, optionally using the alternate encoding.
+     *
+     * @param value String to encode
+     * @param alternate use alternate encode
+     * @return an encoded string
+     */
+    public String doubleMetaphone(String value, final boolean alternate) {
+<span class="fc" id="L274">        value = cleanInput(value);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L276">            return null;</span>
+        }
+
+<span class="fc" id="L279">        final boolean slavoGermanic = isSlavoGermanic(value);</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        int index = isSilentStart(value) ? 1 : 0;</span>
+
+<span class="fc" id="L282">        final DoubleMetaphoneResult result = new DoubleMetaphoneResult(this.getMaxCodeLen());</span>
+
+<span class="fc bfc" id="L284" title="All 4 branches covered.">        while (!result.isComplete() &amp;&amp; index &lt;= value.length() - 1) {</span>
+<span class="fc bfc" id="L285" title="All 24 branches covered.">            switch (value.charAt(index)) {</span>
+            case 'A':
+            case 'E':
+            case 'I':
+            case 'O':
+            case 'U':
+            case 'Y':
+<span class="fc" id="L292">                index = handleAEIOUY(result, index);</span>
+<span class="fc" id="L293">                break;</span>
+            case 'B':
+<span class="fc" id="L295">                result.append('P');</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">                index = charAt(value, index + 1) == 'B' ? index + 2 : index + 1;</span>
+<span class="fc" id="L297">                break;</span>
+            case '\u00C7':
+                // A C with a Cedilla
+<span class="fc" id="L300">                result.append('S');</span>
+<span class="fc" id="L301">                index++;</span>
+<span class="fc" id="L302">                break;</span>
+            case 'C':
+<span class="fc" id="L304">                index = handleC(value, result, index);</span>
+<span class="fc" id="L305">                break;</span>
+            case 'D':
+<span class="fc" id="L307">                index = handleD(value, result, index);</span>
+<span class="fc" id="L308">                break;</span>
+            case 'F':
+<span class="fc" id="L310">                result.append('F');</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">                index = charAt(value, index + 1) == 'F' ? index + 2 : index + 1;</span>
+<span class="fc" id="L312">                break;</span>
+            case 'G':
+<span class="fc" id="L314">                index = handleG(value, result, index, slavoGermanic);</span>
+<span class="fc" id="L315">                break;</span>
+            case 'H':
+<span class="fc" id="L317">                index = handleH(value, result, index);</span>
+<span class="fc" id="L318">                break;</span>
+            case 'J':
+<span class="fc" id="L320">                index = handleJ(value, result, index, slavoGermanic);</span>
+<span class="fc" id="L321">                break;</span>
+            case 'K':
+<span class="fc" id="L323">                result.append('K');</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">                index = charAt(value, index + 1) == 'K' ? index + 2 : index + 1;</span>
+<span class="fc" id="L325">                break;</span>
+            case 'L':
+<span class="fc" id="L327">                index = handleL(value, result, index);</span>
+<span class="fc" id="L328">                break;</span>
+            case 'M':
+<span class="fc" id="L330">                result.append('M');</span>
+<span class="fc bfc" id="L331" title="All 2 branches covered.">                index = conditionM0(value, index) ? index + 2 : index + 1;</span>
+<span class="fc" id="L332">                break;</span>
+            case 'N':
+<span class="fc" id="L334">                result.append('N');</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">                index = charAt(value, index + 1) == 'N' ? index + 2 : index + 1;</span>
+<span class="fc" id="L336">                break;</span>
+            case '\u00D1':
+                // N with a tilde (spanish ene)
+<span class="fc" id="L339">                result.append('N');</span>
+<span class="fc" id="L340">                index++;</span>
+<span class="fc" id="L341">                break;</span>
+            case 'P':
+<span class="fc" id="L343">                index = handleP(value, result, index);</span>
+<span class="fc" id="L344">                break;</span>
+            case 'Q':
+<span class="fc" id="L346">                result.append('K');</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                index = charAt(value, index + 1) == 'Q' ? index + 2 : index + 1;</span>
+<span class="fc" id="L348">                break;</span>
+            case 'R':
+<span class="fc" id="L350">                index = handleR(value, result, index, slavoGermanic);</span>
+<span class="fc" id="L351">                break;</span>
+            case 'S':
+<span class="fc" id="L353">                index = handleS(value, result, index, slavoGermanic);</span>
+<span class="fc" id="L354">                break;</span>
+            case 'T':
+<span class="fc" id="L356">                index = handleT(value, result, index);</span>
+<span class="fc" id="L357">                break;</span>
+            case 'V':
+<span class="fc" id="L359">                result.append('F');</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">                index = charAt(value, index + 1) == 'V' ? index + 2 : index + 1;</span>
+<span class="fc" id="L361">                break;</span>
+            case 'W':
+<span class="fc" id="L363">                index = handleW(value, result, index);</span>
+<span class="fc" id="L364">                break;</span>
+            case 'X':
+<span class="fc" id="L366">                index = handleX(value, result, index);</span>
+<span class="fc" id="L367">                break;</span>
+            case 'Z':
+<span class="fc" id="L369">                index = handleZ(value, result, index, slavoGermanic);</span>
+<span class="fc" id="L370">                break;</span>
+            default:
+<span class="fc" id="L372">                index++;</span>
+<span class="fc" id="L373">                break;</span>
+            }
+        }
+
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        return alternate ? result.getAlternate() : result.getPrimary();</span>
+    }
+
+    /**
+     * Encode the value using DoubleMetaphone.  It will only work if
+     * {@code obj} is a {@code String} (like {@code Metaphone}).
+     *
+     * @param obj Object to encode (should be of type String)
+     * @return An encoded Object (will be of type String)
+     * @throws EncoderException encode parameter is not of type String
+     */
+    @Override
+    public Object encode(final Object obj) throws EncoderException {
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        if (!(obj instanceof String)) {</span>
+<span class="fc" id="L391">            throw new EncoderException(&quot;DoubleMetaphone encode parameter is not of type String&quot;);</span>
+        }
+<span class="fc" id="L393">        return doubleMetaphone((String) obj);</span>
+    }
+
+    /**
+     * Encode the value using DoubleMetaphone.
+     *
+     * @param value String to encode
+     * @return An encoded String
+     */
+    @Override
+    public String encode(final String value) {
+<span class="fc" id="L404">        return doubleMetaphone(value);</span>
+    }
+
+    /**
+     * Returns the maxCodeLen.
+     * @return int
+     */
+    public int getMaxCodeLen() {
+<span class="fc" id="L412">        return this.maxCodeLen;</span>
+    }
+
+    /**
+     * Handles 'A', 'E', 'I', 'O', 'U', and 'Y' cases.
+     */
+    private int handleAEIOUY(final DoubleMetaphoneResult result, final int index) {
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        if (index == 0) {</span>
+<span class="fc" id="L420">            result.append('A');</span>
+        }
+<span class="fc" id="L422">        return index + 1;</span>
+    }
+
+    /**
+     * Handles 'C' cases.
+     */
+    private int handleC(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        if (conditionC0(value, index)) {  // very confusing, moved out</span>
+<span class="fc" id="L430">            result.append('K');</span>
+<span class="fc" id="L431">            index += 2;</span>
+<span class="fc bfc" id="L432" title="All 4 branches covered.">        } else if (index == 0 &amp;&amp; contains(value, index, 6, &quot;CAESAR&quot;)) {</span>
+<span class="fc" id="L433">            result.append('S');</span>
+<span class="fc" id="L434">            index += 2;</span>
+<span class="fc bfc" id="L435" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;CH&quot;)) {</span>
+<span class="fc" id="L436">            index = handleCH(value, result, index);</span>
+<span class="fc bfc" id="L437" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;CZ&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">                   !contains(value, index - 2, 4, &quot;WICZ&quot;)) {</span>
+            //-- &quot;Czerny&quot; --//
+<span class="fc" id="L440">            result.append('S', 'X');</span>
+<span class="fc" id="L441">            index += 2;</span>
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        } else if (contains(value, index + 1, 3, &quot;CIA&quot;)) {</span>
+            //-- &quot;focaccia&quot; --//
+<span class="fc" id="L444">            result.append('X');</span>
+<span class="fc" id="L445">            index += 3;</span>
+<span class="fc bfc" id="L446" title="All 4 branches covered.">        } else if (contains(value, index, 2, &quot;CC&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">                   !(index == 1 &amp;&amp; charAt(value, 0) == 'M')) {</span>
+            //-- double &quot;cc&quot; but not &quot;McClelland&quot; --//
+<span class="fc" id="L449">            return handleCC(value, result, index);</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;CK&quot;, &quot;CG&quot;, &quot;CQ&quot;)) {</span>
+<span class="fc" id="L451">            result.append('K');</span>
+<span class="fc" id="L452">            index += 2;</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;CI&quot;, &quot;CE&quot;, &quot;CY&quot;)) {</span>
+            //-- Italian vs. English --//
+<span class="fc bfc" id="L455" title="All 2 branches covered.">            if (contains(value, index, 3, &quot;CIO&quot;, &quot;CIE&quot;, &quot;CIA&quot;)) {</span>
+<span class="fc" id="L456">                result.append('S', 'X');</span>
+            } else {
+<span class="fc" id="L458">                result.append('S');</span>
+            }
+<span class="fc" id="L460">            index += 2;</span>
+        } else {
+<span class="fc" id="L462">            result.append('K');</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">            if (contains(value, index + 1, 2, &quot; C&quot;, &quot; Q&quot;, &quot; G&quot;)) {</span>
+                //-- Mac Caffrey, Mac Gregor --//
+<span class="fc" id="L465">                index += 3;</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            } else if (contains(value, index + 1, 1, &quot;C&quot;, &quot;K&quot;, &quot;Q&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">                       !contains(value, index + 1, 2, &quot;CE&quot;, &quot;CI&quot;)) {</span>
+<span class="fc" id="L468">                index += 2;</span>
+            } else {
+<span class="fc" id="L470">                index++;</span>
+            }
+        }
+
+<span class="fc" id="L474">        return index;</span>
+    }
+
+    /**
+     * Handles 'CC' cases.
+     */
+    private int handleCC(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        if (contains(value, index + 2, 1, &quot;I&quot;, &quot;E&quot;, &quot;H&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">            !contains(value, index + 2, 2, &quot;HU&quot;)) {</span>
+            //-- &quot;bellocchio&quot; but not &quot;bacchus&quot; --//
+<span class="pc bpc" id="L484" title="1 of 4 branches missed.">            if (index == 1 &amp;&amp; charAt(value, index - 1) == 'A' ||</span>
+<span class="fc bfc" id="L485" title="All 2 branches covered.">                contains(value, index - 1, 5, &quot;UCCEE&quot;, &quot;UCCES&quot;)) {</span>
+                //-- &quot;accident&quot;, &quot;accede&quot;, &quot;succeed&quot; --//
+<span class="fc" id="L487">                result.append(&quot;KS&quot;);</span>
+            } else {
+                //-- &quot;bacci&quot;, &quot;bertucci&quot;, other Italian --//
+<span class="fc" id="L490">                result.append('X');</span>
+            }
+<span class="fc" id="L492">            index += 3;</span>
+        } else {    // Pierce's rule
+<span class="fc" id="L494">            result.append('K');</span>
+<span class="fc" id="L495">            index += 2;</span>
+        }
+
+<span class="fc" id="L498">        return index;</span>
+    }
+
+    /**
+     * Handles 'CH' cases.
+     */
+    private int handleCH(final String value, final DoubleMetaphoneResult result, final int index) {
+<span class="pc bpc" id="L505" title="1 of 4 branches missed.">        if (index &gt; 0 &amp;&amp; contains(value, index, 4, &quot;CHAE&quot;)) {   // Michael</span>
+<span class="nc" id="L506">            result.append('K', 'X');</span>
+<span class="nc" id="L507">            return index + 2;</span>
+        }
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        if (conditionCH0(value, index)) {</span>
+            //-- Greek roots (&quot;chemistry&quot;, &quot;chorus&quot;, etc.) --//
+<span class="fc" id="L511">            result.append('K');</span>
+<span class="fc" id="L512">            return index + 2;</span>
+        }
+<span class="fc bfc" id="L514" title="All 2 branches covered.">        if (conditionCH1(value, index)) {</span>
+            //-- Germanic, Greek, or otherwise 'ch' for 'kh' sound --//
+<span class="fc" id="L516">            result.append('K');</span>
+<span class="fc" id="L517">            return index + 2;</span>
+        }
+<span class="fc bfc" id="L519" title="All 2 branches covered.">        if (index &gt; 0) {</span>
+<span class="fc bfc" id="L520" title="All 2 branches covered.">            if (contains(value, 0, 2, &quot;MC&quot;)) {</span>
+<span class="fc" id="L521">                result.append('K');</span>
+            } else {
+<span class="fc" id="L523">                result.append('X', 'K');</span>
+            }
+        } else {
+<span class="fc" id="L526">            result.append('X');</span>
+        }
+<span class="fc" id="L528">        return index + 2;</span>
+    }
+
+    /**
+     * Handles 'D' cases.
+     */
+    private int handleD(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L535" title="All 2 branches covered.">        if (contains(value, index, 2, &quot;DG&quot;)) {</span>
+            //-- &quot;Edge&quot; --//
+<span class="fc bfc" id="L537" title="All 2 branches covered.">            if (contains(value, index + 2, 1, &quot;I&quot;, &quot;E&quot;, &quot;Y&quot;)) {</span>
+<span class="fc" id="L538">                result.append('J');</span>
+<span class="fc" id="L539">                index += 3;</span>
+                //-- &quot;Edgar&quot; --//
+            } else {
+<span class="fc" id="L542">                result.append(&quot;TK&quot;);</span>
+<span class="fc" id="L543">                index += 2;</span>
+            }
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;DT&quot;, &quot;DD&quot;)) {</span>
+<span class="fc" id="L546">            result.append('T');</span>
+<span class="fc" id="L547">            index += 2;</span>
+        } else {
+<span class="fc" id="L549">            result.append('T');</span>
+<span class="fc" id="L550">            index++;</span>
+        }
+<span class="fc" id="L552">        return index;</span>
+    }
+
+    /**
+     * Handles 'G' cases.
+     */
+    private int handleG(final String value, final DoubleMetaphoneResult result, int index,
+                        final boolean slavoGermanic) {
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (charAt(value, index + 1) == 'H') {</span>
+<span class="fc" id="L561">            index = handleGH(value, result, index);</span>
+<span class="fc bfc" id="L562" title="All 2 branches covered.">        } else if (charAt(value, index + 1) == 'N') {</span>
+<span class="pc bpc" id="L563" title="5 of 6 branches missed.">            if (index == 1 &amp;&amp; isVowel(charAt(value, 0)) &amp;&amp; !slavoGermanic) {</span>
+<span class="nc" id="L564">                result.append(&quot;KN&quot;, &quot;N&quot;);</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">            } else if (!contains(value, index + 2, 2, &quot;EY&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L566" title="1 of 4 branches missed.">                       charAt(value, index + 1) != 'Y' &amp;&amp; !slavoGermanic) {</span>
+<span class="fc" id="L567">                result.append(&quot;N&quot;, &quot;KN&quot;);</span>
+            } else {
+<span class="fc" id="L569">                result.append(&quot;KN&quot;);</span>
+            }
+<span class="fc" id="L571">            index += 2;</span>
+<span class="pc bpc" id="L572" title="1 of 4 branches missed.">        } else if (contains(value, index + 1, 2, &quot;LI&quot;) &amp;&amp; !slavoGermanic) {</span>
+<span class="fc" id="L573">            result.append(&quot;KL&quot;, &quot;L&quot;);</span>
+<span class="fc" id="L574">            index += 2;</span>
+<span class="fc bfc" id="L575" title="All 2 branches covered.">        } else if (index == 0 &amp;&amp;</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">                   (charAt(value, index + 1) == 'Y' ||</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">                    contains(value, index + 1, 2, ES_EP_EB_EL_EY_IB_IL_IN_IE_EI_ER))) {</span>
+            //-- -ges-, -gep-, -gel-, -gie- at beginning --//
+<span class="fc" id="L579">            result.append('K', 'J');</span>
+<span class="fc" id="L580">            index += 2;</span>
+<span class="fc bfc" id="L581" title="All 2 branches covered.">        } else if ((contains(value, index + 1, 2, &quot;ER&quot;) ||</span>
+<span class="fc bfc" id="L582" title="All 2 branches covered.">                    charAt(value, index + 1) == 'Y') &amp;&amp;</span>
+<span class="fc bfc" id="L583" title="All 2 branches covered.">                   !contains(value, 0, 6, &quot;DANGER&quot;, &quot;RANGER&quot;, &quot;MANGER&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">                   !contains(value, index - 1, 1, &quot;E&quot;, &quot;I&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L585" title="All 2 branches covered.">                   !contains(value, index - 1, 3, &quot;RGY&quot;, &quot;OGY&quot;)) {</span>
+            //-- -ger-, -gy- --//
+<span class="fc" id="L587">            result.append('K', 'J');</span>
+<span class="fc" id="L588">            index += 2;</span>
+<span class="fc bfc" id="L589" title="All 2 branches covered.">        } else if (contains(value, index + 1, 1, &quot;E&quot;, &quot;I&quot;, &quot;Y&quot;) ||</span>
+<span class="fc bfc" id="L590" title="All 2 branches covered.">                   contains(value, index - 1, 4, &quot;AGGI&quot;, &quot;OGGI&quot;)) {</span>
+            //-- Italian &quot;biaggi&quot; --//
+<span class="pc bpc" id="L592" title="1 of 2 branches missed.">            if (contains(value, 0, 4, &quot;VAN &quot;, &quot;VON &quot;) ||</span>
+<span class="fc bfc" id="L593" title="All 2 branches covered.">                contains(value, 0, 3, &quot;SCH&quot;) ||</span>
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">                contains(value, index + 1, 2, &quot;ET&quot;)) {</span>
+                //-- obvious germanic --//
+<span class="fc" id="L596">                result.append('K');</span>
+<span class="fc bfc" id="L597" title="All 2 branches covered.">            } else if (contains(value, index + 1, 3, &quot;IER&quot;)) {</span>
+<span class="fc" id="L598">                result.append('J');</span>
+            } else {
+<span class="fc" id="L600">                result.append('J', 'K');</span>
+            }
+<span class="fc" id="L602">            index += 2;</span>
+        } else {
+<span class="fc bfc" id="L604" title="All 2 branches covered.">            if (charAt(value, index + 1) == 'G') {</span>
+<span class="fc" id="L605">                index += 2;</span>
+            } else {
+<span class="fc" id="L607">                index++;</span>
+            }
+<span class="fc" id="L609">            result.append('K');</span>
+        }
+<span class="fc" id="L611">        return index;</span>
+    }
+
+    /**
+     * Handles 'GH' cases.
+     */
+    private int handleGH(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L618" title="All 4 branches covered.">        if (index &gt; 0 &amp;&amp; !isVowel(charAt(value, index - 1))) {</span>
+<span class="fc" id="L619">            result.append('K');</span>
+<span class="fc" id="L620">            index += 2;</span>
+<span class="fc bfc" id="L621" title="All 2 branches covered.">        } else if (index == 0) {</span>
+<span class="fc bfc" id="L622" title="All 2 branches covered.">            if (charAt(value, index + 2) == 'I') {</span>
+<span class="fc" id="L623">                result.append('J');</span>
+            } else {
+<span class="fc" id="L625">                result.append('K');</span>
+            }
+<span class="fc" id="L627">            index += 2;</span>
+<span class="fc bfc" id="L628" title="All 6 branches covered.">        } else if (index &gt; 1 &amp;&amp; contains(value, index - 2, 1, &quot;B&quot;, &quot;H&quot;, &quot;D&quot;) ||</span>
+<span class="fc bfc" id="L629" title="All 4 branches covered.">                   index &gt; 2 &amp;&amp; contains(value, index - 3, 1, &quot;B&quot;, &quot;H&quot;, &quot;D&quot;) ||</span>
+<span class="fc bfc" id="L630" title="All 2 branches covered.">                   index &gt; 3 &amp;&amp; contains(value, index - 4, 1, &quot;B&quot;, &quot;H&quot;)) {</span>
+            //-- Parker's rule (with some further refinements) - &quot;hugh&quot;
+<span class="fc" id="L632">            index += 2;</span>
+        } else {
+<span class="fc bfc" id="L634" title="All 4 branches covered.">            if (index &gt; 2 &amp;&amp; charAt(value, index - 1) == 'U' &amp;&amp;</span>
+<span class="fc bfc" id="L635" title="All 2 branches covered.">                contains(value, index - 3, 1, &quot;C&quot;, &quot;G&quot;, &quot;L&quot;, &quot;R&quot;, &quot;T&quot;)) {</span>
+                //-- &quot;laugh&quot;, &quot;McLaughlin&quot;, &quot;cough&quot;, &quot;gough&quot;, &quot;rough&quot;, &quot;tough&quot;
+<span class="fc" id="L637">                result.append('F');</span>
+<span class="pc bpc" id="L638" title="1 of 4 branches missed.">            } else if (index &gt; 0 &amp;&amp; charAt(value, index - 1) != 'I') {</span>
+<span class="fc" id="L639">                result.append('K');</span>
+            }
+<span class="fc" id="L641">            index += 2;</span>
+        }
+<span class="fc" id="L643">        return index;</span>
+    }
+
+    /**
+     * Handles 'H' cases.
+     */
+    private int handleH(final String value, final DoubleMetaphoneResult result, int index) {
+        //-- only keep if first &amp; before vowel or between 2 vowels --//
+<span class="fc bfc" id="L651" title="All 4 branches covered.">        if ((index == 0 || isVowel(charAt(value, index - 1))) &amp;&amp;</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">            isVowel(charAt(value, index + 1))) {</span>
+<span class="fc" id="L653">            result.append('H');</span>
+<span class="fc" id="L654">            index += 2;</span>
+            //-- also takes car of &quot;HH&quot; --//
+        } else {
+<span class="fc" id="L657">            index++;</span>
+        }
+<span class="fc" id="L659">        return index;</span>
+    }
+
+    /**
+     * Handles 'J' cases.
+     */
+    private int handleJ(final String value, final DoubleMetaphoneResult result, int index,
+                        final boolean slavoGermanic) {
+<span class="fc bfc" id="L667" title="All 4 branches covered.">        if (contains(value, index, 4, &quot;JOSE&quot;) || contains(value, 0, 4, &quot;SAN &quot;)) {</span>
+                //-- obvious Spanish, &quot;Jose&quot;, &quot;San Jacinto&quot; --//
+<span class="pc bpc" id="L669" title="1 of 4 branches missed.">                if (index == 0 &amp;&amp; charAt(value, index + 4) == ' ' ||</span>
+<span class="fc bfc" id="L670" title="All 4 branches covered.">                     value.length() == 4 || contains(value, 0, 4, &quot;SAN &quot;)) {</span>
+<span class="fc" id="L671">                    result.append('H');</span>
+                } else {
+<span class="fc" id="L673">                    result.append('J', 'H');</span>
+                }
+<span class="fc" id="L675">                index++;</span>
+            } else {
+<span class="pc bpc" id="L677" title="1 of 4 branches missed.">                if (index == 0 &amp;&amp; !contains(value, index, 4, &quot;JOSE&quot;)) {</span>
+<span class="fc" id="L678">                    result.append('J', 'A');</span>
+<span class="pc bpc" id="L679" title="1 of 4 branches missed.">                } else if (isVowel(charAt(value, index - 1)) &amp;&amp; !slavoGermanic &amp;&amp;</span>
+<span class="fc bfc" id="L680" title="All 4 branches covered.">                           (charAt(value, index + 1) == 'A' || charAt(value, index + 1) == 'O')) {</span>
+<span class="fc" id="L681">                    result.append('J', 'H');</span>
+<span class="pc bpc" id="L682" title="1 of 2 branches missed.">                } else if (index == value.length() - 1) {</span>
+<span class="nc" id="L683">                    result.append('J', ' ');</span>
+<span class="pc bpc" id="L684" title="1 of 2 branches missed.">                } else if (!contains(value, index + 1, 1, L_T_K_S_N_M_B_Z) &amp;&amp;</span>
+<span class="pc bpc" id="L685" title="1 of 2 branches missed.">                           !contains(value, index - 1, 1, &quot;S&quot;, &quot;K&quot;, &quot;L&quot;)) {</span>
+<span class="fc" id="L686">                    result.append('J');</span>
+                }
+
+<span class="pc bpc" id="L689" title="1 of 2 branches missed.">                if (charAt(value, index + 1) == 'J') {</span>
+<span class="nc" id="L690">                    index += 2;</span>
+                } else {
+<span class="fc" id="L692">                    index++;</span>
+                }
+            }
+<span class="fc" id="L695">        return index;</span>
+    }
+
+    /**
+     * Handles 'L' cases.
+     */
+    private int handleL(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L702" title="All 2 branches covered.">        if (charAt(value, index + 1) == 'L') {</span>
+<span class="fc bfc" id="L703" title="All 2 branches covered.">            if (conditionL0(value, index)) {</span>
+<span class="fc" id="L704">                result.appendPrimary('L');</span>
+            } else {
+<span class="fc" id="L706">                result.append('L');</span>
+            }
+<span class="fc" id="L708">            index += 2;</span>
+        } else {
+<span class="fc" id="L710">            index++;</span>
+<span class="fc" id="L711">            result.append('L');</span>
+        }
+<span class="fc" id="L713">        return index;</span>
+    }
+
+    /**
+     * Handles 'P' cases.
+     */
+    private int handleP(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L720" title="All 2 branches covered.">        if (charAt(value, index + 1) == 'H') {</span>
+<span class="fc" id="L721">            result.append('F');</span>
+<span class="fc" id="L722">            index += 2;</span>
+        } else {
+<span class="fc" id="L724">            result.append('P');</span>
+<span class="fc bfc" id="L725" title="All 2 branches covered.">            index = contains(value, index + 1, 1, &quot;P&quot;, &quot;B&quot;) ? index + 2 : index + 1;</span>
+        }
+<span class="fc" id="L727">        return index;</span>
+    }
+
+    /**
+     * Handles 'R' cases.
+     */
+    private int handleR(final String value, final DoubleMetaphoneResult result, final int index,
+                        final boolean slavoGermanic) {
+<span class="fc bfc" id="L735" title="All 4 branches covered.">        if (index == value.length() - 1 &amp;&amp; !slavoGermanic &amp;&amp;</span>
+<span class="fc bfc" id="L736" title="All 2 branches covered.">            contains(value, index - 2, 2, &quot;IE&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L737" title="All 2 branches covered.">            !contains(value, index - 4, 2, &quot;ME&quot;, &quot;MA&quot;)) {</span>
+<span class="fc" id="L738">            result.appendAlternate('R');</span>
+        } else {
+<span class="fc" id="L740">            result.append('R');</span>
+        }
+<span class="fc bfc" id="L742" title="All 2 branches covered.">        return charAt(value, index + 1) == 'R' ? index + 2 : index + 1;</span>
+    }
+
+    //-- BEGIN CONDITIONS --//
+
+    /**
+     * Handles 'S' cases.
+     */
+    private int handleS(final String value, final DoubleMetaphoneResult result, int index,
+                        final boolean slavoGermanic) {
+<span class="fc bfc" id="L752" title="All 2 branches covered.">        if (contains(value, index - 1, 3, &quot;ISL&quot;, &quot;YSL&quot;)) {</span>
+            //-- special cases &quot;island&quot;, &quot;isle&quot;, &quot;carlisle&quot;, &quot;carlysle&quot; --//
+<span class="fc" id="L754">            index++;</span>
+<span class="fc bfc" id="L755" title="All 4 branches covered.">        } else if (index == 0 &amp;&amp; contains(value, index, 5, &quot;SUGAR&quot;)) {</span>
+            //-- special case &quot;sugar-&quot; --//
+<span class="fc" id="L757">            result.append('X', 'S');</span>
+<span class="fc" id="L758">            index++;</span>
+<span class="fc bfc" id="L759" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;SH&quot;)) {</span>
+<span class="fc bfc" id="L760" title="All 2 branches covered.">            if (contains(value, index + 1, 4, &quot;HEIM&quot;, &quot;HOEK&quot;, &quot;HOLM&quot;, &quot;HOLZ&quot;)) {</span>
+                //-- germanic --//
+<span class="fc" id="L762">                result.append('S');</span>
+            } else {
+<span class="fc" id="L764">                result.append('X');</span>
+            }
+<span class="fc" id="L766">            index += 2;</span>
+<span class="pc bpc" id="L767" title="1 of 4 branches missed.">        } else if (contains(value, index, 3, &quot;SIO&quot;, &quot;SIA&quot;) || contains(value, index, 4, &quot;SIAN&quot;)) {</span>
+            //-- Italian and Armenian --//
+<span class="pc bpc" id="L769" title="1 of 2 branches missed.">            if (slavoGermanic) {</span>
+<span class="nc" id="L770">                result.append('S');</span>
+            } else {
+<span class="fc" id="L772">                result.append('S', 'X');</span>
+            }
+<span class="fc" id="L774">            index += 3;</span>
+<span class="fc bfc" id="L775" title="All 4 branches covered.">        } else if (index == 0 &amp;&amp; contains(value, index + 1, 1, &quot;M&quot;, &quot;N&quot;, &quot;L&quot;, &quot;W&quot;) ||</span>
+<span class="pc bpc" id="L776" title="1 of 2 branches missed.">                   contains(value, index + 1, 1, &quot;Z&quot;)) {</span>
+            //-- german &amp; anglicisations, e.g. &quot;smith&quot; match &quot;schmidt&quot; //
+            // &quot;snider&quot; match &quot;schneider&quot; --//
+            //-- also, -sz- in slavic language although in hungarian it //
+            //   is pronounced &quot;s&quot; --//
+<span class="fc" id="L781">            result.append('S', 'X');</span>
+<span class="pc bpc" id="L782" title="1 of 2 branches missed.">            index = contains(value, index + 1, 1, &quot;Z&quot;) ? index + 2 : index + 1;</span>
+<span class="fc bfc" id="L783" title="All 2 branches covered.">        } else if (contains(value, index, 2, &quot;SC&quot;)) {</span>
+<span class="fc" id="L784">            index = handleSC(value, result, index);</span>
+        } else {
+<span class="fc bfc" id="L786" title="All 4 branches covered.">            if (index == value.length() - 1 &amp;&amp; contains(value, index - 2, 2, &quot;AI&quot;, &quot;OI&quot;)) {</span>
+                //-- french e.g. &quot;resnais&quot;, &quot;artois&quot; --//
+<span class="fc" id="L788">                result.appendAlternate('S');</span>
+            } else {
+<span class="fc" id="L790">                result.append('S');</span>
+            }
+<span class="fc bfc" id="L792" title="All 2 branches covered.">            index = contains(value, index + 1, 1, &quot;S&quot;, &quot;Z&quot;) ? index + 2 : index + 1;</span>
+        }
+<span class="fc" id="L794">        return index;</span>
+    }
+
+    /**
+     * Handles 'SC' cases.
+     */
+    private int handleSC(final String value, final DoubleMetaphoneResult result, final int index) {
+<span class="fc bfc" id="L801" title="All 2 branches covered.">        if (charAt(value, index + 2) == 'H') {</span>
+            //-- Schlesinger's rule --//
+<span class="fc bfc" id="L803" title="All 2 branches covered.">            if (contains(value, index + 3, 2, &quot;OO&quot;, &quot;ER&quot;, &quot;EN&quot;, &quot;UY&quot;, &quot;ED&quot;, &quot;EM&quot;)) {</span>
+                //-- Dutch origin, e.g. &quot;school&quot;, &quot;schooner&quot; --//
+<span class="fc bfc" id="L805" title="All 2 branches covered.">                if (contains(value, index + 3, 2, &quot;ER&quot;, &quot;EN&quot;)) {</span>
+                    //-- &quot;schermerhorn&quot;, &quot;schenker&quot; --//
+<span class="fc" id="L807">                    result.append(&quot;X&quot;, &quot;SK&quot;);</span>
+                } else {
+<span class="fc" id="L809">                    result.append(&quot;SK&quot;);</span>
+                }
+<span class="fc bfc" id="L811" title="All 6 branches covered.">            } else if (index == 0 &amp;&amp; !isVowel(charAt(value, 3)) &amp;&amp; charAt(value, 3) != 'W') {</span>
+<span class="fc" id="L812">                result.append('X', 'S');</span>
+            } else {
+<span class="fc" id="L814">                result.append('X');</span>
+            }
+<span class="fc bfc" id="L816" title="All 2 branches covered.">        } else if (contains(value, index + 2, 1, &quot;I&quot;, &quot;E&quot;, &quot;Y&quot;)) {</span>
+<span class="fc" id="L817">            result.append('S');</span>
+        } else {
+<span class="fc" id="L819">            result.append(&quot;SK&quot;);</span>
+        }
+<span class="fc" id="L821">        return index + 3;</span>
+    }
+
+    /**
+     * Handles 'T' cases.
+     */
+    private int handleT(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L828" title="All 4 branches covered.">        if (contains(value, index, 4, &quot;TION&quot;) || contains(value, index, 3, &quot;TIA&quot;, &quot;TCH&quot;)) {</span>
+<span class="fc" id="L829">            result.append('X');</span>
+<span class="fc" id="L830">            index += 3;</span>
+<span class="pc bpc" id="L831" title="1 of 4 branches missed.">        } else if (contains(value, index, 2, &quot;TH&quot;) || contains(value, index, 3, &quot;TTH&quot;)) {</span>
+<span class="fc bfc" id="L832" title="All 2 branches covered.">            if (contains(value, index + 2, 2, &quot;OM&quot;, &quot;AM&quot;) ||</span>
+                //-- special case &quot;thomas&quot;, &quot;thames&quot; or germanic --//
+<span class="pc bpc" id="L834" title="1 of 2 branches missed.">                contains(value, 0, 4, &quot;VAN &quot;, &quot;VON &quot;) ||</span>
+<span class="pc bpc" id="L835" title="1 of 2 branches missed.">                contains(value, 0, 3, &quot;SCH&quot;)) {</span>
+<span class="fc" id="L836">                result.append('T');</span>
+            } else {
+<span class="fc" id="L838">                result.append('0', 'T');</span>
+            }
+<span class="fc" id="L840">            index += 2;</span>
+        } else {
+<span class="fc" id="L842">            result.append('T');</span>
+<span class="fc bfc" id="L843" title="All 2 branches covered.">            index = contains(value, index + 1, 1, &quot;T&quot;, &quot;D&quot;) ? index + 2 : index + 1;</span>
+        }
+<span class="fc" id="L845">        return index;</span>
+    }
+
+    /**
+     * Handles 'W' cases.
+     */
+    private int handleW(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L852" title="All 2 branches covered.">        if (contains(value, index, 2, &quot;WR&quot;)) {</span>
+            //-- can also be in middle of word --//
+<span class="fc" id="L854">            result.append('R');</span>
+<span class="fc" id="L855">            index += 2;</span>
+<span class="fc bfc" id="L856" title="All 4 branches covered.">        } else if (index == 0 &amp;&amp; (isVowel(charAt(value, index + 1)) ||</span>
+<span class="pc bpc" id="L857" title="1 of 2 branches missed.">                           contains(value, index, 2, &quot;WH&quot;))) {</span>
+<span class="fc bfc" id="L858" title="All 2 branches covered.">            if (isVowel(charAt(value, index + 1))) {</span>
+                //-- Wasserman should match Vasserman --//
+<span class="fc" id="L860">                result.append('A', 'F');</span>
+            } else {
+                //-- need Uomo to match Womo --//
+<span class="fc" id="L863">                result.append('A');</span>
+            }
+<span class="fc" id="L865">            index++;</span>
+<span class="fc bfc" id="L866" title="All 4 branches covered.">        } else if (index == value.length() - 1 &amp;&amp; isVowel(charAt(value, index - 1)) ||</span>
+<span class="fc bfc" id="L867" title="All 2 branches covered.">                   contains(value, index - 1, 5, &quot;EWSKI&quot;, &quot;EWSKY&quot;, &quot;OWSKI&quot;, &quot;OWSKY&quot;) ||</span>
+<span class="fc bfc" id="L868" title="All 2 branches covered.">                   contains(value, 0, 3, &quot;SCH&quot;)) {</span>
+            //-- Arnow should match Arnoff --//
+<span class="fc" id="L870">            result.appendAlternate('F');</span>
+<span class="fc" id="L871">            index++;</span>
+<span class="fc bfc" id="L872" title="All 2 branches covered.">        } else if (contains(value, index, 4, &quot;WICZ&quot;, &quot;WITZ&quot;)) {</span>
+            //-- Polish e.g. &quot;filipowicz&quot; --//
+<span class="fc" id="L874">            result.append(&quot;TS&quot;, &quot;FX&quot;);</span>
+<span class="fc" id="L875">            index += 4;</span>
+        } else {
+<span class="fc" id="L877">            index++;</span>
+        }
+<span class="fc" id="L879">        return index;</span>
+    }
+
+    /**
+     * Handles 'X' cases.
+     */
+    private int handleX(final String value, final DoubleMetaphoneResult result, int index) {
+<span class="fc bfc" id="L886" title="All 2 branches covered.">        if (index == 0) {</span>
+<span class="fc" id="L887">            result.append('S');</span>
+<span class="fc" id="L888">            index++;</span>
+        } else {
+<span class="fc bfc" id="L890" title="All 2 branches covered.">            if (!(index == value.length() - 1 &amp;&amp;</span>
+<span class="fc bfc" id="L891" title="All 2 branches covered.">                  (contains(value, index - 3, 3, &quot;IAU&quot;, &quot;EAU&quot;) ||</span>
+<span class="fc bfc" id="L892" title="All 2 branches covered.">                   contains(value, index - 2, 2, &quot;AU&quot;, &quot;OU&quot;)))) {</span>
+                //-- French e.g. breaux --//
+<span class="fc" id="L894">                result.append(&quot;KS&quot;);</span>
+            }
+<span class="fc bfc" id="L896" title="All 2 branches covered.">            index = contains(value, index + 1, 1, &quot;C&quot;, &quot;X&quot;) ? index + 2 : index + 1;</span>
+        }
+<span class="fc" id="L898">        return index;</span>
+    }
+
+    //-- BEGIN HELPER FUNCTIONS --//
+
+    /**
+     * Handles 'Z' cases.
+     */
+    private int handleZ(final String value, final DoubleMetaphoneResult result, int index,
+                        final boolean slavoGermanic) {
+<span class="fc bfc" id="L908" title="All 2 branches covered.">        if (charAt(value, index + 1) == 'H') {</span>
+            //-- Chinese pinyin e.g. &quot;zhao&quot; or Angelina &quot;Zhang&quot; --//
+<span class="fc" id="L910">            result.append('J');</span>
+<span class="fc" id="L911">            index += 2;</span>
+        } else {
+<span class="pc bpc" id="L913" title="1 of 6 branches missed.">            if (contains(value, index + 1, 2, &quot;ZO&quot;, &quot;ZI&quot;, &quot;ZA&quot;) ||</span>
+<span class="fc bfc" id="L914" title="All 2 branches covered.">                slavoGermanic &amp;&amp; index &gt; 0 &amp;&amp; charAt(value, index - 1) != 'T') {</span>
+<span class="fc" id="L915">                result.append(&quot;S&quot;, &quot;TS&quot;);</span>
+            } else {
+<span class="fc" id="L917">                result.append('S');</span>
+            }
+<span class="fc bfc" id="L919" title="All 2 branches covered.">            index = charAt(value, index + 1) == 'Z' ? index + 2 : index + 1;</span>
+        }
+<span class="fc" id="L921">        return index;</span>
+    }
+
+    /**
+     * Check if the Double Metaphone values of two {@code String} values
+     * are equal.
+     *
+     * @param value1 The left-hand side of the encoded {@link String#equals(Object)}.
+     * @param value2 The right-hand side of the encoded {@link String#equals(Object)}.
+     * @return {@code true} if the encoded {@code String}s are equal;
+     *          {@code false} otherwise.
+     * @see #isDoubleMetaphoneEqual(String,String,boolean)
+     */
+    public boolean isDoubleMetaphoneEqual(final String value1, final String value2) {
+<span class="fc" id="L935">        return isDoubleMetaphoneEqual(value1, value2, false);</span>
+    }
+
+    /**
+     * Check if the Double Metaphone values of two {@code String} values
+     * are equal, optionally using the alternate value.
+     *
+     * @param value1 The left-hand side of the encoded {@link String#equals(Object)}.
+     * @param value2 The right-hand side of the encoded {@link String#equals(Object)}.
+     * @param alternate use the alternate value if {@code true}.
+     * @return {@code true} if the encoded {@code String}s are equal;
+     *          {@code false} otherwise.
+     */
+    public boolean isDoubleMetaphoneEqual(final String value1, final String value2, final boolean alternate) {
+<span class="fc" id="L949">        return StringUtils.equals(doubleMetaphone(value1, alternate), doubleMetaphone(value2, alternate));</span>
+    }
+
+    /**
+     * Determines whether or not the value starts with a silent letter.  It will
+     * return {@code true} if the value starts with any of 'GN', 'KN',
+     * 'PN', 'WR' or 'PS'.
+     */
+    private boolean isSilentStart(final String value) {
+<span class="fc" id="L958">        boolean result = false;</span>
+<span class="fc bfc" id="L959" title="All 2 branches covered.">        for (final String element : SILENT_START) {</span>
+<span class="fc bfc" id="L960" title="All 2 branches covered.">            if (value.startsWith(element)) {</span>
+<span class="fc" id="L961">                result = true;</span>
+<span class="fc" id="L962">                break;</span>
+            }
+        }
+<span class="fc" id="L965">        return result;</span>
+    }
+
+    /**
+     * Determines whether or not a value is of slavo-germanic origin. A value is
+     * of slavo-germanic origin if it contians any of 'W', 'K', 'CZ', or 'WITZ'.
+     */
+    private boolean isSlavoGermanic(final String value) {
+<span class="fc bfc" id="L973" title="All 4 branches covered.">        return value.indexOf('W') &gt; -1 || value.indexOf('K') &gt; -1 ||</span>
+<span class="pc bpc" id="L974" title="1 of 4 branches missed.">                value.contains(&quot;CZ&quot;) || value.contains(&quot;WITZ&quot;);</span>
+    }
+
+    /**
+     * Determines whether or not a character is a vowel or not
+     */
+    private boolean isVowel(final char ch) {
+<span class="fc bfc" id="L981" title="All 2 branches covered.">        return VOWELS.indexOf(ch) != -1;</span>
+    }
+
+    //-- BEGIN INNER CLASSES --//
+
+    /**
+     * Sets the maxCodeLen.
+     * @param maxCodeLen The maxCodeLen to set
+     */
+    public void setMaxCodeLen(final int maxCodeLen) {
+<span class="fc" id="L991">        this.maxCodeLen = maxCodeLen;</span>
+<span class="fc" id="L992">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

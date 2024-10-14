@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationNodePointerFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree.xpath</a> &gt; <span class="el_source">ConfigurationNodePointerFactory.java</span></div><h1>ConfigurationNodePointerFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree.xpath;
+
+import java.util.Locale;
+
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.jxpath.ri.QName;
+import org.apache.commons.jxpath.ri.model.NodePointer;
+import org.apache.commons.jxpath.ri.model.NodePointerFactory;
+
+/**
+ * &lt;p&gt;
+ * Implements the {@code NodePointerFactory} interface for configuration nodes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is able to create {@code NodePointer}s for the nodes of hierarchical configurations. Because there is no
+ * common base class for configuration nodes (any specific configuration implementation can use its own node class) a
+ * trick is needed for activating this factory for a concrete JXPath query: The {@code wrapNode()} method has to be
+ * called with the node object and its corresponding {@code NodeHandler}. This creates a wrapper object containing all
+ * information required by the factory for processing a query. Then this wrapper object has to be passed to the query
+ * methods of the JXPath context.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ */
+<span class="fc" id="L41">public class ConfigurationNodePointerFactory implements NodePointerFactory {</span>
+    /**
+     * An internally used wrapper class that holds all information for processing a query for a specific node.
+     *
+     * @param &lt;T&gt; the type of the nodes this class deals with
+     */
+    static class NodeWrapper&lt;T&gt; {
+        /** Stores the node. */
+        private final T node;
+
+        /** Stores the corresponding node handler. */
+        private final NodeHandler&lt;T&gt; nodeHandler;
+
+        /**
+         * Creates a new instance of {@code NodeWrapper} and initializes it.
+         *
+         * @param nd the node
+         * @param handler the node handler
+         */
+<span class="fc" id="L60">        public NodeWrapper(final T nd, final NodeHandler&lt;T&gt; handler) {</span>
+<span class="fc" id="L61">            node = nd;</span>
+<span class="fc" id="L62">            nodeHandler = handler;</span>
+<span class="fc" id="L63">        }</span>
+
+        /**
+         * Gets the wrapped node.
+         *
+         * @return the node
+         */
+        public T getNode() {
+<span class="fc" id="L71">            return node;</span>
+        }
+
+        /**
+         * Gets the node handler for the wrapped node.
+         *
+         * @return the node handler
+         */
+        public NodeHandler&lt;T&gt; getNodeHandler() {
+<span class="fc" id="L80">            return nodeHandler;</span>
+        }
+    }
+
+    /** Constant for the order of this factory. */
+    public static final int CONFIGURATION_NODE_POINTER_FACTORY_ORDER = 200;
+
+    /**
+     * Creates a node wrapper for the specified node and its handler. This wrapper has to be passed to the JXPath context
+     * instead of the original node.
+     *
+     * @param &lt;T&gt; the type of the node
+     * @param node the node
+     * @param handler the corresponding node handler
+     * @return a wrapper for this node
+     */
+    public static &lt;T&gt; Object wrapNode(final T node, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L97">        return new NodeWrapper&lt;&gt;(node, handler);</span>
+    }
+
+    /**
+     * Creates a node pointer for the specified bean. If the bean is a configuration node, a corresponding pointer is
+     * returned.
+     *
+     * @param parent the parent node
+     * @param name the name
+     * @param bean the bean
+     * @return a pointer for a configuration node if the bean is such a node
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    /*
+     * Type casts are safe here, see above. Also, the hierarchy of node pointers is consistent, so a parent is compatible to
+     * a child.
+     */
+    public NodePointer createNodePointer(final NodePointer parent, final QName name, final Object bean) {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (bean instanceof NodeWrapper) {</span>
+<span class="nc" id="L117">            final NodeWrapper&lt;Object&gt; wrapper = (NodeWrapper&lt;Object&gt;) bean;</span>
+<span class="nc" id="L118">            return new ConfigurationNodePointer&lt;&gt;((ConfigurationNodePointer&lt;Object&gt;) parent, wrapper.getNode(), wrapper.getNodeHandler());</span>
+        }
+<span class="nc" id="L120">        return null;</span>
+    }
+
+    /**
+     * Creates a node pointer for the specified bean. If the bean is a configuration node (indicated by a wrapper object), a
+     * corresponding pointer is returned.
+     *
+     * @param name the name of the node
+     * @param bean the bean
+     * @param locale the locale
+     * @return a pointer for a configuration node if the bean is such a node
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    /*
+     * Type casts are safe here; because of the way the NodeWrapper was constructed the node handler must be compatible with
+     * the node.
+     */
+    public NodePointer createNodePointer(final QName name, final Object bean, final Locale locale) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (bean instanceof NodeWrapper) {</span>
+<span class="fc" id="L140">            final NodeWrapper&lt;Object&gt; wrapper = (NodeWrapper&lt;Object&gt;) bean;</span>
+<span class="fc" id="L141">            return new ConfigurationNodePointer&lt;&gt;(wrapper.getNode(), locale, wrapper.getNodeHandler());</span>
+        }
+<span class="fc" id="L143">        return null;</span>
+    }
+
+    /**
+     * Gets the order of this factory between other factories.
+     *
+     * @return this order's factory
+     */
+    @Override
+    public int getOrder() {
+<span class="fc" id="L153">        return CONFIGURATION_NODE_POINTER_FACTORY_ORDER;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

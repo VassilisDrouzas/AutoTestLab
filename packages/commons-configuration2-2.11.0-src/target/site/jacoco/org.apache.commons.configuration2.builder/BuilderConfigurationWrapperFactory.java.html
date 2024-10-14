@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuilderConfigurationWrapperFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder</a> &gt; <span class="el_source">BuilderConfigurationWrapperFactory.java</span></div><h1>BuilderConfigurationWrapperFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+
+import org.apache.commons.configuration2.ConfigurationUtils;
+import org.apache.commons.configuration2.ImmutableConfiguration;
+import org.apache.commons.configuration2.event.EventSource;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+
+/**
+ * &lt;p&gt;
+ * A class that allows the creation of configuration objects wrapping a {@link ConfigurationBuilder}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Using this class special {@code ImmutableConfiguration} proxies can be created that delegate all method invocations
+ * to another {@code ImmutableConfiguration} obtained from a {@code ConfigurationBuilder}. For instance, if there is a
+ * configuration {@code c} wrapping the builder {@code builder}, the call {@code c.getString(myKey)} is transformed to
+ * {@code builder.getConfiguration().getString(myKey)}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are multiple use cases for such a constellation. One example is that client code can continue working with
+ * {@code ImmutableConfiguration} objects while under the hood builders are used. Another example is that dynamic
+ * configurations can be realized in a transparent way: a client holds a single configuration (proxy) object, but the
+ * underlying builder may return a different data object on each call.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class BuilderConfigurationWrapperFactory {
+
+    /**
+     * A specialized {@code InvocationHandler} implementation for wrapper configurations. Here the logic of accessing a
+     * wrapped builder is implemented.
+     */
+    private static final class BuilderConfigurationWrapperInvocationHandler implements InvocationHandler {
+
+        /** The wrapped builder. */
+        private final ConfigurationBuilder&lt;? extends ImmutableConfiguration&gt; builder;
+
+        /** The level of {@code EventSource} support. */
+        private final EventSourceSupport eventSourceSupport;
+
+        /**
+         * Creates a new instance of {@code BuilderConfigurationWrapperInvocationHandler}.
+         *
+         * @param wrappedBuilder the wrapped builder
+         * @param evSrcSupport the level of {@code EventSource} support
+         */
+        public BuilderConfigurationWrapperInvocationHandler(final ConfigurationBuilder&lt;? extends ImmutableConfiguration&gt; wrappedBuilder,
+<span class="fc" id="L68">            final EventSourceSupport evSrcSupport) {</span>
+<span class="fc" id="L69">            builder = wrappedBuilder;</span>
+<span class="fc" id="L70">            eventSourceSupport = evSrcSupport;</span>
+<span class="fc" id="L71">        }</span>
+
+        /**
+         * Handles a method invocation on the associated builder's configuration object.
+         *
+         * @param method the method to be invoked
+         * @param args method arguments
+         * @return the return value of the method
+         * @throws Exception if an error occurs
+         */
+        private Object handleConfigurationInvocation(final Method method, final Object[] args) throws ReflectiveOperationException, ConfigurationException {
+<span class="fc" id="L82">            return method.invoke(builder.getConfiguration(), args);</span>
+        }
+
+        /**
+         * Handles a method invocation on the {@code EventSource} interface. This method evaluates the current
+         * {@code EventSourceSupport} object in order to find the appropriate target for the invocation.
+         *
+         * @param method the method to be invoked
+         * @param args method arguments
+         * @return the return value of the method
+         * @throws ReflectiveOperationException if an error occurs
+         */
+        private Object handleEventSourceInvocation(final Method method, final Object... args) throws ReflectiveOperationException {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            return method.invoke(EventSourceSupport.DUMMY == eventSourceSupport ? ConfigurationUtils.asEventSource(this, true) : builder, args);</span>
+        }
+
+        /**
+         * Handles method invocations. This implementation handles methods of two different interfaces:
+         * &lt;ul&gt;
+         * &lt;li&gt;Methods from the {@code EventSource} interface are handled according to the current support level.&lt;/li&gt;
+         * &lt;li&gt;Other method calls are delegated to the builder's configuration object.&lt;/li&gt;
+         * &lt;/ul&gt;
+         *
+         * @param proxy the proxy object
+         * @param method the method to be invoked
+         * @param args method arguments
+         * @return the return value of the method
+         * @throws ReflectiveOperationException if an error occurs
+         * @throws ConfigurationException if an error occurs
+         */
+        @Override
+        public Object invoke(final Object proxy, final Method method, final Object[] args) throws ReflectiveOperationException, ConfigurationException {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            return EventSource.class.equals(method.getDeclaringClass()) ? handleEventSourceInvocation(method, args)</span>
+<span class="fc" id="L115">                : handleConfigurationInvocation(method, args);</span>
+        }
+    }
+
+    /**
+     * &lt;p&gt;
+     * An enumeration class with different options for supporting the {@code EventSource} interface in generated
+     * {@code ImmutableConfiguration} proxies.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * Using literals of this class it is possible to specify that a {@code ImmutableConfiguration} object returned by
+     * {@code BuilderConfigurationWrapperFactory} also implements the {@code EventSource} interface and how this
+     * implementation should work. See the documentation of the single constants for more details.
+     * &lt;/p&gt;
+     */
+<span class="fc" id="L130">    public enum EventSourceSupport {</span>
+        /**
+         * No support of the {@code EventSource} interface. If this option is set, {@code ImmutableConfiguration} objects
+         * generated by {@code BuilderConfigurationWrapperFactory} do not implement the {@code EventSource} interface.
+         */
+<span class="fc" id="L135">        NONE,</span>
+
+        /**
+         * Dummy support of the {@code EventSource} interface. This option causes {@code ImmutableConfiguration} objects
+         * generated by {@code BuilderConfigurationWrapperFactory} to implement the {@code EventSource} interface, however, this
+         * implementation consists only of empty dummy methods without real functionality.
+         */
+<span class="fc" id="L142">        DUMMY,</span>
+
+        /**
+         * {@code EventSource} support is implemented by delegating to the associated {@code ConfigurationBuilder} object. If
+         * this option is used, generated {@code ImmutableConfiguration} objects provide a fully functional implementation of
+         * {@code EventSource} by delegating to the builder. Because the {@code ConfigurationBuilder} interface extends
+         * {@code EventSource} this delegation is always possible.
+         */
+<span class="fc" id="L150">        BUILDER</span>
+    }
+
+    /**
+     * Creates a {@code ImmutableConfiguration} object which wraps the specified {@code ConfigurationBuilder}. Each access
+     * of the configuration is delegated to a corresponding call on the {@code ImmutableConfiguration} object managed by the
+     * builder. This is a convenience method which allows creating wrapper configurations without having to instantiate this
+     * class.
+     *
+     * @param &lt;T&gt; the type of the configuration objects returned by this method
+     * @param ifcClass the class of the configuration objects returned by this method; this must be an interface class and
+     *        must not be &lt;b&gt;null&lt;/b&gt;
+     * @param builder the wrapped {@code ConfigurationBuilder} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param evSrcSupport the level of {@code EventSource} support
+     * @return the wrapper configuration
+     * @throws IllegalArgumentException if a required parameter is missing
+     * @throws org.apache.commons.configuration2.ex.ConfigurationRuntimeException if an error occurs when creating the
+     *         result {@code ImmutableConfiguration}
+     */
+    public static &lt;T extends ImmutableConfiguration&gt; T createBuilderConfigurationWrapper(final Class&lt;T&gt; ifcClass,
+        final ConfigurationBuilder&lt;? extends T&gt; builder, final EventSourceSupport evSrcSupport) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (ifcClass == null) {</span>
+<span class="fc" id="L172">            throw new IllegalArgumentException(&quot;Interface class must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (builder == null) {</span>
+<span class="fc" id="L175">            throw new IllegalArgumentException(&quot;Builder must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L178">        return ifcClass.cast(Proxy.newProxyInstance(BuilderConfigurationWrapperFactory.class.getClassLoader(), getSupportedInterfaces(ifcClass, evSrcSupport),</span>
+            new BuilderConfigurationWrapperInvocationHandler(builder, evSrcSupport)));
+    }
+
+    /**
+     * Gets an array with the classes the generated proxy has to support.
+     *
+     * @param ifcClass the class of the configuration objects returned by this method; this must be an interface class and
+     *        must not be &lt;b&gt;null&lt;/b&gt;
+     * @param evSrcSupport the level of {@code EventSource} support
+     * @return an array with the interface classes to implement
+     */
+    private static Class&lt;?&gt;[] getSupportedInterfaces(final Class&lt;?&gt; ifcClass, final EventSourceSupport evSrcSupport) {
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        return EventSourceSupport.NONE == evSrcSupport ? new Class&lt;?&gt;[] {ifcClass} : new Class&lt;?&gt;[] {EventSource.class, ifcClass};</span>
+    }
+
+    /** The current {@code EventSourceSupport} value. */
+    private final EventSourceSupport eventSourceSupport;
+
+    /**
+     * Creates a new instance of {@code BuilderConfigurationWrapperFactory} setting the default {@code EventSourceSupport}
+     * &lt;em&gt;NONE&lt;/em&gt;.
+     */
+    public BuilderConfigurationWrapperFactory() {
+<span class="fc" id="L202">        this(EventSourceSupport.NONE);</span>
+<span class="fc" id="L203">    }</span>
+
+    /**
+     * Creates a new instance of {@code BuilderConfigurationWrapperFactory} and sets the property for supporting the
+     * {@code EventSource} interface.
+     *
+     * @param evSrcSupport the level of {@code EventSource} support
+     */
+<span class="fc" id="L211">    public BuilderConfigurationWrapperFactory(final EventSourceSupport evSrcSupport) {</span>
+<span class="fc" id="L212">        eventSourceSupport = evSrcSupport;</span>
+<span class="fc" id="L213">    }</span>
+
+    /**
+     * Creates a wrapper {@code ImmutableConfiguration} on top of the specified {@code ConfigurationBuilder}. This
+     * implementation delegates to
+     * {@link #createBuilderConfigurationWrapper(Class, ConfigurationBuilder, EventSourceSupport)} .
+     *
+     * @param &lt;T&gt; the type of the configuration objects returned by this method
+     * @param ifcClass the class of the configuration objects returned by this method; this must be an interface class and
+     *        must not be &lt;b&gt;null&lt;/b&gt;
+     * @param builder the wrapped {@code ConfigurationBuilder} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return the wrapper configuration
+     * @throws IllegalArgumentException if a required parameter is missing
+     * @throws org.apache.commons.configuration2.ex.ConfigurationRuntimeException if an error occurs when creating the
+     *         result {@code ImmutableConfiguration}
+     */
+    public &lt;T extends ImmutableConfiguration&gt; T createBuilderConfigurationWrapper(final Class&lt;T&gt; ifcClass, final ConfigurationBuilder&lt;? extends T&gt; builder) {
+<span class="fc" id="L230">        return createBuilderConfigurationWrapper(ifcClass, builder, getEventSourceSupport());</span>
+    }
+
+    /**
+     * Gets the level of {@code EventSource} support used when generating {@code ImmutableConfiguration} objects.
+     *
+     * @return the level of {@code EventSource} support
+     */
+    public EventSourceSupport getEventSourceSupport() {
+<span class="fc" id="L239">        return eventSourceSupport;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

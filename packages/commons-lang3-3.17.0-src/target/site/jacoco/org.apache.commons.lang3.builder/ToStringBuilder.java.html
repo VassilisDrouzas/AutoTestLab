@@ -1,0 +1,1035 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ToStringBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.builder</a> &gt; <span class="el_source">ToStringBuilder.java</span></div><h1>ToStringBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.builder;
+
+import java.util.Objects;
+
+import org.apache.commons.lang3.ObjectUtils;
+
+/**
+ * Assists in implementing {@link Object#toString()} methods.
+ *
+ * &lt;p&gt;This class enables a good and consistent {@code toString()} to be built for any
+ * class or object. This class aims to simplify the process by:&lt;/p&gt;
+ * &lt;ul&gt;
+ *  &lt;li&gt;allowing field names&lt;/li&gt;
+ *  &lt;li&gt;handling all types consistently&lt;/li&gt;
+ *  &lt;li&gt;handling nulls consistently&lt;/li&gt;
+ *  &lt;li&gt;outputting arrays and multi-dimensional arrays&lt;/li&gt;
+ *  &lt;li&gt;enabling the detail level to be controlled for Objects and Collections&lt;/li&gt;
+ *  &lt;li&gt;handling class hierarchies&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;To use this class write code as follows:&lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * public class Person {
+ *   String name;
+ *   int age;
+ *   boolean smoker;
+ *
+ *   ...
+ *
+ *   public String toString() {
+ *     return new ToStringBuilder(this).
+ *       append(&quot;name&quot;, name).
+ *       append(&quot;age&quot;, age).
+ *       append(&quot;smoker&quot;, smoker).
+ *       toString();
+ *   }
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;This will produce a toString of the format:
+ * {@code Person@7f54[name=Stephen,age=29,smoker=false]}&lt;/p&gt;
+ *
+ * &lt;p&gt;To add the superclass {@code toString}, use {@link #appendSuper}.
+ * To append the {@code toString} from an object that is delegated
+ * to (or any other object), use {@link #appendToString}.&lt;/p&gt;
+ *
+ * &lt;p&gt;Alternatively, there is a method that uses reflection to determine
+ * the fields to test. Because these fields are usually private, the method,
+ * {@code reflectionToString}, uses {@code AccessibleObject.setAccessible} to
+ * change the visibility of the fields. This will fail under a security manager,
+ * unless the appropriate permissions are set up correctly. It is also
+ * slower than testing explicitly.&lt;/p&gt;
+ *
+ * &lt;p&gt;A typical invocation for this method would look like:&lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * public String toString() {
+ *   return ToStringBuilder.reflectionToString(this);
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;You can also use the builder to debug 3rd party objects:&lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * System.out.println(&quot;An object: &quot; + ToStringBuilder.reflectionToString(anObject));
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;The exact format of the {@code toString} is determined by
+ * the {@link ToStringStyle} passed into the constructor.&lt;/p&gt;
+ *
+ * @since 1.0
+ */
+public class ToStringBuilder implements Builder&lt;String&gt; {
+
+    /**
+     * The default style of output to use, not null.
+     */
+<span class="fc" id="L95">    private static volatile ToStringStyle defaultStyle = ToStringStyle.DEFAULT_STYLE;</span>
+
+    /**
+     * Gets the default {@link ToStringStyle} to use.
+     *
+     * &lt;p&gt;This method gets a singleton default value, typically for the whole JVM.
+     * Changing this default should generally only be done during application startup.
+     * It is recommended to pass a {@link ToStringStyle} to the constructor instead
+     * of using this global default.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method can be used from multiple threads.
+     * Internally, a {@code volatile} variable is used to provide the guarantee
+     * that the latest value set using {@link #setDefaultStyle} is the value returned.
+     * It is strongly recommended that the default style is only changed during application startup.&lt;/p&gt;
+     *
+     * &lt;p&gt;One reason for changing the default could be to have a verbose style during
+     * development and a compact style in production.&lt;/p&gt;
+     *
+     * @return the default {@link ToStringStyle}, never null
+     */
+    public static ToStringStyle getDefaultStyle() {
+<span class="fc" id="L116">        return defaultStyle;</span>
+    }
+
+    /**
+     * Uses {@link ReflectionToStringBuilder} to generate a
+     * {@code toString} for the specified object.
+     *
+     * @param object  the Object to be output
+     * @return the String result
+     * @see ReflectionToStringBuilder#toString(Object)
+     */
+    public static String reflectionToString(final Object object) {
+<span class="fc" id="L128">        return ReflectionToStringBuilder.toString(object);</span>
+    }
+
+    /**
+     * Uses {@link ReflectionToStringBuilder} to generate a
+     * {@code toString} for the specified object.
+     *
+     * @param object  the Object to be output
+     * @param style  the style of the {@code toString} to create, may be {@code null}
+     * @return the String result
+     * @see ReflectionToStringBuilder#toString(Object,ToStringStyle)
+     */
+    public static String reflectionToString(final Object object, final ToStringStyle style) {
+<span class="fc" id="L141">        return ReflectionToStringBuilder.toString(object, style);</span>
+    }
+
+    /**
+     * Uses {@link ReflectionToStringBuilder} to generate a
+     * {@code toString} for the specified object.
+     *
+     * @param object  the Object to be output
+     * @param style  the style of the {@code toString} to create, may be {@code null}
+     * @param outputTransients  whether to include transient fields
+     * @return the String result
+     * @see ReflectionToStringBuilder#toString(Object,ToStringStyle,boolean)
+     */
+    public static String reflectionToString(final Object object, final ToStringStyle style, final boolean outputTransients) {
+<span class="fc" id="L155">        return ReflectionToStringBuilder.toString(object, style, outputTransients, false, null);</span>
+    }
+
+    /**
+     * Uses {@link ReflectionToStringBuilder} to generate a
+     * {@code toString} for the specified object.
+     *
+     * @param &lt;T&gt; the type of the object
+     * @param object  the Object to be output
+     * @param style  the style of the {@code toString} to create, may be {@code null}
+     * @param outputTransients  whether to include transient fields
+     * @param reflectUpToClass  the superclass to reflect up to (inclusive), may be {@code null}
+     * @return the String result
+     * @see ReflectionToStringBuilder#toString(Object,ToStringStyle,boolean,boolean,Class)
+     * @since 2.0
+     */
+    public static &lt;T&gt; String reflectionToString(
+        final T object,
+        final ToStringStyle style,
+        final boolean outputTransients,
+        final Class&lt;? super T&gt; reflectUpToClass) {
+<span class="fc" id="L176">        return ReflectionToStringBuilder.toString(object, style, outputTransients, false, reflectUpToClass);</span>
+    }
+
+    /**
+     * Sets the default {@link ToStringStyle} to use.
+     *
+     * &lt;p&gt;This method sets a singleton default value, typically for the whole JVM.
+     * Changing this default should generally only be done during application startup.
+     * It is recommended to pass a {@link ToStringStyle} to the constructor instead
+     * of changing this global default.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method is not intended for use from multiple threads.
+     * Internally, a {@code volatile} variable is used to provide the guarantee
+     * that the latest value set is the value returned from {@link #getDefaultStyle}.&lt;/p&gt;
+     *
+     * @param style  the default {@link ToStringStyle}
+     * @throws NullPointerException if the style is {@code null}
+     */
+    public static void setDefaultStyle(final ToStringStyle style) {
+<span class="fc" id="L195">        defaultStyle = Objects.requireNonNull(style, &quot;style&quot;);</span>
+<span class="fc" id="L196">    }</span>
+
+    /**
+     * Current toString buffer, not null.
+     */
+    private final StringBuffer buffer;
+    /**
+     * The object being output, may be null.
+     */
+    private final Object object;
+    /**
+     * The style of output to use, not null.
+     */
+    private final ToStringStyle style;
+
+    /**
+     * Constructs a builder for the specified object using the default output style.
+     *
+     * &lt;p&gt;This default style is obtained from {@link #getDefaultStyle()}.&lt;/p&gt;
+     *
+     * @param object  the Object to build a {@code toString} for, not recommended to be null
+     */
+    public ToStringBuilder(final Object object) {
+<span class="fc" id="L219">        this(object, null, null);</span>
+<span class="fc" id="L220">    }</span>
+
+    /**
+     * Constructs a builder for the specified object using the defined output style.
+     *
+     * &lt;p&gt;If the style is {@code null}, the default style is used.&lt;/p&gt;
+     *
+     * @param object  the Object to build a {@code toString} for, not recommended to be null
+     * @param style  the style of the {@code toString} to create, null uses the default style
+     */
+    public ToStringBuilder(final Object object, final ToStringStyle style) {
+<span class="fc" id="L231">        this(object, style, null);</span>
+<span class="fc" id="L232">    }</span>
+
+    /**
+     * Constructs a builder for the specified object.
+     *
+     * &lt;p&gt;If the style is {@code null}, the default style is used.&lt;/p&gt;
+     *
+     * &lt;p&gt;If the buffer is {@code null}, a new one is created.&lt;/p&gt;
+     *
+     * @param object  the Object to build a {@code toString} for, not recommended to be null
+     * @param style  the style of the {@code toString} to create, null uses the default style
+     * @param buffer  the {@link StringBuffer} to populate, may be null
+     */
+<span class="fc" id="L245">    public ToStringBuilder(final Object object, ToStringStyle style, StringBuffer buffer) {</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        if (style == null) {</span>
+<span class="fc" id="L247">            style = getDefaultStyle();</span>
+        }
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (buffer == null) {</span>
+<span class="fc" id="L250">            buffer = new StringBuffer(512);</span>
+        }
+<span class="fc" id="L252">        this.buffer = buffer;</span>
+<span class="fc" id="L253">        this.style = style;</span>
+<span class="fc" id="L254">        this.object = object;</span>
+
+<span class="fc" id="L256">        style.appendStart(buffer, object);</span>
+<span class="fc" id="L257">    }</span>
+
+    /**
+     * Append to the {@code toString} a {@code boolean}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final boolean value) {
+<span class="fc" id="L267">        style.append(buffer, null, value);</span>
+<span class="fc" id="L268">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code boolean}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final boolean[] array) {
+<span class="fc" id="L279">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L280">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code byte}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final byte value) {
+<span class="fc" id="L291">        style.append(buffer, null, value);</span>
+<span class="fc" id="L292">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code byte}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final byte[] array) {
+<span class="fc" id="L303">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L304">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code char}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final char value) {
+<span class="fc" id="L315">        style.append(buffer, null, value);</span>
+<span class="fc" id="L316">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code char}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final char[] array) {
+<span class="fc" id="L327">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L328">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code double}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final double value) {
+<span class="fc" id="L339">        style.append(buffer, null, value);</span>
+<span class="fc" id="L340">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code double}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final double[] array) {
+<span class="fc" id="L351">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L352">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code float}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final float value) {
+<span class="fc" id="L363">        style.append(buffer, null, value);</span>
+<span class="fc" id="L364">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code float}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final float[] array) {
+<span class="fc" id="L375">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L376">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code int}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final int value) {
+<span class="fc" id="L387">        style.append(buffer, null, value);</span>
+<span class="fc" id="L388">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code int}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final int[] array) {
+<span class="fc" id="L399">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L400">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code long}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final long value) {
+<span class="fc" id="L411">        style.append(buffer, null, value);</span>
+<span class="fc" id="L412">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code long}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final long[] array) {
+<span class="fc" id="L423">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L424">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@link Object}
+     * value.
+     *
+     * @param obj  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final Object obj) {
+<span class="fc" id="L435">        style.append(buffer, null, obj, null);</span>
+<span class="fc" id="L436">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@link Object}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final Object[] array) {
+<span class="fc" id="L447">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L448">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code short}
+     * value.
+     *
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final short value) {
+<span class="fc" id="L459">        style.append(buffer, null, value);</span>
+<span class="fc" id="L460">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code short}
+     * array.
+     *
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final short[] array) {
+<span class="fc" id="L471">        style.append(buffer, null, array, null);</span>
+<span class="fc" id="L472">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code boolean}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final boolean value) {
+<span class="fc" id="L484">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L485">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code boolean}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code hashCode}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final boolean[] array) {
+<span class="fc" id="L497">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L498">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code boolean}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final boolean[] array, final boolean fullDetail) {
+<span class="fc" id="L517">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L518">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code byte}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final byte value) {
+<span class="fc" id="L530">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L531">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code byte} array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final byte[] array) {
+<span class="fc" id="L542">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L543">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code byte}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final byte[] array, final boolean fullDetail) {
+<span class="fc" id="L562">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L563">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code char}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final char value) {
+<span class="fc" id="L575">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L576">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code char}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final char[] array) {
+<span class="fc" id="L588">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L589">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code char}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final char[] array, final boolean fullDetail) {
+<span class="fc" id="L608">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L609">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code double}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final double value) {
+<span class="fc" id="L621">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L622">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code double}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final double[] array) {
+<span class="fc" id="L634">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L635">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code double}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final double[] array, final boolean fullDetail) {
+<span class="fc" id="L654">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L655">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code float}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final float value) {
+<span class="fc" id="L667">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L668">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code float}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final float[] array) {
+<span class="fc" id="L680">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L681">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code float}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final float[] array, final boolean fullDetail) {
+<span class="fc" id="L700">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L701">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code int}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final int value) {
+<span class="fc" id="L713">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L714">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code int}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final int[] array) {
+<span class="fc" id="L726">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L727">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code int}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final int[] array, final boolean fullDetail) {
+<span class="fc" id="L746">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L747">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code long}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final long value) {
+<span class="fc" id="L759">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L760">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code long}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final long[] array) {
+<span class="fc" id="L772">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L773">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code long}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final long[] array, final boolean fullDetail) {
+<span class="fc" id="L792">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L793">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@link Object}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param obj  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final Object obj) {
+<span class="fc" id="L805">        style.append(buffer, fieldName, obj, null);</span>
+<span class="fc" id="L806">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@link Object}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param obj  the value to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail,
+     *  {@code false} for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final Object obj, final boolean fullDetail) {
+<span class="fc" id="L820">        style.append(buffer, fieldName, obj, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L821">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@link Object}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final Object[] array) {
+<span class="fc" id="L833">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L834">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@link Object}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.&lt;/p&gt;
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final Object[] array, final boolean fullDetail) {
+<span class="fc" id="L853">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L854">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} an {@code short}
+     * value.
+     *
+     * @param fieldName  the field name
+     * @param value  the value to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final short value) {
+<span class="fc" id="L866">        style.append(buffer, fieldName, value);</span>
+<span class="fc" id="L867">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code short}
+     * array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final short[] array) {
+<span class="fc" id="L879">        style.append(buffer, fieldName, array, null);</span>
+<span class="fc" id="L880">        return this;</span>
+    }
+
+    /**
+     * Append to the {@code toString} a {@code short}
+     * array.
+     *
+     * &lt;p&gt;A boolean parameter controls the level of detail to show.
+     * Setting {@code true} will output the array in full. Setting
+     * {@code false} will output a summary, typically the size of
+     * the array.
+     *
+     * @param fieldName  the field name
+     * @param array  the array to add to the {@code toString}
+     * @param fullDetail  {@code true} for detail, {@code false}
+     *  for summary info
+     * @return {@code this} instance.
+     */
+    public ToStringBuilder append(final String fieldName, final short[] array, final boolean fullDetail) {
+<span class="fc" id="L899">        style.append(buffer, fieldName, array, Boolean.valueOf(fullDetail));</span>
+<span class="fc" id="L900">        return this;</span>
+    }
+
+    /**
+     * Appends with the same format as the default {@code Object toString()
+     * } method. Appends the class name followed by
+     * {@link System#identityHashCode(Object)}.
+     *
+     * @param srcObject  the {@link Object} whose class name and id to output
+     * @return {@code this} instance.
+     * @throws NullPointerException if {@code srcObject} is {@code null}
+     * @since 2.0
+     */
+    public ToStringBuilder appendAsObjectToString(final Object srcObject) {
+<span class="fc" id="L914">        ObjectUtils.identityToString(this.getStringBuffer(), srcObject);</span>
+<span class="fc" id="L915">        return this;</span>
+    }
+
+    /**
+     * Append the {@code toString} from the superclass.
+     *
+     * &lt;p&gt;This method assumes that the superclass uses the same {@link ToStringStyle}
+     * as this one.&lt;/p&gt;
+     *
+     * &lt;p&gt;If {@code superToString} is {@code null}, no change is made.&lt;/p&gt;
+     *
+     * @param superToString  the result of {@code super.toString()}
+     * @return {@code this} instance.
+     * @since 2.0
+     */
+    public ToStringBuilder appendSuper(final String superToString) {
+<span class="fc bfc" id="L931" title="All 2 branches covered.">        if (superToString != null) {</span>
+<span class="fc" id="L932">            style.appendSuper(buffer, superToString);</span>
+        }
+<span class="fc" id="L934">        return this;</span>
+    }
+
+    /**
+     * Append the {@code toString} from another object.
+     *
+     * &lt;p&gt;This method is useful where a class delegates most of the implementation of
+     * its properties to another class. You can then call {@code toString()} on
+     * the other class and pass the result into this method.&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     *   private AnotherObject delegate;
+     *   private String fieldInThisClass;
+     *
+     *   public String toString() {
+     *     return new ToStringBuilder(this).
+     *       appendToString(delegate.toString()).
+     *       append(fieldInThisClass).
+     *       toString();
+     *   }&lt;/pre&gt;
+     *
+     * &lt;p&gt;This method assumes that the other object uses the same {@link ToStringStyle}
+     * as this one.&lt;/p&gt;
+     *
+     * &lt;p&gt;If the {@code toString} is {@code null}, no change is made.&lt;/p&gt;
+     *
+     * @param toString  the result of {@code toString()} on another object
+     * @return {@code this} instance.
+     * @since 2.0
+     */
+    public ToStringBuilder appendToString(final String toString) {
+<span class="fc bfc" id="L965" title="All 2 branches covered.">        if (toString != null) {</span>
+<span class="fc" id="L966">            style.appendToString(buffer, toString);</span>
+        }
+<span class="fc" id="L968">        return this;</span>
+    }
+
+    /**
+     * Returns the String that was build as an object representation. The
+     * default implementation utilizes the {@link #toString()} implementation.
+     *
+     * @return the String {@code toString}
+     *
+     * @see #toString()
+     *
+     * @since 3.0
+     */
+    @Override
+    public String build() {
+<span class="fc" id="L983">        return toString();</span>
+    }
+
+    /**
+     * Returns the {@link Object} being output.
+     *
+     * @return The object being output.
+     * @since 2.0
+     */
+    public Object getObject() {
+<span class="fc" id="L993">        return object;</span>
+    }
+
+    /**
+     * Gets the {@link StringBuffer} being populated.
+     *
+     * @return the {@link StringBuffer} being populated
+     */
+    public StringBuffer getStringBuffer() {
+<span class="fc" id="L1002">        return buffer;</span>
+    }
+
+    /**
+     * Gets the {@link ToStringStyle} being used.
+     *
+     * @return the {@link ToStringStyle} being used
+     * @since 2.0
+     */
+    public ToStringStyle getStyle() {
+<span class="fc" id="L1012">        return style;</span>
+    }
+
+    /**
+     * Returns the built {@code toString}.
+     *
+     * &lt;p&gt;This method appends the end of data indicator, and can only be called once.
+     * Use {@link #getStringBuffer} to get the current string state.&lt;/p&gt;
+     *
+     * &lt;p&gt;If the object is {@code null}, return the style's {@code nullText}&lt;/p&gt;
+     *
+     * @return the String {@code toString}
+     */
+    @Override
+    public String toString() {
+<span class="fc bfc" id="L1027" title="All 2 branches covered.">        if (this.getObject() == null) {</span>
+<span class="fc" id="L1028">            this.getStringBuffer().append(this.getStyle().getNullText());</span>
+        } else {
+<span class="fc" id="L1030">            style.appendEnd(this.getStringBuffer(), this.getObject());</span>
+        }
+<span class="fc" id="L1032">        return this.getStringBuffer().toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

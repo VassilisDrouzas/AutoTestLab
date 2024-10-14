@@ -1,0 +1,530 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompositeSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.set</a> &gt; <span class="el_source">CompositeSet.java</span></div><h1>CompositeSet.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.set;
+
+import java.io.Serializable;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
+
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.iterators.EmptyIterator;
+import org.apache.commons.collections4.iterators.IteratorChain;
+import org.apache.commons.collections4.list.UnmodifiableList;
+
+/**
+ * Decorates a set of other sets to provide a single unified view.
+ * &lt;p&gt;
+ * Changes made to this set will actually be made on the decorated set.
+ * Add operations require the use of a pluggable strategy.
+ * If no strategy is provided then add is unsupported.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * From version 4.0, this class does not extend
+ * {@link org.apache.commons.collections4.collection.CompositeCollection CompositeCollection}
+ * anymore due to its input restrictions (only accepts Sets).
+ * See &lt;a href=&quot;https://issues.apache.org/jira/browse/COLLECTIONS-424&quot;&gt;COLLECTIONS-424&lt;/a&gt;
+ * for more details.
+ * &lt;/p&gt;
+ *
+ * @param &lt;E&gt; the type of the elements in this set
+ * @since 3.0
+ */
+public class CompositeSet&lt;E&gt; implements Set&lt;E&gt;, Serializable {
+
+    /**
+     * Defines callbacks for mutation operations.
+     */
+    public interface SetMutator&lt;E&gt; extends Serializable {
+
+        /**
+         * Called when an object is to be added to the composite.
+         *
+         * @param composite  the CompositeSet being changed
+         * @param sets  all of the Set instances in this CompositeSet
+         * @param obj  the object being added
+         * @return true if the collection is changed
+         * @throws UnsupportedOperationException if add is unsupported
+         * @throws ClassCastException if the object cannot be added due to its type
+         * @throws NullPointerException if the object cannot be added because its null
+         * @throws IllegalArgumentException if the object cannot be added
+         */
+        boolean add(CompositeSet&lt;E&gt; composite, List&lt;Set&lt;E&gt;&gt; sets, E obj);
+
+        /**
+         * Called when a collection is to be added to the composite.
+         *
+         * @param composite  the CompositeSet being changed
+         * @param sets  all of the Set instances in this CompositeSet
+         * @param coll  the collection being added
+         * @return true if the collection is changed
+         * @throws UnsupportedOperationException if add is unsupported
+         * @throws ClassCastException if the object cannot be added due to its type
+         * @throws NullPointerException if the object cannot be added because its null
+         * @throws IllegalArgumentException if the object cannot be added
+         */
+        boolean addAll(CompositeSet&lt;E&gt; composite,
+                              List&lt;Set&lt;E&gt;&gt; sets,
+                              Collection&lt;? extends E&gt; coll);
+
+        /**
+         * Called when a Set is added to the CompositeSet and there is a
+         * collision between existing and added sets.
+         * &lt;p&gt;
+         * If {@code added} and {@code existing} still have any intersects
+         * after this method returns an IllegalArgumentException will be thrown.
+         *
+         * @param comp  the CompositeSet being modified
+         * @param existing  the Set already existing in the composite
+         * @param added  the Set being added to the composite
+         * @param intersects  the intersection of the existing and added sets
+         */
+        void resolveCollision(CompositeSet&lt;E&gt; comp,
+                                     Set&lt;E&gt; existing,
+                                     Set&lt;E&gt; added,
+                                     Collection&lt;E&gt; intersects);
+    }
+
+    /** Serialization version */
+    private static final long serialVersionUID = 5185069727540378940L;
+
+    /** SetMutator to handle changes to the collection */
+    private SetMutator&lt;E&gt; mutator;
+
+    /** Sets in the composite */
+<span class="fc" id="L115">    private final List&lt;Set&lt;E&gt;&gt; all = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Creates an empty CompositeSet.
+     */
+<span class="fc" id="L120">    public CompositeSet() {</span>
+<span class="fc" id="L121">    }</span>
+
+    /**
+     * Creates a CompositeSet with just {@code set} composited.
+     *
+     * @param set  the initial set in the composite
+     */
+<span class="fc" id="L128">    public CompositeSet(final Set&lt;E&gt; set) {</span>
+<span class="fc" id="L129">        addComposited(set);</span>
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * Creates a composite set with sets as the initial set of composited Sets.
+     *
+     * @param sets  the initial sets in the composite
+     */
+<span class="fc" id="L137">    public CompositeSet(final Set&lt;E&gt;... sets) {</span>
+<span class="fc" id="L138">        addComposited(sets);</span>
+<span class="fc" id="L139">    }</span>
+
+    /**
+     * Adds an object to the collection, throwing UnsupportedOperationException
+     * unless a SetMutator strategy is specified.
+     *
+     * @param obj  the object to add
+     * @return {@code true} if the collection was modified
+     * @throws UnsupportedOperationException if SetMutator hasn't been set or add is unsupported
+     * @throws ClassCastException if the object cannot be added due to its type
+     * @throws NullPointerException if the object cannot be added because its null
+     * @throws IllegalArgumentException if the object cannot be added
+     */
+    @Override
+    public boolean add(final E obj) {
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (mutator == null) {</span>
+<span class="nc" id="L155">            throw new UnsupportedOperationException(</span>
+                &quot;add() is not supported on CompositeSet without a SetMutator strategy&quot;);
+        }
+<span class="fc" id="L158">        return mutator.add(this, all, obj);</span>
+    }
+
+    /**
+     * Adds a collection of elements to this composite, throwing
+     * UnsupportedOperationException unless a SetMutator strategy is specified.
+     *
+     * @param coll  the collection to add
+     * @return true if the composite was modified
+     * @throws UnsupportedOperationException if SetMutator hasn't been set or add is unsupported
+     * @throws ClassCastException if the object cannot be added due to its type
+     * @throws NullPointerException if the object cannot be added because its null
+     * @throws IllegalArgumentException if the object cannot be added
+     */
+    @Override
+    public boolean addAll(final Collection&lt;? extends E&gt; coll) {
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">        if (mutator == null) {</span>
+<span class="nc" id="L175">            throw new UnsupportedOperationException(</span>
+                &quot;addAll() is not supported on CompositeSet without a SetMutator strategy&quot;);
+        }
+<span class="fc" id="L178">        return mutator.addAll(this, all, coll);</span>
+    }
+
+    /**
+     * Adds a Set to this composite.
+     *
+     * @param set  the set to add
+     * @throws IllegalArgumentException if a SetMutator is set, but fails to resolve a collision
+     * @throws UnsupportedOperationException if there is no SetMutator set
+     * @throws NullPointerException if {@code set} is null
+     * @see SetMutator
+     */
+    public synchronized void addComposited(final Set&lt;E&gt; set) {
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (set != null) {</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">            for (final Set&lt;E&gt; existingSet : getSets()) {</span>
+<span class="fc" id="L193">                final Collection&lt;E&gt; intersects = CollectionUtils.intersection(existingSet, set);</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                if (!intersects.isEmpty()) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                    if (this.mutator == null) {</span>
+<span class="fc" id="L196">                        throw new UnsupportedOperationException(</span>
+                                &quot;Collision adding composited set with no SetMutator set&quot;);
+                    }
+<span class="fc" id="L199">                    getMutator().resolveCollision(this, existingSet, set, intersects);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                    if (!CollectionUtils.intersection(existingSet, set).isEmpty()) {</span>
+<span class="fc" id="L201">                        throw new IllegalArgumentException(</span>
+                                &quot;Attempt to add illegal entry unresolved by SetMutator.resolveCollision()&quot;);
+                    }
+                }
+<span class="fc" id="L205">            }</span>
+<span class="fc" id="L206">            all.add(set);</span>
+        }
+<span class="fc" id="L208">    }</span>
+
+    /**
+     * Adds these Sets to the list of sets in this composite
+     *
+     * @param sets  the Sets to be appended to the composite
+     */
+    public void addComposited(final Set&lt;E&gt;... sets) {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (sets != null) {</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">            for (final Set&lt;E&gt; set : sets) {</span>
+<span class="fc" id="L218">                addComposited(set);</span>
+            }
+        }
+<span class="fc" id="L221">    }</span>
+
+    /**
+     * Adds these Sets to the list of sets in this composite.
+     *
+     * @param set1  the first Set to be appended to the composite
+     * @param set2  the second Set to be appended to the composite
+     */
+    public void addComposited(final Set&lt;E&gt; set1, final Set&lt;E&gt; set2) {
+<span class="fc" id="L230">        addComposited(set1);</span>
+<span class="fc" id="L231">        addComposited(set2);</span>
+<span class="fc" id="L232">    }</span>
+
+    /**
+     * Removes all of the elements from this composite set.
+     * &lt;p&gt;
+     * This implementation calls {@code clear()} on each set.
+     *
+     * @throws UnsupportedOperationException if clear is unsupported
+     */
+    @Override
+    public void clear() {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        for (final Collection&lt;E&gt; coll : all) {</span>
+<span class="fc" id="L244">            coll.clear();</span>
+<span class="fc" id="L245">        }</span>
+<span class="fc" id="L246">    }</span>
+
+    /**
+     * Checks whether this composite set contains the object.
+     * &lt;p&gt;
+     * This implementation calls {@code contains()} on each set.
+     *
+     * @param obj  the object to search for
+     * @return true if obj is contained in any of the contained sets
+     */
+    @Override
+    public boolean contains(final Object obj) {
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        for (final Set&lt;E&gt; item : all) {</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            if (item.contains(obj)) {</span>
+<span class="fc" id="L260">                return true;</span>
+            }
+<span class="fc" id="L262">        }</span>
+<span class="fc" id="L263">        return false;</span>
+    }
+
+    /**
+     * Checks whether this composite contains all the elements in the specified collection.
+     * &lt;p&gt;
+     * This implementation calls {@code contains()} for each element in the
+     * specified collection.
+     *
+     * @param coll  the collection to check for
+     * @return true if all elements contained
+     */
+    @Override
+    public boolean containsAll(final Collection&lt;?&gt; coll) {
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        if (coll == null) {</span>
+<span class="fc" id="L278">            return false;</span>
+        }
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        for (final Object item : coll) {</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">            if (!contains(item)) {</span>
+<span class="fc" id="L282">                return false;</span>
+            }
+<span class="fc" id="L284">        }</span>
+<span class="fc" id="L285">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * @see java.util.Set#equals
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (obj instanceof Set) {</span>
+<span class="fc" id="L295">            final Set&lt;?&gt; set = (Set&lt;?&gt;) obj;</span>
+<span class="pc bpc" id="L296" title="1 of 4 branches missed.">            return set.size() == this.size() &amp;&amp; set.containsAll(this);</span>
+        }
+<span class="fc" id="L298">        return false;</span>
+    }
+
+    /**
+     * Gets the set mutator to be used for this CompositeSet.
+     * @return the set mutator
+     */
+    protected SetMutator&lt;E&gt; getMutator() {
+<span class="fc" id="L306">        return mutator;</span>
+    }
+
+    /**
+     * Gets the sets being decorated.
+     *
+     * @return Unmodifiable list of all sets in this composite.
+     */
+    public List&lt;Set&lt;E&gt;&gt; getSets() {
+<span class="fc" id="L315">        return UnmodifiableList.unmodifiableList(all);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * @see java.util.Set#hashCode
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L324">        int code = 0;</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        for (final E e : this) {</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            code += e == null ? 0 : e.hashCode();</span>
+<span class="fc" id="L327">        }</span>
+<span class="fc" id="L328">        return code;</span>
+    }
+
+    /**
+     * Checks whether this composite set is empty.
+     * &lt;p&gt;
+     * This implementation calls {@code isEmpty()} on each set.
+     *
+     * @return true if all of the contained sets are empty
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="fc bfc" id="L340" title="All 2 branches covered.">        for (final Set&lt;E&gt; item : all) {</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (!item.isEmpty()) {</span>
+<span class="fc" id="L342">                return false;</span>
+            }
+<span class="fc" id="L344">        }</span>
+<span class="fc" id="L345">        return true;</span>
+    }
+
+    /**
+     * Gets an iterator over all the sets in this composite.
+     * &lt;p&gt;
+     * This implementation uses an {@code IteratorChain}.
+     *
+     * @return an {@code IteratorChain} instance which supports
+     *  {@code remove()}. Iteration occurs over contained collections in
+     *  the order they were added, but this behavior should not be relied upon.
+     * @see IteratorChain
+     */
+    @Override
+    public Iterator&lt;E&gt; iterator() {
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">        if (all.isEmpty()) {</span>
+<span class="nc" id="L361">            return EmptyIterator.&lt;E&gt;emptyIterator();</span>
+        }
+<span class="fc" id="L363">        final IteratorChain&lt;E&gt; chain = new IteratorChain&lt;&gt;();</span>
+<span class="fc" id="L364">        all.forEach(item -&gt; chain.addIterator(item.iterator()));</span>
+<span class="fc" id="L365">        return chain;</span>
+    }
+
+    /**
+     * If a {@code CollectionMutator} is defined for this CompositeSet then this
+     * method will be called anyway.
+     *
+     * @param obj  object to be removed
+     * @return true if the object is removed, false otherwise
+     */
+    @Override
+    public boolean remove(final Object obj) {
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        for (final Set&lt;E&gt; set : getSets()) {</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">            if (set.contains(obj)) {</span>
+<span class="fc" id="L379">                return set.remove(obj);</span>
+            }
+<span class="fc" id="L381">        }</span>
+<span class="fc" id="L382">        return false;</span>
+    }
+
+    /**
+     * Removes the elements in the specified collection from this composite set.
+     * &lt;p&gt;
+     * This implementation calls {@code removeAll} on each collection.
+     *
+     * @param coll  the collection to remove
+     * @return true if the composite was modified
+     * @throws UnsupportedOperationException if removeAll is unsupported
+     */
+    @Override
+    public boolean removeAll(final Collection&lt;?&gt; coll) {
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (CollectionUtils.isEmpty(coll)) {</span>
+<span class="fc" id="L397">            return false;</span>
+        }
+<span class="fc" id="L399">        boolean changed = false;</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L401">            changed |= item.removeAll(coll);</span>
+<span class="fc" id="L402">        }</span>
+<span class="fc" id="L403">        return changed;</span>
+    }
+
+    /**
+     * Removes a set from those being decorated in this composite.
+     *
+     * @param set  set to be removed
+     */
+    public void removeComposited(final Set&lt;E&gt; set) {
+<span class="nc" id="L412">        all.remove(set);</span>
+<span class="nc" id="L413">    }</span>
+
+    /**
+     * @since 4.4
+     */
+    @Override
+    public boolean removeIf(final Predicate&lt;? super E&gt; filter) {
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">        if (Objects.isNull(filter)) {</span>
+<span class="nc" id="L421">            return false;</span>
+        }
+<span class="fc" id="L423">        boolean changed = false;</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L425">            changed |= item.removeIf(filter);</span>
+<span class="fc" id="L426">        }</span>
+<span class="fc" id="L427">        return changed;</span>
+    }
+
+    /**
+     * Retains all the elements in the specified collection in this composite set,
+     * removing all others.
+     * &lt;p&gt;
+     * This implementation calls {@code retainAll()} on each collection.
+     *
+     * @param coll  the collection to remove
+     * @return true if the composite was modified
+     * @throws UnsupportedOperationException if retainAll is unsupported
+     */
+    @Override
+    public boolean retainAll(final Collection&lt;?&gt; coll) {
+<span class="fc" id="L442">        boolean changed = false;</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L444">            changed |= item.retainAll(coll);</span>
+<span class="fc" id="L445">        }</span>
+<span class="fc" id="L446">        return changed;</span>
+    }
+
+    /**
+     * Specify a SetMutator strategy instance to handle changes.
+     *
+     * @param mutator  the mutator to use
+     */
+    public void setMutator(final SetMutator&lt;E&gt; mutator) {
+<span class="fc" id="L455">        this.mutator = mutator;</span>
+<span class="fc" id="L456">    }</span>
+
+    /**
+     * Gets the size of this composite set.
+     * &lt;p&gt;
+     * This implementation calls {@code size()} on each set.
+     *
+     * @return total number of elements in all contained containers
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L467">        int size = 0;</span>
+<span class="fc bfc" id="L468" title="All 2 branches covered.">        for (final Set&lt;E&gt; item : all) {</span>
+<span class="fc" id="L469">            size += item.size();</span>
+<span class="fc" id="L470">        }</span>
+<span class="fc" id="L471">        return size;</span>
+    }
+
+    /**
+     * Returns an array containing all of the elements in this composite.
+     *
+     * @return an object array of all the elements in the collection
+     */
+    @Override
+    public Object[] toArray() {
+<span class="fc" id="L481">        final Object[] result = new Object[size()];</span>
+<span class="fc" id="L482">        int i = 0;</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">        for (final Iterator&lt;E&gt; it = iterator(); it.hasNext(); i++) {</span>
+<span class="fc" id="L484">            result[i] = it.next();</span>
+        }
+<span class="fc" id="L486">        return result;</span>
+    }
+
+    /**
+     * Returns an object array, populating the supplied array if possible.
+     * See {@code Collection} interface for full details.
+     *
+     * @param &lt;T&gt;  the type of the elements in the collection
+     * @param array  the array to use, populating if possible
+     * @return an array of all the elements in the collection
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T&gt; T[] toArray(final T[] array) {
+<span class="fc" id="L500">        final int size = size();</span>
+<span class="fc" id="L501">        Object[] result = null;</span>
+<span class="fc bfc" id="L502" title="All 2 branches covered.">        if (array.length &gt;= size) {</span>
+<span class="fc" id="L503">            result = array;</span>
+        } else {
+<span class="fc" id="L505">            result = (Object[]) Array.newInstance(array.getClass().getComponentType(), size);</span>
+        }
+
+<span class="fc" id="L508">        int offset = 0;</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">            for (final E e : item) {</span>
+<span class="fc" id="L511">                result[offset++] = e;</span>
+<span class="fc" id="L512">            }</span>
+<span class="fc" id="L513">        }</span>
+<span class="fc bfc" id="L514" title="All 2 branches covered.">        if (result.length &gt; size) {</span>
+<span class="fc" id="L515">            result[size] = null;</span>
+        }
+<span class="fc" id="L517">        return (T[]) result;</span>
+    }
+
+    /**
+     * Returns a new Set containing all of the elements.
+     *
+     * @return A new HashSet containing all of the elements in this composite.
+     *   The new collection is &lt;i&gt;not&lt;/i&gt; backed by this composite.
+     */
+    public Set&lt;E&gt; toSet() {
+<span class="nc" id="L527">        return new HashSet&lt;&gt;(this);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

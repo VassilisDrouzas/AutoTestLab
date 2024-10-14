@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseEventSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.event</a> &gt; <span class="el_source">BaseEventSource.java</span></div><h1>BaseEventSource.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.event;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * &lt;p&gt;
+ * A base class for objects that can generate configuration events.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class implements functionality for managing a set of event listeners that can be notified when an event occurs.
+ * It can be extended by configuration classes that support the event mechanism. In this case these classes only need to
+ * call the {@code fireEvent()} method when an event is to be delivered to the registered listeners.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Adding and removing event listeners can happen concurrently to manipulations on a configuration that cause events.
+ * The operations are synchronized.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * With the {@code detailEvents} property the number of detail events can be controlled. Some methods in configuration
+ * classes are implemented in a way that they call other methods that can generate their own events. One example is the
+ * {@code setProperty()} method that can be implemented as a combination of {@code clearProperty()} and
+ * {@code addProperty()}. With {@code detailEvents} set to &lt;b&gt;true&lt;/b&gt;, all involved methods will generate events (i.e.
+ * listeners will receive property set events, property clear events, and property add events). If this mode is turned
+ * off (which is the default), detail events are suppressed, so only property set events will be received. Note that the
+ * number of received detail events may differ for different configuration implementations.
+ * {@link org.apache.commons.configuration2.BaseHierarchicalConfiguration BaseHierarchicalConfiguration} for instance
+ * has a custom implementation of {@code setProperty()}, which does not generate any detail events.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * In addition to &amp;quot;normal&amp;quot; events, error events are supported. Such events signal an internal problem that
+ * occurred during access of properties. They are handled via the regular {@link EventListener} interface, but there are
+ * special event types defined by {@link ConfigurationErrorEvent}. The {@code fireError()} method can be used by derived
+ * classes to send notifications about errors to registered observers.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ */
+public class BaseEventSource implements EventSource {
+    /** The list for managing registered event listeners. */
+    private EventListenerList eventListeners;
+
+    /** A lock object for guarding access to the detail events counter. */
+<span class="fc" id="L62">    private final Object lockDetailEventsCount = new Object();</span>
+
+    /** A counter for the detail events. */
+    private int detailEvents;
+
+    /**
+     * Creates a new instance of {@code BaseEventSource}.
+     */
+<span class="fc" id="L70">    public BaseEventSource() {</span>
+<span class="fc" id="L71">        initListeners();</span>
+<span class="fc" id="L72">    }</span>
+
+    @Override
+    public &lt;T extends Event&gt; void addEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="fc" id="L76">        eventListeners.addEventListener(eventType, listener);</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Helper method for checking the current counter for detail events. This method checks whether the counter is greater
+     * than the passed in limit.
+     *
+     * @param limit the limit to be compared to
+     * @return &lt;b&gt;true&lt;/b&gt; if the counter is greater than the limit, &lt;b&gt;false&lt;/b&gt; otherwise
+     */
+    private boolean checkDetailEvents(final int limit) {
+<span class="fc" id="L87">        synchronized (lockDetailEventsCount) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            return detailEvents &gt; limit;</span>
+        }
+    }
+
+    /**
+     * Removes all registered error listeners.
+     *
+     * @since 1.4
+     */
+    public void clearErrorListeners() {
+<span class="fc" id="L98">        eventListeners.getRegistrationsForSuperType(ConfigurationErrorEvent.ANY).forEach(eventListeners::removeEventListener);</span>
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * Removes all registered event listeners.
+     */
+    public void clearEventListeners() {
+<span class="fc" id="L105">        eventListeners.clear();</span>
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * Overrides the {@code clone()} method to correctly handle so far registered event listeners. This implementation
+     * ensures that the clone will have empty event listener lists, i.e. the listeners registered at an
+     * {@code BaseEventSource} object will not be copied.
+     *
+     * @return the cloned object
+     * @throws CloneNotSupportedException if cloning is not allowed
+     * @since 1.4
+     */
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L119">        final BaseEventSource copy = (BaseEventSource) super.clone();</span>
+<span class="fc" id="L120">        copy.initListeners();</span>
+<span class="fc" id="L121">        return copy;</span>
+    }
+
+    /**
+     * Copies all event listener registrations maintained by this object to the specified {@code BaseEventSource} object.
+     *
+     * @param source the target source for the copy operation (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if the target source is &lt;b&gt;null&lt;/b&gt;
+     * @since 2.0
+     */
+    public void copyEventListeners(final BaseEventSource source) {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (source == null) {</span>
+<span class="fc" id="L133">            throw new IllegalArgumentException(&quot;Target event source must not be null!&quot;);</span>
+        }
+<span class="fc" id="L135">        source.eventListeners.addAll(eventListeners);</span>
+<span class="fc" id="L136">    }</span>
+
+    /**
+     * Creates a {@code ConfigurationErrorEvent} object based on the passed in parameters. This is called by
+     * {@code fireError()} if it decides that an event needs to be generated.
+     *
+     * @param type the event's type
+     * @param opType the operation type related to this error
+     * @param propName the name of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param propValue the value of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param ex the {@code Throwable} object that caused this error event
+     * @return the event object
+     */
+    protected ConfigurationErrorEvent createErrorEvent(final EventType&lt;? extends ConfigurationErrorEvent&gt; type, final EventType&lt;?&gt; opType,
+        final String propName, final Object propValue, final Throwable ex) {
+<span class="fc" id="L151">        return new ConfigurationErrorEvent(this, type, opType, propName, propValue, ex);</span>
+    }
+
+    /**
+     * Creates a {@code ConfigurationEvent} object based on the passed in parameters. This method is called by
+     * {@code fireEvent()} if it decides that an event needs to be generated.
+     *
+     * @param type the event's type
+     * @param propName the name of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param propValue the value of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param before the before update flag
+     * @param &lt;T&gt; the type of the event to be created
+     * @return the newly created event object
+     */
+    protected &lt;T extends ConfigurationEvent&gt; ConfigurationEvent createEvent(final EventType&lt;T&gt; type, final String propName, final Object propValue,
+        final boolean before) {
+<span class="fc" id="L167">        return new ConfigurationEvent(this, type, propName, propValue, before);</span>
+    }
+
+    /**
+     * Creates an error event object and delivers it to all registered error listeners of a matching type.
+     *
+     * @param eventType the event's type
+     * @param operationType the type of the failed operation
+     * @param propertyName the name of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param propertyValue the value of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param cause the {@code Throwable} object that caused this error event
+     * @param &lt;T&gt; the event type
+     */
+    public &lt;T extends ConfigurationErrorEvent&gt; void fireError(final EventType&lt;T&gt; eventType, final EventType&lt;?&gt; operationType, final String propertyName,
+        final Object propertyValue, final Throwable cause) {
+<span class="fc" id="L182">        final EventListenerList.EventListenerIterator&lt;T&gt; iterator = eventListeners.getEventListenerIterator(eventType);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (iterator.hasNext()) {</span>
+<span class="fc" id="L184">            final ConfigurationErrorEvent event = createErrorEvent(eventType, operationType, propertyName, propertyValue, cause);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            while (iterator.hasNext()) {</span>
+<span class="fc" id="L186">                iterator.invokeNext(event);</span>
+            }
+        }
+<span class="fc" id="L189">    }</span>
+
+    /**
+     * Creates an event object and delivers it to all registered event listeners. The method checks first if sending an
+     * event is allowed (making use of the {@code detailEvents} property), and if listeners are registered.
+     *
+     * @param type the event's type
+     * @param propName the name of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param propValue the value of the affected property (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param before the before update flag
+     * @param &lt;T&gt; the type of the event to be fired
+     */
+    protected &lt;T extends ConfigurationEvent&gt; void fireEvent(final EventType&lt;T&gt; type, final String propName, final Object propValue, final boolean before) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (checkDetailEvents(-1)) {</span>
+<span class="fc" id="L203">            final EventListenerList.EventListenerIterator&lt;T&gt; it = eventListeners.getEventListenerIterator(type);</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            if (it.hasNext()) {</span>
+<span class="fc" id="L205">                final ConfigurationEvent event = createEvent(type, propName, propValue, before);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                while (it.hasNext()) {</span>
+<span class="fc" id="L207">                    it.invokeNext(event);</span>
+                }
+            }
+        }
+<span class="fc" id="L211">    }</span>
+
+    /**
+     * Gets a list with all {@code EventListenerRegistrationData} objects currently contained for this event source. This
+     * method allows access to all registered event listeners, independent on their type.
+     *
+     * @return a list with information about all registered event listeners
+     */
+    public List&lt;EventListenerRegistrationData&lt;?&gt;&gt; getEventListenerRegistrations() {
+<span class="fc" id="L220">        return eventListeners.getRegistrations();</span>
+    }
+
+    /**
+     * Gets a collection with all event listeners of the specified event type that are currently registered at this
+     * object.
+     *
+     * @param eventType the event type object
+     * @param &lt;T&gt; the event type
+     * @return a collection with the event listeners of the specified event type (this collection is a snapshot of the
+     *         currently registered listeners; it cannot be manipulated)
+     */
+    public &lt;T extends Event&gt; Collection&lt;EventListener&lt;? super T&gt;&gt; getEventListeners(final EventType&lt;T&gt; eventType) {
+<span class="fc" id="L233">        final List&lt;EventListener&lt;? super T&gt;&gt; result = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L234">        eventListeners.getEventListeners(eventType).forEach(result::add);</span>
+<span class="fc" id="L235">        return Collections.unmodifiableCollection(result);</span>
+    }
+
+    /**
+     * Initializes the collections for storing registered event listeners.
+     */
+    private void initListeners() {
+<span class="fc" id="L242">        eventListeners = new EventListenerList();</span>
+<span class="fc" id="L243">    }</span>
+
+    /**
+     * Returns a flag whether detail events are enabled.
+     *
+     * @return a flag if detail events are generated
+     */
+    public boolean isDetailEvents() {
+<span class="fc" id="L251">        return checkDetailEvents(0);</span>
+    }
+
+    @Override
+    public &lt;T extends Event&gt; boolean removeEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="fc" id="L256">        return eventListeners.removeEventListener(eventType, listener);</span>
+    }
+
+    /**
+     * Determines whether detail events should be generated. If enabled, some methods can generate multiple update events.
+     * Note that this method records the number of calls, i.e. if for instance {@code setDetailEvents(false)} was called
+     * three times, you will have to invoke the method as often to enable the details.
+     *
+     * @param enable a flag if detail events should be enabled or disabled
+     */
+    public void setDetailEvents(final boolean enable) {
+<span class="fc" id="L267">        synchronized (lockDetailEventsCount) {</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            if (enable) {</span>
+<span class="fc" id="L269">                detailEvents++;</span>
+            } else {
+<span class="fc" id="L271">                detailEvents--;</span>
+            }
+<span class="fc" id="L273">        }</span>
+<span class="fc" id="L274">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

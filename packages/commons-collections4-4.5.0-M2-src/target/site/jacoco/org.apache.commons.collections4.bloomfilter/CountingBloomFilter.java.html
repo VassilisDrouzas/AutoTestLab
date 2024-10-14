@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CountingBloomFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">CountingBloomFilter.java</span></div><h1>CountingBloomFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Objects;
+
+/**
+ * The interface that describes a Bloom filter that associates a count with each
+ * bit index rather than a bit.  This allows reversal of merge operations with
+ * remove operations.
+ *
+ * &lt;p&gt;A counting Bloom filter is expected to function identically to a standard
+ * Bloom filter that is the merge of all the Bloom filters that have been added
+ * to and not later subtracted from the counting Bloom filter. The functional
+ * state of a CountingBloomFilter at the start and end of a series of merge and
+ * subsequent remove operations of the same Bloom filters, irrespective of
+ * remove order, is expected to be the same.&lt;/p&gt;
+ *
+ * &lt;p&gt;Removal of a filter that has not previously been merged results in an
+ * invalid state where the cells no longer represent a sum of merged Bloom
+ * filters. It is impossible to validate merge and remove exactly without
+ * explicitly storing all filters. Consequently such an operation may go
+ * undetected. The CountingBloomFilter maintains a state flag that is used as a
+ * warning that an operation was performed that resulted in invalid cells and
+ * thus an invalid state. For example this may occur if a cell for an index was
+ * set to negative following a remove operation.&lt;/p&gt;
+ *
+ * &lt;p&gt;Implementations should document the expected state of the filter after an
+ * operation that generates invalid cells, and any potential recovery options.
+ * An implementation may support a reversal of the operation to restore the
+ * state to that prior to the operation. In the event that invalid cells are
+ * adjusted to a valid range then it should be documented if there has been
+ * irreversible information loss.&lt;/p&gt;
+ *
+ * &lt;p&gt;Implementations may choose to throw an exception during an operation that
+ * generates invalid cells. Implementations should document the expected state
+ * of the filter after such an operation. For example are the cells not updated,
+ * partially updated or updated entirely before the exception is raised.&lt;/p&gt;
+ *
+ * @see CellExtractor
+ * @since 4.5
+ */
+public interface CountingBloomFilter extends BloomFilter, CellExtractor {
+
+    // Query Operations
+
+    /**
+     * Adds the specified CellExtractor to this Bloom filter.
+     *
+     * &lt;p&gt;Specifically
+     * all cells for the indexes identified by the {@code other} will be incremented
+     * by their corresponding values in the {@code other}.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param other the CellExtractor to add.
+     * @return {@code true} if the addition was successful and the state is valid
+     * @see #isValid()
+     * @see #subtract(CellExtractor)
+     */
+    boolean add(CellExtractor other);
+
+    /**
+     * Creates a new instance of the CountingBloomFilter with the same properties as the current one.
+     * @return a copy of this CountingBloomFilter
+     */
+    @Override
+    CountingBloomFilter copy();
+
+    /**
+     * Returns the maximum allowable value for a cell count in this Counting filter.
+     * @return the maximum allowable value for a cell count in this Counting filter.
+     */
+    int getMaxCell();
+
+    /**
+     * Determines the maximum number of times the BitMapExtractor could have been merged into this
+     * counting filter.
+     * @param bitMapExtractor the BitMapExtractor to provide the indices.
+     * @return the maximum number of times the BitMapExtractor could have been inserted.
+     */
+    default int getMaxInsert(final BitMapExtractor bitMapExtractor) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!contains(bitMapExtractor)) {</span>
+<span class="fc" id="L98">            return 0;</span>
+        }
+<span class="fc" id="L100">        final long[] bitMaps = bitMapExtractor.asBitMapArray();</span>
+<span class="fc" id="L101">        final int[] max = { Integer.MAX_VALUE };</span>
+<span class="fc" id="L102">        processCells((x, y) -&gt; {</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if ((bitMaps[BitMaps.getLongIndex(x)] &amp; BitMaps.getLongBit(x)) != 0) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                max[0] = max[0] &lt;= y ? max[0] : y;</span>
+            }
+<span class="fc" id="L106">            return true;</span>
+        });
+<span class="fc" id="L108">        return max[0];</span>
+    }
+
+    /**
+     * Determines the maximum number of times the Bloom filter could have been merged
+     * into this counting filter.
+     * @param bloomFilter the Bloom filter the check for.
+     * @return the maximum number of times the Bloom filter could have been inserted.
+     */
+    default int getMaxInsert(final BloomFilter bloomFilter) {
+<span class="fc" id="L118">        return getMaxInsert((BitMapExtractor) bloomFilter);</span>
+    }
+
+    /**
+     * Determines the maximum number of times the Cell Extractor could have been added.
+     * @param cellExtractor the extractor of cells.
+     * @return the maximum number of times the CellExtractor could have been inserted.
+     */
+    int getMaxInsert(CellExtractor cellExtractor);
+
+    /**
+     * Determines the maximum number of times the Hasher could have been merged into this
+     * counting filter.
+     * @param hasher the Hasher to provide the indices.
+     * @return the maximum number of times the hasher could have been inserted.
+     */
+    default int getMaxInsert(final Hasher hasher) {
+<span class="fc" id="L135">        return getMaxInsert(hasher.indices(getShape()));</span>
+    }
+
+    // Modification Operations
+
+    /**
+     * Determines the maximum number of times the IndexExtractor could have been merged
+     * into this counting filter.
+     * &lt;p&gt;To determine how many times an indexExtractor could have been added create a CellExtractor
+     * from the indexExtractor and check that&lt;/p&gt;
+     * @param indexExtractor the extractor to drive the count check.
+     * @return the maximum number of times the IndexExtractor could have been inserted.
+     * @see #getMaxInsert(CellExtractor)
+     */
+    default int getMaxInsert(final IndexExtractor indexExtractor) {
+<span class="fc" id="L150">        return getMaxInsert(CellExtractor.from(indexExtractor.uniqueIndices()) );</span>
+    }
+
+    /**
+     * Returns {@code true} if the internal state is valid.
+     *
+     * &lt;p&gt;This flag is a warning that an addition or
+     * subtraction of cells from this filter resulted in an invalid cell for one or more
+     * indexes. For example this may occur if a cell for an index was
+     * set to negative following a subtraction operation, or overflows the value specified by {@code getMaxCell()} following an
+     * addition operation.&lt;/p&gt;
+     *
+     * &lt;p&gt;A counting Bloom filter that has an invalid state is no longer ensured to function
+     * identically to a standard Bloom filter instance that is the merge of all the Bloom filters
+     * that have been added to and not later subtracted from this counting Bloom filter.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: The change to an invalid state may or may not be reversible. Implementations
+     * are expected to document their policy on recovery from an addition or removal operation
+     * that generated an invalid state.&lt;/p&gt;
+     *
+     * @return {@code true} if the state is valid
+     */
+    boolean isValid();
+
+    /**
+     * Merges the specified BitMap extractor into this Bloom filter.
+     *
+     * &lt;p&gt;Specifically: all cells for the indexes identified by the {@code bitMapExtractor} will be incremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param bitMapExtractor the BitMapExtractor
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #add(CellExtractor)
+     */
+    @Override
+    default boolean merge(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L188">        return merge(IndexExtractor.fromBitMapExtractor(bitMapExtractor));</span>
+    }
+
+    /**
+     * Merges the specified Bloom filter into this Bloom filter.
+     *
+     * &lt;p&gt;Specifically: all cells for the indexes identified by the {@code other} filter will be incremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: If the other filter is a counting Bloom filter the other filter's cells are ignored and it is treated as an
+     * IndexExtractor.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param other the other Bloom filter
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #add(CellExtractor)
+     */
+    @Override
+    default boolean merge(final BloomFilter other) {
+<span class="fc" id="L208">        Objects.requireNonNull(other, &quot;other&quot;);</span>
+<span class="fc" id="L209">        return merge((IndexExtractor) other);</span>
+    }
+
+    /**
+     * Merges the specified Hasher into this Bloom filter.
+     *
+     * &lt;p&gt;Specifically: all cells for the unique indexes identified by the {@code hasher} will be incremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param hasher the hasher
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #add(CellExtractor)
+     */
+    @Override
+    default boolean merge(final Hasher hasher) {
+<span class="fc" id="L226">        Objects.requireNonNull(hasher, &quot;hasher&quot;);</span>
+<span class="fc" id="L227">        return merge(hasher.indices(getShape()));</span>
+    }
+
+    /**
+     * Merges the specified index extractor into this Bloom filter.
+     *
+     * &lt;p&gt;Specifically: all unique cells for the indices identified by the {@code indexExtractor} will be incremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * &lt;p&gt;Notes:&lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;If indices that are returned multiple times should be incremented multiple times convert the IndexExtractor
+     * to a CellExtractor and add that.&lt;/li&gt;
+     * &lt;li&gt;Implementations should throw {@code IllegalArgumentException} and no other exception on bad input.&lt;/li&gt;
+     * &lt;/ul&gt;
+     * @param indexExtractor the IndexExtractor
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #add(CellExtractor)
+     */
+    @Override
+    default boolean merge(final IndexExtractor indexExtractor) {
+<span class="fc" id="L250">        Objects.requireNonNull(indexExtractor, &quot;indexExtractor&quot;);</span>
+        try {
+<span class="fc" id="L252">            return add(CellExtractor.from(indexExtractor.uniqueIndices()));</span>
+<span class="fc" id="L253">        } catch (final IndexOutOfBoundsException e) {</span>
+<span class="fc" id="L254">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L255">                    String.format(&quot;Filter only accepts values in the [0,%d) range&quot;, getShape().getNumberOfBits()), e);</span>
+        }
+    }
+
+    /**
+     * Removes the specified BitMapExtractor from this Bloom filter.
+     *
+     * &lt;p&gt;Specifically all cells for the indices produced by the {@code bitMapExtractor} will be
+     * decremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param bitMapExtractor the BitMapExtractor to provide the indexes
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #subtract(CellExtractor)
+     */
+    default boolean remove(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L273">        return remove(IndexExtractor.fromBitMapExtractor(bitMapExtractor));</span>
+    }
+
+    /**
+     * Removes the specified Bloom filter from this Bloom filter.
+     *
+     * &lt;p&gt;Specifically: all cells for the indexes identified by the {@code other} filter will be decremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: If the other filter is a counting Bloom filter the other filter's cells are ignored and it is treated as an
+     * IndexExtractor.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param other the other Bloom filter
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #subtract(CellExtractor)
+     */
+    default boolean remove(final BloomFilter other) {
+<span class="fc" id="L292">        return remove((IndexExtractor) other);</span>
+    }
+
+    /**
+     * Removes the unique values from the specified hasher from this Bloom filter.
+     *
+     * &lt;p&gt;Specifically all cells for the unique indices produced by the {@code hasher} will be
+     * decremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param hasher the hasher to provide the indexes
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #subtract(CellExtractor)
+     */
+    default boolean remove(final Hasher hasher) {
+<span class="fc" id="L309">        Objects.requireNonNull(hasher, &quot;hasher&quot;);</span>
+<span class="fc" id="L310">        return remove(hasher.indices(getShape()));</span>
+    }
+
+    /**
+     * Removes the values from the specified IndexExtractor from the Bloom filter from this Bloom filter.
+     *
+     * &lt;p&gt;Specifically all cells for the unique indices produced by the {@code hasher} will be
+     * decremented by 1.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return {@code true} if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * &lt;p&gt;Note: If indices that are returned multiple times should be decremented multiple times convert the IndexExtractor
+     * to a CellExtractor and subtract that.&lt;/p&gt;
+     *
+     * @param indexExtractor the IndexExtractor to provide the indexes
+     * @return {@code true} if the removal was successful and the state is valid
+     * @see #isValid()
+     * @see #subtract(CellExtractor)
+     */
+    default boolean remove(final IndexExtractor indexExtractor) {
+<span class="fc" id="L330">        Objects.requireNonNull(indexExtractor, &quot;indexExtractor&quot;);</span>
+        try {
+<span class="fc" id="L332">            return subtract(CellExtractor.from(indexExtractor.uniqueIndices()));</span>
+<span class="fc" id="L333">        } catch (final IndexOutOfBoundsException e) {</span>
+<span class="fc" id="L334">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L335">                    String.format(&quot;Filter only accepts values in the [0,%d) range&quot;, getShape().getNumberOfBits()));</span>
+        }
+    }
+
+
+    /**
+     * Adds the specified CellExtractor to this Bloom filter.
+     *
+     * &lt;p&gt;Specifically
+     * all cells for the indexes identified by the {@code other} will be decremented
+     * by their corresponding values in the {@code other}.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method will return true if the filter is valid after the operation.&lt;/p&gt;
+     *
+     * @param other the CellExtractor to subtract.
+     * @return {@code true} if the subtraction was successful and the state is valid
+     * @see #isValid()
+     * @see #add(CellExtractor)
+     */
+    boolean subtract(CellExtractor other);
+
+    /**
+     * The default implementation is a no-op since the counting bloom filter returns an unique IndexExtractor by default.
+     * @return this counting Bloom filter.
+     */
+    @Override
+    default IndexExtractor uniqueIndices() {
+<span class="fc" id="L362">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

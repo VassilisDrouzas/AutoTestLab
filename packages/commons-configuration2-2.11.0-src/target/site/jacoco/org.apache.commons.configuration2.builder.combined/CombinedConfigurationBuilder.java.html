@@ -1,0 +1,1285 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CombinedConfigurationBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder.combined</a> &gt; <span class="el_source">CombinedConfigurationBuilder.java</span></div><h1>CombinedConfigurationBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder.combined;
+
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.CombinedConfiguration;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.configuration2.ConfigurationLookup;
+import org.apache.commons.configuration2.HierarchicalConfiguration;
+import org.apache.commons.configuration2.SystemConfiguration;
+import org.apache.commons.configuration2.XMLConfiguration;
+import org.apache.commons.configuration2.beanutils.BeanDeclaration;
+import org.apache.commons.configuration2.beanutils.BeanHelper;
+import org.apache.commons.configuration2.beanutils.CombinedBeanDeclaration;
+import org.apache.commons.configuration2.beanutils.XMLBeanDeclaration;
+import org.apache.commons.configuration2.builder.BasicBuilderParameters;
+import org.apache.commons.configuration2.builder.BasicConfigurationBuilder;
+import org.apache.commons.configuration2.builder.BuilderParameters;
+import org.apache.commons.configuration2.builder.ConfigurationBuilder;
+import org.apache.commons.configuration2.builder.ConfigurationBuilderEvent;
+import org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.FileBasedBuilderProperties;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.XMLBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.XMLBuilderProperties;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.interpol.ConfigurationInterpolator;
+import org.apache.commons.configuration2.interpol.Lookup;
+import org.apache.commons.configuration2.io.FileSystem;
+import org.apache.commons.configuration2.resolver.CatalogResolver;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngineSymbols;
+import org.apache.commons.configuration2.tree.OverrideCombiner;
+import org.apache.commons.configuration2.tree.UnionCombiner;
+import org.xml.sax.EntityResolver;
+
+/**
+ * &lt;p&gt;
+ * A specialized {@code ConfigurationBuilder} implementation that creates a {@link CombinedConfiguration} from multiple
+ * configuration sources defined by an XML-based &lt;em&gt;configuration definition file&lt;/em&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class provides an easy and flexible means for loading multiple configuration sources and combining the results
+ * into a single configuration object. The sources to be loaded are defined in an XML document that can contain certain
+ * tags representing the different supported configuration classes. If such a tag is found, a corresponding
+ * {@code ConfigurationBuilder} class is instantiated and initialized using the classes of the {@code beanutils} package
+ * (namely {@link org.apache.commons.configuration2.beanutils.XMLBeanDeclaration XMLBeanDeclaration} will be used to
+ * extract the configuration's initialization parameters, which allows for complex initialization scenarios).
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * It is also possible to add custom tags to the configuration definition file. For this purpose an implementation of
+ * {@link CombinedConfigurationBuilderProvider} has to be created which is responsible for the creation of a
+ * {@code ConfigurationBuilder} associated with the custom tag. An instance of this class has to be registered at the
+ * {@link CombinedBuilderParametersImpl} object which is used to initialize this {@code CombinedConfigurationBuilder}.
+ * This provider will then be called when the corresponding custom tag is detected. For many default configuration
+ * classes providers are already registered.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The configuration definition file has the following basic structure:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;configuration systemProperties=&quot;properties file name&quot;&amp;gt;
+ *   &amp;lt;header&amp;gt;
+ *     &amp;lt;!-- Optional meta information about the combined configuration --&amp;gt;
+ *   &amp;lt;/header&amp;gt;
+ *   &amp;lt;override&amp;gt;
+ *     &amp;lt;!-- Declarations for override configurations --&amp;gt;
+ *   &amp;lt;/override&amp;gt;
+ *   &amp;lt;additional&amp;gt;
+ *     &amp;lt;!-- Declarations for union configurations --&amp;gt;
+ *   &amp;lt;/additional&amp;gt;
+ * &amp;lt;/configuration&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * The name of the root element (here {@code configuration}) is arbitrary. The optional {@code systemProperties}
+ * attribute identifies the path to a property file containing properties that should be added to the system properties.
+ * If specified on the root element, the system properties are set before the rest of the configuration is processed.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are two sections (both of them are optional) for declaring &lt;em&gt;override&lt;/em&gt; and &lt;em&gt;additional&lt;/em&gt;
+ * configurations. Configurations in the former section are evaluated in the order of their declaration, and properties
+ * of configurations declared earlier hide those of configurations declared later. Configurations in the latter section
+ * are combined to a union configuration, i.e. all of their properties are added to a large hierarchical configuration.
+ * Configuration declarations that occur as direct children of the root element are treated as override declarations.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Each configuration declaration consists of a tag whose name is associated with a
+ * {@code CombinedConfigurationBuilderProvider}. This can be one of the predefined tags like {@code properties}, or
+ * {@code xml}, or a custom tag, for which a configuration builder provider was registered (as described above).
+ * Attributes and sub elements with specific initialization parameters can be added. There are some reserved attributes
+ * with a special meaning that can be used in every configuration declaration:
+ * &lt;/p&gt;
+ * &lt;table border=&quot;1&quot;&gt;
+ * &lt;caption&gt;Standard attributes for configuration declarations&lt;/caption&gt;
+ * &lt;tr&gt;
+ * &lt;th&gt;Attribute&lt;/th&gt;
+ * &lt;th&gt;Meaning&lt;/th&gt;
+ * &lt;/tr&gt;
+ * &lt;tr&gt;
+ * &lt;td&gt;{@code config-name}&lt;/td&gt;
+ * &lt;td&gt;Allows specifying a name for this configuration. This name can be used to obtain a reference to the configuration
+ * from the resulting combined configuration (see below). It can also be passed to the {@link #getNamedBuilder(String)}
+ * method.&lt;/td&gt;
+ * &lt;/tr&gt;
+ * &lt;tr&gt;
+ * &lt;td&gt;{@code config-at}&lt;/td&gt;
+ * &lt;td&gt;With this attribute an optional prefix can be specified for the properties of the corresponding
+ * configuration.&lt;/td&gt;
+ * &lt;/tr&gt;
+ * &lt;tr&gt;
+ * &lt;td&gt;{@code config-optional}&lt;/td&gt;
+ * &lt;td&gt;Declares a configuration source as optional. This means that errors that occur when creating the configuration
+ * are ignored.&lt;/td&gt;
+ * &lt;/tr&gt;
+ * &lt;tr&gt;
+ * &lt;td&gt;{@code config-reload}&lt;/td&gt;
+ * &lt;td&gt;Many configuration sources support a reloading mechanism. For those sources it is possible to enable reloading by
+ * providing this attribute with a value of &lt;strong&gt;true&lt;/strong&gt;.&lt;/td&gt;
+ * &lt;/tr&gt;
+ * &lt;/table&gt;
+ * &lt;p&gt;
+ * The optional &lt;em&gt;header&lt;/em&gt; section can contain some meta data about the created configuration itself. For instance,
+ * it is possible to set further properties of the {@code NodeCombiner} objects used for constructing the resulting
+ * configuration.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The default configuration object returned by this builder is an instance of the {@link CombinedConfiguration} class.
+ * This allows for convenient access to the configuration objects maintained by the combined configuration (e.g. for
+ * updates of single configuration objects). It has also the advantage that the properties stored in all declared
+ * configuration objects are collected and transformed into a single hierarchical structure, which can be accessed using
+ * different expression engines. The actual {@code CombinedConfiguration} implementation can be overridden by specifying
+ * the class in the &lt;em&gt;config-class&lt;/em&gt; attribute of the result element.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * A custom EntityResolver can be used for all XMLConfigurations by adding
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;entity-resolver config-class=&quot;EntityResolver fully qualified class name&quot;&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * A specific CatalogResolver can be specified for all XMLConfiguration sources by adding
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;entity-resolver catalogFiles=&quot;comma separated list of catalog files&quot;&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * Additional ConfigurationProviders can be added by configuring them in the &lt;em&gt;header&lt;/em&gt; section.
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;providers&amp;gt;
+ *   &amp;lt;provider config-tag=&quot;tag name&quot; config-class=&quot;provider fully qualified class name&quot;/&amp;gt;
+ * &amp;lt;/providers&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * Additional variable resolvers can be added by configuring them in the &lt;em&gt;header&lt;/em&gt; section.
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;lookups&amp;gt;
+ *   &amp;lt;lookup config-prefix=&quot;prefix&quot; config-class=&quot;StrLookup fully qualified class name&quot;/&amp;gt;
+ * &amp;lt;/lookups&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * All declared override configurations are directly added to the resulting combined configuration. If they are given
+ * names (using the {@code config-name} attribute), they can directly be accessed using the
+ * {@code getConfiguration(String)} method of {@code CombinedConfiguration}. The additional configurations are
+ * altogether added to another combined configuration, which uses a union combiner. Then this union configuration is
+ * added to the resulting combined configuration under the name defined by the {@code ADDITIONAL_NAME} constant. The
+ * {@link #getNamedBuilder(String)} method can be used to access the {@code ConfigurationBuilder} objects for all
+ * configuration sources which have been assigned a name; care has to be taken that these names are unique.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ */
+public class CombinedConfigurationBuilder extends BasicConfigurationBuilder&lt;CombinedConfiguration&gt; {
+    /**
+     * A data class for storing information about all configuration sources defined for a combined builder.
+     */
+    private final class ConfigurationSourceData {
+        /** A list with data for all builders for override configurations. */
+        private final List&lt;ConfigurationDeclaration&gt; overrideDeclarations;
+
+        /** A list with data for all builders for union configurations. */
+        private final List&lt;ConfigurationDeclaration&gt; unionDeclarations;
+
+        /** A list with the builders for override configurations. */
+        private final List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; overrideBuilders;
+
+        /** A list with the builders for union configurations. */
+        private final List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; unionBuilders;
+
+        /** A map for direct access to a builder by its name. */
+        private final Map&lt;String, ConfigurationBuilder&lt;? extends Configuration&gt;&gt; namedBuilders;
+
+        /** A collection with all child builders. */
+        private final Collection&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; allBuilders;
+
+        /** A listener for reacting on changes of sub builders. */
+        private final EventListener&lt;ConfigurationBuilderEvent&gt; changeListener;
+
+        /**
+         * Creates a new instance of {@code ConfigurationSourceData}.
+         */
+<span class="fc" id="L238">        public ConfigurationSourceData() {</span>
+<span class="fc" id="L239">            overrideDeclarations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L240">            unionDeclarations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L241">            overrideBuilders = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L242">            unionBuilders = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L243">            namedBuilders = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L244">            allBuilders = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L245">            changeListener = createBuilderChangeListener();</span>
+<span class="fc" id="L246">        }</span>
+
+        /**
+         * Creates a new configuration using the specified builder and adds it to the resulting combined configuration.
+         *
+         * @param ccResult the resulting combined configuration
+         * @param decl the current {@code ConfigurationDeclaration}
+         * @param builder the configuration builder
+         * @throws ConfigurationException if an error occurs
+         */
+        private void addChildConfiguration(final CombinedConfiguration ccResult, final ConfigurationDeclaration decl,
+            final ConfigurationBuilder&lt;? extends Configuration&gt; builder) throws ConfigurationException {
+            try {
+<span class="fc" id="L259">                ccResult.addConfiguration(builder.getConfiguration(), decl.getName(), decl.getAt());</span>
+<span class="fc" id="L260">            } catch (final ConfigurationException cex) {</span>
+                // ignore exceptions for optional configurations
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                if (!decl.isOptional()) {</span>
+<span class="fc" id="L263">                    throw cex;</span>
+                }
+<span class="fc" id="L265">            }</span>
+<span class="fc" id="L266">        }</span>
+
+        /**
+         * Returns a set with the names of all known named builders.
+         *
+         * @return the names of the available sub builders
+         */
+        public Set&lt;String&gt; builderNames() {
+<span class="fc" id="L274">            return namedBuilders.keySet();</span>
+        }
+
+        /**
+         * Frees resources used by this object and performs clean up. This method is called when the owning builder is reset.
+         */
+        public void cleanUp() {
+<span class="fc" id="L281">            getChildBuilders().forEach(b -&gt; b.removeEventListener(ConfigurationBuilderEvent.RESET, changeListener));</span>
+<span class="fc" id="L282">            namedBuilders.clear();</span>
+<span class="fc" id="L283">        }</span>
+
+        /**
+         * Processes the declaration of configuration builder providers, creates the corresponding builder if necessary, obtains
+         * configurations, and adds them to the specified result configuration.
+         *
+         * @param ccResult the result configuration.
+         * @param srcDecl the collection with the declarations of configuration sources to process.
+         * @param builders List of configuration builders.
+         * @return a list with configuration builders.
+         * @throws ConfigurationException if an error occurs.
+         */
+        public List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; createAndAddConfigurations(final CombinedConfiguration ccResult,
+            final List&lt;ConfigurationDeclaration&gt; srcDecl, final List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; builders) throws ConfigurationException {
+<span class="fc" id="L297">            final boolean createBuilders = builders.isEmpty();</span>
+            final List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; newBuilders;
+<span class="fc bfc" id="L299" title="All 2 branches covered.">            if (createBuilders) {</span>
+<span class="fc" id="L300">                newBuilders = new ArrayList&lt;&gt;(srcDecl.size());</span>
+            } else {
+<span class="fc" id="L302">                newBuilders = builders;</span>
+            }
+
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            for (int i = 0; i &lt; srcDecl.size(); i++) {</span>
+                final ConfigurationBuilder&lt;? extends Configuration&gt; b;
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                if (createBuilders) {</span>
+<span class="fc" id="L308">                    b = createConfigurationBuilder(srcDecl.get(i));</span>
+<span class="fc" id="L309">                    newBuilders.add(b);</span>
+                } else {
+<span class="fc" id="L311">                    b = builders.get(i);</span>
+                }
+<span class="fc" id="L313">                addChildConfiguration(ccResult, srcDecl.get(i), b);</span>
+            }
+
+<span class="fc" id="L316">            return newBuilders;</span>
+        }
+
+        /**
+         * Creates a listener for builder change events. This listener is registered at all builders for child configurations.
+         */
+        private EventListener&lt;ConfigurationBuilderEvent&gt; createBuilderChangeListener() {
+<span class="fc" id="L323">            return event -&gt; resetResult();</span>
+        }
+
+        /**
+         * Creates a configuration builder based on a source declaration in the definition configuration.
+         *
+         * @param decl the current {@code ConfigurationDeclaration}
+         * @return the newly created builder
+         * @throws ConfigurationException if an error occurs
+         */
+        private ConfigurationBuilder&lt;? extends Configuration&gt; createConfigurationBuilder(final ConfigurationDeclaration decl) throws ConfigurationException {
+<span class="fc" id="L334">            final ConfigurationBuilderProvider provider = providerForTag(decl.getConfiguration().getRootElementName());</span>
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">            if (provider == null) {</span>
+<span class="nc" id="L336">                throw new ConfigurationException(&quot;Unsupported configuration source: &quot; + decl.getConfiguration().getRootElementName());</span>
+            }
+
+<span class="fc" id="L339">            final ConfigurationBuilder&lt;? extends Configuration&gt; builder = provider.getConfigurationBuilder(decl);</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">            if (decl.getName() != null) {</span>
+<span class="fc" id="L341">                namedBuilders.put(decl.getName(), builder);</span>
+            }
+<span class="fc" id="L343">            allBuilders.add(builder);</span>
+<span class="fc" id="L344">            builder.addEventListener(ConfigurationBuilderEvent.RESET, changeListener);</span>
+<span class="fc" id="L345">            return builder;</span>
+        }
+
+        /**
+         * Finds the override configurations that are defined as top level elements in the configuration definition file. This
+         * method fetches the child elements of the root node and removes the nodes that represent other configuration sections.
+         * The remaining nodes are treated as definitions for override configurations.
+         *
+         * @param config the definition configuration
+         * @return a list with sub configurations for the top level override configurations
+         */
+        private List&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; fetchTopLevelOverrideConfigs(final HierarchicalConfiguration&lt;?&gt; config) {
+
+<span class="fc" id="L358">            final List&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; configs = config.childConfigurationsAt(null);</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            for (final Iterator&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; it = configs.iterator(); it.hasNext();) {</span>
+<span class="fc" id="L360">                final String nodeName = it.next().getRootElementName();</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">                for (final String element : CONFIG_SECTIONS) {</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                    if (element.equals(nodeName)) {</span>
+<span class="fc" id="L363">                        it.remove();</span>
+<span class="fc" id="L364">                        break;</span>
+                    }
+                }
+<span class="fc" id="L367">            }</span>
+<span class="fc" id="L368">            return configs;</span>
+        }
+
+        /**
+         * Gets a collection containing the builders for all child configuration sources.
+         *
+         * @return the child configuration builders
+         */
+        public Collection&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; getChildBuilders() {
+<span class="fc" id="L377">            return allBuilders;</span>
+        }
+
+        /**
+         * Gets the {@code ConfigurationBuilder} with the given name. If no such builder is defined in the definition
+         * configuration, result is &lt;b&gt;null&lt;/b&gt;.
+         *
+         * @param name the name of the builder in question
+         * @return the builder with this name or &lt;b&gt;null&lt;/b&gt;
+         */
+        public ConfigurationBuilder&lt;? extends Configuration&gt; getNamedBuilder(final String name) {
+<span class="fc" id="L388">            return namedBuilders.get(name);</span>
+        }
+
+        /**
+         * Gets a collection with all configuration source declarations defined in the override section.
+         *
+         * @return the override configuration builders
+         */
+        public List&lt;ConfigurationDeclaration&gt; getOverrideSources() {
+<span class="fc" id="L397">            return overrideDeclarations;</span>
+        }
+
+        /**
+         * Gets a collection with all configuration source declarations defined in the union section.
+         *
+         * @return the union configuration builders
+         */
+        public List&lt;ConfigurationDeclaration&gt; getUnionSources() {
+<span class="fc" id="L406">            return unionDeclarations;</span>
+        }
+
+        /**
+         * Initializes this object from the specified definition configuration.
+         *
+         * @param config the definition configuration
+         * @throws ConfigurationException if an error occurs
+         */
+        public void initFromDefinitionConfiguration(final HierarchicalConfiguration&lt;?&gt; config) throws ConfigurationException {
+<span class="fc" id="L416">            overrideDeclarations.addAll(createDeclarations(fetchTopLevelOverrideConfigs(config)));</span>
+<span class="fc" id="L417">            overrideDeclarations.addAll(createDeclarations(config.childConfigurationsAt(KEY_OVERRIDE)));</span>
+<span class="fc" id="L418">            unionDeclarations.addAll(createDeclarations(config.childConfigurationsAt(KEY_UNION)));</span>
+<span class="fc" id="L419">        }</span>
+    }
+
+    /**
+     * Constant for the name of the additional configuration. If the configuration definition file contains an
+     * {@code additional} section, a special union configuration is created and added under this name to the resulting
+     * combined configuration.
+     */
+<span class="fc" id="L427">    public static final String ADDITIONAL_NAME = CombinedConfigurationBuilder.class.getName() + &quot;/ADDITIONAL_CONFIG&quot;;</span>
+
+    /** Constant for the name of the configuration bean factory. */
+<span class="fc" id="L430">    static final String CONFIG_BEAN_FACTORY_NAME = CombinedConfigurationBuilder.class.getName() + &quot;.CONFIG_BEAN_FACTORY_NAME&quot;;</span>
+
+    /** Constant for the reserved name attribute. */
+    static final String ATTR_NAME = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + XMLBeanDeclaration.RESERVED_PREFIX + &quot;name&quot;
+        + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /** Constant for the name of the at attribute. */
+    static final String ATTR_ATNAME = &quot;at&quot;;
+
+    /** Constant for the reserved at attribute. */
+    static final String ATTR_AT_RES = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + XMLBeanDeclaration.RESERVED_PREFIX + ATTR_ATNAME
+        + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /** Constant for the at attribute without the reserved prefix. */
+    static final String ATTR_AT = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + ATTR_ATNAME + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /** Constant for the name of the optional attribute. */
+    static final String ATTR_OPTIONALNAME = &quot;optional&quot;;
+
+    /** Constant for the reserved optional attribute. */
+    static final String ATTR_OPTIONAL_RES = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + XMLBeanDeclaration.RESERVED_PREFIX + ATTR_OPTIONALNAME
+        + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /** Constant for the optional attribute without the reserved prefix. */
+    static final String ATTR_OPTIONAL = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + ATTR_OPTIONALNAME
+        + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /** Constant for the forceCreate attribute. */
+    static final String ATTR_FORCECREATE = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + XMLBeanDeclaration.RESERVED_PREFIX + &quot;forceCreate&quot;
+        + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /** Constant for the reload attribute. */
+    static final String ATTR_RELOAD = DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_START + XMLBeanDeclaration.RESERVED_PREFIX + &quot;reload&quot;
+        + DefaultExpressionEngineSymbols.DEFAULT_ATTRIBUTE_END;
+
+    /**
+     * Constant for the tag attribute for providers.
+     */
+    static final String KEY_SYSTEM_PROPS = &quot;[@systemProperties]&quot;;
+
+    /** Constant for the name of the header section. */
+    static final String SEC_HEADER = &quot;header&quot;;
+
+    /** Constant for an expression that selects the union configurations. */
+    static final String KEY_UNION = &quot;additional&quot;;
+
+    /** An array with the names of top level configuration sections. */
+<span class="fc" id="L477">    static final String[] CONFIG_SECTIONS = {&quot;additional&quot;, &quot;override&quot;, SEC_HEADER};</span>
+
+    /**
+     * Constant for an expression that selects override configurations in the override section.
+     */
+    static final String KEY_OVERRIDE = &quot;override&quot;;
+
+    /**
+     * Constant for the key that points to the list nodes definition of the override combiner.
+     */
+    static final String KEY_OVERRIDE_LIST = SEC_HEADER + &quot;.combiner.override.list-nodes.node&quot;;
+
+    /**
+     * Constant for the key that points to the list nodes definition of the additional combiner.
+     */
+    static final String KEY_ADDITIONAL_LIST = SEC_HEADER + &quot;.combiner.additional.list-nodes.node&quot;;
+
+    /**
+     * Constant for the key for defining providers in the configuration file.
+     */
+    static final String KEY_CONFIGURATION_PROVIDERS = SEC_HEADER + &quot;.providers.provider&quot;;
+
+    /**
+     * Constant for the tag attribute for providers.
+     */
+    static final String KEY_PROVIDER_KEY = XMLBeanDeclaration.ATTR_PREFIX + &quot;tag]&quot;;
+
+    /**
+     * Constant for the key for defining variable resolvers
+     */
+    static final String KEY_CONFIGURATION_LOOKUPS = SEC_HEADER + &quot;.lookups.lookup&quot;;
+
+    /**
+     * Constant for the key for defining entity resolvers
+     */
+    static final String KEY_ENTITY_RESOLVER = SEC_HEADER + &quot;.entity-resolver&quot;;
+
+    /**
+     * Constant for the prefix attribute for lookups.
+     */
+    static final String KEY_LOOKUP_KEY = XMLBeanDeclaration.ATTR_PREFIX + &quot;prefix]&quot;;
+
+    /**
+     * Constant for the FileSystem.
+     */
+    static final String FILE_SYSTEM = SEC_HEADER + &quot;.fileSystem&quot;;
+
+    /**
+     * Constant for the key of the result declaration. This key can point to a bean declaration, which defines properties of
+     * the resulting combined configuration.
+     */
+    static final String KEY_RESULT = SEC_HEADER + &quot;.result&quot;;
+
+    /** Constant for the key of the combiner in the result declaration. */
+    static final String KEY_COMBINER = KEY_RESULT + &quot;.nodeCombiner&quot;;
+
+    /** Constant for the XML file extension. */
+    static final String EXT_XML = &quot;xml&quot;;
+
+    /** Constant for the basic configuration builder class. */
+    private static final String BASIC_BUILDER = &quot;org.apache.commons.configuration2.builder.BasicConfigurationBuilder&quot;;
+
+    /** Constant for the file-based configuration builder class. */
+    private static final String FILE_BUILDER = &quot;org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder&quot;;
+
+    /** Constant for the reloading file-based configuration builder class. */
+    private static final String RELOADING_BUILDER = &quot;org.apache.commons.configuration2.builder.ReloadingFileBasedConfigurationBuilder&quot;;
+
+    /** Constant for the name of the file-based builder parameters class. */
+    private static final String FILE_PARAMS = &quot;org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl&quot;;
+
+    /** Constant for the provider for properties files. */
+<span class="fc" id="L549">    private static final ConfigurationBuilderProvider PROPERTIES_PROVIDER = new FileExtensionConfigurationBuilderProvider(FILE_BUILDER, RELOADING_BUILDER,</span>
+        &quot;org.apache.commons.configuration2.XMLPropertiesConfiguration&quot;, &quot;org.apache.commons.configuration2.PropertiesConfiguration&quot;, EXT_XML,
+<span class="fc" id="L551">        Collections.singletonList(FILE_PARAMS));</span>
+
+    /** Constant for the provider for XML files. */
+<span class="fc" id="L554">    private static final ConfigurationBuilderProvider XML_PROVIDER = new BaseConfigurationBuilderProvider(FILE_BUILDER, RELOADING_BUILDER,</span>
+<span class="fc" id="L555">        &quot;org.apache.commons.configuration2.XMLConfiguration&quot;, Collections.singletonList(&quot;org.apache.commons.configuration2.builder.XMLBuilderParametersImpl&quot;));</span>
+
+    /** Constant for the provider for JNDI sources. */
+<span class="fc" id="L558">    private static final BaseConfigurationBuilderProvider JNDI_PROVIDER = new BaseConfigurationBuilderProvider(BASIC_BUILDER, null,</span>
+        &quot;org.apache.commons.configuration2.JNDIConfiguration&quot;,
+<span class="fc" id="L560">        Collections.singletonList(&quot;org.apache.commons.configuration2.builder.JndiBuilderParametersImpl&quot;));</span>
+
+    /** Constant for the provider for system properties. */
+<span class="fc" id="L563">    private static final BaseConfigurationBuilderProvider SYSTEM_PROVIDER = new BaseConfigurationBuilderProvider(BASIC_BUILDER, null,</span>
+<span class="fc" id="L564">        &quot;org.apache.commons.configuration2.SystemConfiguration&quot;, Collections.singletonList(&quot;org.apache.commons.configuration2.builder.BasicBuilderParameters&quot;));</span>
+
+    /** Constant for the provider for ini files. */
+<span class="fc" id="L567">    private static final BaseConfigurationBuilderProvider INI_PROVIDER = new BaseConfigurationBuilderProvider(FILE_BUILDER, RELOADING_BUILDER,</span>
+<span class="fc" id="L568">        &quot;org.apache.commons.configuration2.INIConfiguration&quot;, Collections.singletonList(FILE_PARAMS));</span>
+
+    /** Constant for the provider for environment properties. */
+<span class="fc" id="L571">    private static final BaseConfigurationBuilderProvider ENV_PROVIDER = new BaseConfigurationBuilderProvider(BASIC_BUILDER, null,</span>
+        &quot;org.apache.commons.configuration2.EnvironmentConfiguration&quot;,
+<span class="fc" id="L573">        Collections.singletonList(&quot;org.apache.commons.configuration2.builder.BasicBuilderParameters&quot;));</span>
+
+    /** Constant for the provider for plist files. */
+<span class="fc" id="L576">    private static final BaseConfigurationBuilderProvider PLIST_PROVIDER = new FileExtensionConfigurationBuilderProvider(FILE_BUILDER, RELOADING_BUILDER,</span>
+        &quot;org.apache.commons.configuration2.plist.XMLPropertyListConfiguration&quot;, &quot;org.apache.commons.configuration2.plist.PropertyListConfiguration&quot;, EXT_XML,
+<span class="fc" id="L578">        Collections.singletonList(FILE_PARAMS));</span>
+
+    /** Constant for the provider for configuration definition files. */
+<span class="fc" id="L581">    private static final BaseConfigurationBuilderProvider COMBINED_PROVIDER = new CombinedConfigurationBuilderProvider();</span>
+
+    /** Constant for the provider for multiple XML configurations. */
+<span class="fc" id="L584">    private static final MultiFileConfigurationBuilderProvider MULTI_XML_PROVIDER = new MultiFileConfigurationBuilderProvider(</span>
+        &quot;org.apache.commons.configuration2.XMLConfiguration&quot;, &quot;org.apache.commons.configuration2.builder.XMLBuilderParametersImpl&quot;);
+
+    /** An array with the names of the default tags. */
+<span class="fc" id="L588">    private static final String[] DEFAULT_TAGS = {&quot;properties&quot;, &quot;xml&quot;, &quot;hierarchicalXml&quot;, &quot;plist&quot;, &quot;ini&quot;, &quot;system&quot;, &quot;env&quot;, &quot;jndi&quot;, &quot;configuration&quot;,</span>
+        &quot;multiFile&quot;};
+
+    /** An array with the providers for the default tags. */
+<span class="fc" id="L592">    private static final ConfigurationBuilderProvider[] DEFAULT_PROVIDERS = {PROPERTIES_PROVIDER, XML_PROVIDER, XML_PROVIDER, PLIST_PROVIDER, INI_PROVIDER,</span>
+        SYSTEM_PROVIDER, ENV_PROVIDER, JNDI_PROVIDER, COMBINED_PROVIDER, MULTI_XML_PROVIDER};
+
+    /** A map with the default configuration builder providers. */
+    private static final Map&lt;String, ConfigurationBuilderProvider&gt; DEFAULT_PROVIDERS_MAP;
+
+    static {
+<span class="fc" id="L599">        DEFAULT_PROVIDERS_MAP = createDefaultProviders();</span>
+<span class="fc" id="L600">    }</span>
+
+    /**
+     * Creates the map with the default configuration builder providers.
+     *
+     * @return the map with default providers
+     */
+    private static Map&lt;String, ConfigurationBuilderProvider&gt; createDefaultProviders() {
+<span class="fc" id="L608">        final Map&lt;String, ConfigurationBuilderProvider&gt; providers = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L609" title="All 2 branches covered.">        for (int i = 0; i &lt; DEFAULT_TAGS.length; i++) {</span>
+<span class="fc" id="L610">            providers.put(DEFAULT_TAGS[i], DEFAULT_PROVIDERS[i]);</span>
+        }
+<span class="fc" id="L612">        return providers;</span>
+    }
+
+    /**
+     * Initializes the list nodes of the node combiner for the given combined configuration. This information can be set in
+     * the header section of the configuration definition file for both the override and the union combiners.
+     *
+     * @param cc the combined configuration to initialize
+     * @param defConfig the definition configuration
+     * @param key the key for the list nodes
+     */
+    private static void initNodeCombinerListNodes(final CombinedConfiguration cc, final HierarchicalConfiguration&lt;?&gt; defConfig, final String key) {
+<span class="fc" id="L624">        defConfig.getList(key).forEach(listNode -&gt; cc.getNodeCombiner().addListNode((String) listNode));</span>
+<span class="fc" id="L625">    }</span>
+
+    /** The builder for the definition configuration. */
+    private ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; definitionBuilder;
+
+    /** Stores temporarily the configuration with the builder definitions. */
+    private HierarchicalConfiguration&lt;?&gt; definitionConfiguration;
+
+    /** The object with data about configuration sources. */
+    private ConfigurationSourceData sourceData;
+
+    /** Stores the current parameters object. */
+    private CombinedBuilderParametersImpl currentParameters;
+
+    /** The current XML parameters object. */
+    private XMLBuilderParametersImpl currentXMLParameters;
+
+    /** The configuration that is currently constructed. */
+    private CombinedConfiguration currentConfiguration;
+
+    /**
+     * A {@code ConfigurationInterpolator} to be used as parent for all child configurations to enable cross-source
+     * interpolation.
+     */
+    private ConfigurationInterpolator parentInterpolator;
+
+    /**
+     * Creates a new instance of {@code CombinedConfigurationBuilder}. No parameters are set.
+     */
+    public CombinedConfigurationBuilder() {
+<span class="fc" id="L655">        super(CombinedConfiguration.class);</span>
+<span class="fc" id="L656">    }</span>
+
+    /**
+     *
+     * Creates a new instance of {@code CombinedConfigurationBuilder} and sets the specified initialization parameters.
+     *
+     * @param params a map with initialization parameters
+     */
+    public CombinedConfigurationBuilder(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L665">        super(CombinedConfiguration.class, params);</span>
+<span class="fc" id="L666">    }</span>
+
+    /**
+     *
+     * Creates a new instance of {@code CombinedConfigurationBuilder} and sets the specified initialization parameters and
+     * the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag.
+     *
+     * @param params a map with initialization parameters
+     * @param allowFailOnInit the &lt;em&gt;allowFailOnInit&lt;/em&gt; flag
+     */
+    public CombinedConfigurationBuilder(final Map&lt;String, Object&gt; params, final boolean allowFailOnInit) {
+<span class="fc" id="L677">        super(CombinedConfiguration.class, params, allowFailOnInit);</span>
+<span class="fc" id="L678">    }</span>
+
+    /**
+     * Adds a listener at the given definition builder which resets this builder when a reset of the definition builder
+     * happens. This way it is ensured that this builder produces a new combined configuration when its definition
+     * configuration changes.
+     *
+     * @param defBuilder the definition builder
+     */
+    private void addDefinitionBuilderChangeListener(final ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; defBuilder) {
+<span class="fc" id="L688">        defBuilder.addEventListener(ConfigurationBuilderEvent.RESET, event -&gt; {</span>
+<span class="fc" id="L689">            synchronized (this) {</span>
+<span class="fc" id="L690">                reset();</span>
+<span class="fc" id="L691">                definitionBuilder = defBuilder;</span>
+<span class="fc" id="L692">            }</span>
+<span class="fc" id="L693">        });</span>
+<span class="fc" id="L694">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Returns a set with the names of all child configuration builders. A tag defining a configuration source in the
+     * configuration definition file can have the {@code config-name} attribute. If this attribute is present, the
+     * corresponding builder is assigned this name and can be directly accessed through the {@link #getNamedBuilder(String)}
+     * method. This method returns a collection with all available builder names.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * &lt;strong&gt;Important note:&lt;/strong&gt; This method only returns a meaningful result after the result configuration has been
+     * created by calling {@code getConfiguration()}. If called before, always an empty set is returned.
+     * &lt;/p&gt;
+     *
+     * @return a set with the names of all builders
+     */
+    public synchronized Set&lt;String&gt; builderNames() {
+<span class="fc bfc" id="L711" title="All 2 branches covered.">        if (sourceData == null) {</span>
+<span class="fc" id="L712">            return Collections.emptySet();</span>
+        }
+<span class="fc" id="L714">        return Collections.unmodifiableSet(sourceData.builderNames());</span>
+    }
+
+    /**
+     * {@inheritDoc} This method is overridden to adapt the return type.
+     */
+    @Override
+    public CombinedConfigurationBuilder configure(final BuilderParameters... params) {
+<span class="fc" id="L722">        super.configure(params);</span>
+<span class="fc" id="L723">        return this;</span>
+    }
+
+    /**
+     * Creates and initializes a default {@code EntityResolver} if the definition configuration contains a corresponding
+     * declaration.
+     *
+     * @param config the definition configuration
+     * @param xmlParams the (already partly initialized) object with XML parameters; here the new resolver is to be stored
+     * @throws ConfigurationException if an error occurs
+     */
+    protected void configureEntityResolver(final HierarchicalConfiguration&lt;?&gt; config, final XMLBuilderParametersImpl xmlParams) throws ConfigurationException {
+<span class="fc bfc" id="L735" title="All 2 branches covered.">        if (config.getMaxIndex(KEY_ENTITY_RESOLVER) == 0) {</span>
+<span class="fc" id="L736">            final XMLBeanDeclaration decl = new XMLBeanDeclaration(config, KEY_ENTITY_RESOLVER, true);</span>
+<span class="fc" id="L737">            final EntityResolver resolver = (EntityResolver) fetchBeanHelper().createBean(decl, CatalogResolver.class);</span>
+<span class="fc" id="L738">            final FileSystem fileSystem = xmlParams.getFileHandler().getFileSystem();</span>
+<span class="pc bpc" id="L739" title="1 of 2 branches missed.">            if (fileSystem != null) {</span>
+<span class="fc" id="L740">                BeanHelper.setProperty(resolver, &quot;fileSystem&quot;, fileSystem);</span>
+            }
+<span class="fc" id="L742">            final String basePath = xmlParams.getFileHandler().getBasePath();</span>
+<span class="pc bpc" id="L743" title="1 of 2 branches missed.">            if (basePath != null) {</span>
+<span class="fc" id="L744">                BeanHelper.setProperty(resolver, &quot;baseDir&quot;, basePath);</span>
+            }
+<span class="fc" id="L746">            final ConfigurationInterpolator ci = new ConfigurationInterpolator();</span>
+<span class="fc" id="L747">            ci.registerLookups(fetchPrefixLookups());</span>
+<span class="fc" id="L748">            BeanHelper.setProperty(resolver, &quot;interpolator&quot;, ci);</span>
+
+<span class="fc" id="L750">            xmlParams.setEntityResolver(resolver);</span>
+        }
+<span class="fc" id="L752">    }</span>
+
+    /**
+     * Creates the {@code CombinedConfiguration} for the configuration sources in the {@code &amp;lt;additional&amp;gt;} section.
+     * This method is called when the builder constructs the final configuration. It creates a new
+     * {@code CombinedConfiguration} and initializes some properties from the result configuration.
+     *
+     * @param resultConfig the result configuration (this is the configuration that will be returned by the builder)
+     * @return the {@code CombinedConfiguration} for the additional configuration sources
+     * @since 1.7
+     */
+    protected CombinedConfiguration createAdditionalsConfiguration(final CombinedConfiguration resultConfig) {
+<span class="fc" id="L764">        final CombinedConfiguration addConfig = new CombinedConfiguration(new UnionCombiner());</span>
+<span class="fc" id="L765">        addConfig.setListDelimiterHandler(resultConfig.getListDelimiterHandler());</span>
+<span class="fc" id="L766">        return addConfig;</span>
+    }
+
+    /**
+     * Creates {@code ConfigurationDeclaration} objects for the specified configurations.
+     *
+     * @param configs the list with configurations
+     * @return a collection with corresponding declarations
+     */
+    private Collection&lt;ConfigurationDeclaration&gt; createDeclarations(final Collection&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; configs) {
+<span class="fc" id="L776">        return configs.stream().map(c -&gt; new ConfigurationDeclaration(this, c)).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation evaluates the {@code result} property of the definition configuration. It creates a
+     * combined bean declaration with both the properties specified in the definition file and the properties defined as
+     * initialization parameters.
+     */
+    @Override
+    protected BeanDeclaration createResultDeclaration(final Map&lt;String, Object&gt; params) throws ConfigurationException {
+<span class="fc" id="L786">        final BeanDeclaration paramsDecl = super.createResultDeclaration(params);</span>
+<span class="fc" id="L787">        final XMLBeanDeclaration resultDecl = new XMLBeanDeclaration(getDefinitionConfiguration(), KEY_RESULT, true, CombinedConfiguration.class.getName());</span>
+<span class="fc" id="L788">        return new CombinedBeanDeclaration(resultDecl, paramsDecl);</span>
+    }
+
+    /**
+     * Creates the data object for configuration sources and the corresponding builders.
+     *
+     * @return the newly created data object
+     * @throws ConfigurationException if an error occurs
+     */
+    private ConfigurationSourceData createSourceData() throws ConfigurationException {
+<span class="fc" id="L798">        final ConfigurationSourceData result = new ConfigurationSourceData();</span>
+<span class="fc" id="L799">        result.initFromDefinitionConfiguration(getDefinitionConfiguration());</span>
+<span class="fc" id="L800">        return result;</span>
+    }
+
+    /**
+     * Creates a default builder for the definition configuration and initializes it with a parameters object. This method
+     * is called if no definition builder is defined in this builder's parameters. This implementation creates a default
+     * file-based builder which produces an {@code XMLConfiguration}; it expects a corresponding file specification. Note:
+     * This method is called in a synchronized block.
+     *
+     * @param builderParams the parameters object for the builder
+     * @return the standard builder for the definition configuration
+     */
+    protected ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; createXMLDefinitionBuilder(final BuilderParameters builderParams) {
+<span class="fc" id="L813">        return new FileBasedConfigurationBuilder&lt;&gt;(XMLConfiguration.class).configure(builderParams);</span>
+    }
+
+    /**
+     * Returns a map with the current prefix lookup objects. This map is obtained from the {@code ConfigurationInterpolator}
+     * of the configuration under construction.
+     *
+     * @return the map with current prefix lookups (may be &lt;b&gt;null&lt;/b&gt;)
+     */
+    private Map&lt;String, ? extends Lookup&gt; fetchPrefixLookups() {
+<span class="fc" id="L823">        final CombinedConfiguration cc = getConfigurationUnderConstruction();</span>
+<span class="fc bfc" id="L824" title="All 2 branches covered.">        return cc != null ? cc.getInterpolator().getLookups() : null;</span>
+    }
+
+    /**
+     * Gets the current base path of this configuration builder. This is used for instance by all file-based child
+     * configurations.
+     *
+     * @return the base path
+     */
+    private String getBasePath() {
+<span class="fc" id="L834">        return currentXMLParameters.getFileHandler().getBasePath();</span>
+    }
+
+    /**
+     * Gets a collection with the builders for all child configuration sources. This method can be used by derived
+     * classes providing additional functionality on top of the declared configuration sources. It only returns a defined
+     * value during construction of the result configuration instance.
+     *
+     * @return a collection with the builders for child configuration sources
+     */
+    protected synchronized Collection&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; getChildBuilders() {
+<span class="fc" id="L845">        return sourceData.getChildBuilders();</span>
+    }
+
+    /**
+     * Gets the configuration object that is currently constructed. This method can be called during construction of the
+     * result configuration. It is intended for internal usage, e.g. some specialized builder providers need access to this
+     * configuration to perform advanced initialization.
+     *
+     * @return the configuration that us currently under construction
+     */
+    CombinedConfiguration getConfigurationUnderConstruction() {
+<span class="fc" id="L856">        return currentConfiguration;</span>
+    }
+
+    /**
+     * Gets the {@code ConfigurationBuilder} which creates the definition configuration.
+     *
+     * @return the builder for the definition configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    public synchronized ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; getDefinitionBuilder() throws ConfigurationException {
+<span class="fc bfc" id="L866" title="All 2 branches covered.">        if (definitionBuilder == null) {</span>
+<span class="fc" id="L867">            definitionBuilder = setupDefinitionBuilder(getParameters());</span>
+<span class="fc" id="L868">            addDefinitionBuilderChangeListener(definitionBuilder);</span>
+        }
+<span class="fc" id="L870">        return definitionBuilder;</span>
+    }
+
+    /**
+     * Gets the configuration containing the definition of the combined configuration to be created. This method only
+     * returns a defined result during construction of the result configuration. The definition configuration is obtained
+     * from the definition builder at first access and then stored temporarily to ensure that during result construction
+     * always the same configuration instance is used. (Otherwise, it would be possible that the definition builder returns
+     * a different instance when queried multiple times.)
+     *
+     * @return the definition configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    protected HierarchicalConfiguration&lt;?&gt; getDefinitionConfiguration() throws ConfigurationException {
+<span class="fc bfc" id="L884" title="All 2 branches covered.">        if (definitionConfiguration == null) {</span>
+<span class="fc" id="L885">            definitionConfiguration = getDefinitionBuilder().getConfiguration();</span>
+        }
+<span class="fc" id="L887">        return definitionConfiguration;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Gets the configuration builder with the given name. With this method a builder of a child configuration which was
+     * given a name in the configuration definition file can be accessed directly.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * &lt;strong&gt;Important note:&lt;/strong&gt; This method only returns a meaningful result after the result configuration has been
+     * created by calling {@code getConfiguration()}. If called before, always an exception is thrown.
+     * &lt;/p&gt;
+     *
+     * @param name the name of the builder in question
+     * @return the child configuration builder with this name
+     * @throws ConfigurationException if information about named builders is not yet available or no builder with this name
+     *         exists
+     */
+    public synchronized ConfigurationBuilder&lt;? extends Configuration&gt; getNamedBuilder(final String name) throws ConfigurationException {
+<span class="fc bfc" id="L906" title="All 2 branches covered.">        if (sourceData == null) {</span>
+<span class="fc" id="L907">            throw new ConfigurationException(&quot;Information about child builders&quot; + &quot; has not been setup yet! Call getConfiguration() first.&quot;);</span>
+        }
+<span class="fc" id="L909">        final ConfigurationBuilder&lt;? extends Configuration&gt; builder = sourceData.getNamedBuilder(name);</span>
+<span class="fc bfc" id="L910" title="All 2 branches covered.">        if (builder == null) {</span>
+<span class="fc" id="L911">            throw new ConfigurationException(&quot;Builder cannot be resolved: &quot; + name);</span>
+        }
+<span class="fc" id="L913">        return builder;</span>
+    }
+
+    /**
+     * Obtains the data object for the configuration sources and the corresponding builders. This object is created on first
+     * access and reset when the definition builder sends a change event. This method is called in a synchronized block.
+     *
+     * @return the object with information about configuration sources
+     * @throws ConfigurationException if an error occurs
+     */
+    private ConfigurationSourceData getSourceData() throws ConfigurationException {
+<span class="fc bfc" id="L924" title="All 2 branches covered.">        if (sourceData == null) {</span>
+<span class="pc bpc" id="L925" title="1 of 2 branches missed.">            if (currentParameters == null) {</span>
+<span class="nc" id="L926">                setUpCurrentParameters();</span>
+<span class="nc" id="L927">                setUpCurrentXMLParameters();</span>
+            }
+<span class="fc" id="L929">            sourceData = createSourceData();</span>
+        }
+<span class="fc" id="L931">        return sourceData;</span>
+    }
+
+    /**
+     * Initializes a bean using the current {@code BeanHelper}. This is needed by builder providers when the configuration
+     * objects for sub builders are constructed.
+     *
+     * @param bean the bean to be initialized
+     * @param decl the {@code BeanDeclaration}
+     */
+    void initBean(final Object bean, final BeanDeclaration decl) {
+<span class="fc" id="L942">        fetchBeanHelper().initBean(bean, decl);</span>
+<span class="fc" id="L943">    }</span>
+
+    /**
+     * Initializes basic builder parameters for a child configuration with default settings set for this builder. This
+     * implementation ensures that all {@code Lookup} objects are propagated to child configurations and interpolation is
+     * setup correctly.
+     *
+     * @param params the parameters object
+     */
+    private void initChildBasicParameters(final BasicBuilderParameters params) {
+<span class="fc" id="L953">        params.setPrefixLookups(fetchPrefixLookups());</span>
+<span class="fc" id="L954">        params.setParentInterpolator(parentInterpolator);</span>
+<span class="fc bfc" id="L955" title="All 2 branches covered.">        if (currentParameters.isInheritSettings()) {</span>
+<span class="fc" id="L956">            params.inheritFrom(getParameters());</span>
+        }
+<span class="fc" id="L958">    }</span>
+
+    /**
+     * Initializes a parameters object for a child builder. This combined configuration builder has a bunch of properties
+     * which may be inherited by child configurations, e.g. the base path, the file system, etc. While processing the
+     * builders for child configurations, this method is called for each parameters object for a child builder. It
+     * initializes some properties of the passed in parameters objects which are derived from this parent builder.
+     *
+     * @param params the parameters object to be initialized
+     */
+    protected void initChildBuilderParameters(final BuilderParameters params) {
+<span class="fc" id="L969">        initDefaultChildParameters(params);</span>
+
+<span class="pc bpc" id="L971" title="1 of 2 branches missed.">        if (params instanceof BasicBuilderParameters) {</span>
+<span class="fc" id="L972">            initChildBasicParameters((BasicBuilderParameters) params);</span>
+        }
+<span class="fc bfc" id="L974" title="All 2 branches covered.">        if (params instanceof XMLBuilderProperties&lt;?&gt;) {</span>
+<span class="fc" id="L975">            initChildXMLParameters((XMLBuilderProperties&lt;?&gt;) params);</span>
+        }
+<span class="fc bfc" id="L977" title="All 2 branches covered.">        if (params instanceof FileBasedBuilderProperties&lt;?&gt;) {</span>
+<span class="fc" id="L978">            initChildFileBasedParameters((FileBasedBuilderProperties&lt;?&gt;) params);</span>
+        }
+<span class="fc bfc" id="L980" title="All 2 branches covered.">        if (params instanceof CombinedBuilderParametersImpl) {</span>
+<span class="fc" id="L981">            initChildCombinedParameters((CombinedBuilderParametersImpl) params);</span>
+        }
+<span class="fc" id="L983">    }</span>
+
+    /**
+     * Initializes a parameters object for a combined configuration builder with properties already set for this parent
+     * builder. This implementation deals only with a subset of properties. Other properties are already handled by the
+     * specialized builder provider.
+     *
+     * @param params the parameters object
+     */
+    private void initChildCombinedParameters(final CombinedBuilderParametersImpl params) {
+<span class="fc" id="L993">        params.registerMissingProviders(currentParameters);</span>
+<span class="fc" id="L994">        params.setBasePath(getBasePath());</span>
+<span class="fc" id="L995">    }</span>
+
+    /**
+     * Initializes the event listeners of the specified builder from this object. This method is used to inherit all
+     * listeners from a parent builder.
+     *
+     * @param dest the destination builder object which is to be initialized
+     */
+    void initChildEventListeners(final BasicConfigurationBuilder&lt;? extends Configuration&gt; dest) {
+<span class="fc" id="L1004">        copyEventListeners(dest);</span>
+<span class="fc" id="L1005">    }</span>
+
+    /**
+     * Initializes a parameters object for a file-based configuration with properties already set for this parent builder.
+     * This method handles properties like a default file system or a base path.
+     *
+     * @param params the parameters object
+     */
+    private void initChildFileBasedParameters(final FileBasedBuilderProperties&lt;?&gt; params) {
+<span class="fc" id="L1014">        params.setBasePath(getBasePath());</span>
+<span class="fc" id="L1015">        params.setFileSystem(currentXMLParameters.getFileHandler().getFileSystem());</span>
+<span class="fc" id="L1016">    }</span>
+
+    /**
+     * Initializes a parameters object for an XML configuration with properties already set for this parent builder.
+     *
+     * @param params the parameters object
+     */
+    private void initChildXMLParameters(final XMLBuilderProperties&lt;?&gt; params) {
+<span class="fc" id="L1024">        params.setEntityResolver(currentXMLParameters.getEntityResolver());</span>
+<span class="fc" id="L1025">    }</span>
+
+    /**
+     * Initializes the default base path for all file-based child configuration sources. The base path can be explicitly
+     * defined in the parameters of this builder. Otherwise, if the definition builder is a file-based builder, it is
+     * obtained from there.
+     *
+     * @throws ConfigurationException if an error occurs
+     */
+    private void initDefaultBasePath() throws ConfigurationException {
+<span class="pc bpc" id="L1035" title="1 of 2 branches missed.">        assert currentParameters != null : &quot;Current parameters undefined!&quot;;</span>
+<span class="fc bfc" id="L1036" title="All 2 branches covered.">        if (currentParameters.getBasePath() != null) {</span>
+<span class="fc" id="L1037">            currentXMLParameters.setBasePath(currentParameters.getBasePath());</span>
+        } else {
+<span class="fc" id="L1039">            final ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; defBuilder = getDefinitionBuilder();</span>
+<span class="fc bfc" id="L1040" title="All 2 branches covered.">            if (defBuilder instanceof FileBasedConfigurationBuilder) {</span>
+                @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L1042">                final FileBasedConfigurationBuilder fileBuilder = (FileBasedConfigurationBuilder) defBuilder;</span>
+<span class="fc" id="L1043">                final URL url = fileBuilder.getFileHandler().getURL();</span>
+<span class="fc bfc" id="L1044" title="All 2 branches covered.">                currentXMLParameters.setBasePath(url != null ? url.toExternalForm() : fileBuilder.getFileHandler().getBasePath());</span>
+            }
+        }
+<span class="fc" id="L1047">    }</span>
+
+    /**
+     * Executes the {@link org.apache.commons.configuration2.builder.DefaultParametersManager DefaultParametersManager}
+     * stored in the current parameters on the passed in parameters object. If default handlers have been registered for
+     * this type of parameters, an initialization is now performed. This method is called before the parameters object is
+     * initialized from the configuration definition file. So default values can be overridden later with concrete property
+     * definitions.
+     *
+     * @param params the parameters to be initialized
+     * @throws org.apache.commons.configuration2.ex.ConfigurationRuntimeException if an error occurs when copying properties
+     */
+    private void initDefaultChildParameters(final BuilderParameters params) {
+<span class="fc" id="L1060">        currentParameters.getChildDefaultParametersManager().initializeParameters(params);</span>
+<span class="fc" id="L1061">    }</span>
+
+    /**
+     * Creates and initializes a default {@code FileSystem} if the definition configuration contains a corresponding
+     * declaration. The file system returned by this method is used as default for all file-based child configuration
+     * sources.
+     *
+     * @param config the definition configuration
+     * @return the default {@code FileSystem} (may be &lt;b&gt;null&lt;/b&gt;)
+     * @throws ConfigurationException if an error occurs
+     */
+    protected FileSystem initFileSystem(final HierarchicalConfiguration&lt;?&gt; config) throws ConfigurationException {
+<span class="fc bfc" id="L1073" title="All 2 branches covered.">        if (config.getMaxIndex(FILE_SYSTEM) == 0) {</span>
+<span class="fc" id="L1074">            final XMLBeanDeclaration decl = new XMLBeanDeclaration(config, FILE_SYSTEM);</span>
+<span class="fc" id="L1075">            return (FileSystem) fetchBeanHelper().createBean(decl);</span>
+        }
+<span class="fc" id="L1077">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation processes the definition configuration in order to
+     * &lt;ul&gt;
+     * &lt;li&gt;initialize the resulting {@code CombinedConfiguration}&lt;/li&gt;
+     * &lt;li&gt;determine the builders for all configuration sources&lt;/li&gt;
+     * &lt;li&gt;populate the resulting {@code CombinedConfiguration}&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    @Override
+    protected void initResultInstance(final CombinedConfiguration result) throws ConfigurationException {
+<span class="fc" id="L1090">        super.initResultInstance(result);</span>
+
+<span class="fc" id="L1092">        currentConfiguration = result;</span>
+<span class="fc" id="L1093">        final HierarchicalConfiguration&lt;?&gt; config = getDefinitionConfiguration();</span>
+<span class="fc bfc" id="L1094" title="All 2 branches covered.">        if (config.getMaxIndex(KEY_COMBINER) &lt; 0) {</span>
+            // No combiner defined =&gt; set default
+<span class="fc" id="L1096">            result.setNodeCombiner(new OverrideCombiner());</span>
+        }
+
+<span class="fc" id="L1099">        setUpCurrentParameters();</span>
+<span class="fc" id="L1100">        initNodeCombinerListNodes(result, config, KEY_OVERRIDE_LIST);</span>
+<span class="fc" id="L1101">        registerConfiguredProviders(config);</span>
+<span class="fc" id="L1102">        setUpCurrentXMLParameters();</span>
+<span class="fc" id="L1103">        currentXMLParameters.setFileSystem(initFileSystem(config));</span>
+<span class="fc" id="L1104">        initSystemProperties(config, getBasePath());</span>
+<span class="fc" id="L1105">        registerConfiguredLookups(config, result);</span>
+<span class="fc" id="L1106">        configureEntityResolver(config, currentXMLParameters);</span>
+<span class="fc" id="L1107">        setUpParentInterpolator(currentConfiguration, config);</span>
+
+<span class="fc" id="L1109">        final ConfigurationSourceData data = getSourceData();</span>
+<span class="fc" id="L1110">        final boolean createBuilders = data.getChildBuilders().isEmpty();</span>
+<span class="fc" id="L1111">        final List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; overrideBuilders = data.createAndAddConfigurations(result, data.getOverrideSources(),</span>
+<span class="fc" id="L1112">            data.overrideBuilders);</span>
+<span class="fc bfc" id="L1113" title="All 2 branches covered.">        if (createBuilders) {</span>
+<span class="fc" id="L1114">            data.overrideBuilders.addAll(overrideBuilders);</span>
+        }
+<span class="fc bfc" id="L1116" title="All 2 branches covered.">        if (!data.getUnionSources().isEmpty()) {</span>
+<span class="fc" id="L1117">            final CombinedConfiguration addConfig = createAdditionalsConfiguration(result);</span>
+<span class="fc" id="L1118">            result.addConfiguration(addConfig, ADDITIONAL_NAME);</span>
+<span class="fc" id="L1119">            initNodeCombinerListNodes(addConfig, config, KEY_ADDITIONAL_LIST);</span>
+<span class="fc" id="L1120">            final List&lt;ConfigurationBuilder&lt;? extends Configuration&gt;&gt; unionBuilders = data.createAndAddConfigurations(addConfig, data.unionDeclarations,</span>
+<span class="fc" id="L1121">                data.unionBuilders);</span>
+<span class="pc bpc" id="L1122" title="1 of 2 branches missed.">            if (createBuilders) {</span>
+<span class="fc" id="L1123">                data.unionBuilders.addAll(unionBuilders);</span>
+            }
+        }
+
+<span class="fc" id="L1127">        result.isEmpty(); // this sets up the node structure</span>
+<span class="fc" id="L1128">        currentConfiguration = null;</span>
+<span class="fc" id="L1129">    }</span>
+
+    /**
+     * Handles a file with system properties that may be defined in the definition configuration. If such property file is
+     * configured, all of its properties are added to the system properties.
+     *
+     * @param config the definition configuration
+     * @param basePath the base path defined for this builder (may be &lt;b&gt;null&lt;/b&gt;)
+     * @throws ConfigurationException if an error occurs.
+     */
+    protected void initSystemProperties(final HierarchicalConfiguration&lt;?&gt; config, final String basePath) throws ConfigurationException {
+<span class="fc" id="L1140">        final String fileName = config.getString(KEY_SYSTEM_PROPS);</span>
+<span class="fc bfc" id="L1141" title="All 2 branches covered.">        if (fileName != null) {</span>
+            try {
+<span class="fc" id="L1143">                SystemConfiguration.setSystemProperties(basePath, fileName);</span>
+<span class="nc" id="L1144">            } catch (final Exception ex) {</span>
+<span class="nc" id="L1145">                throw new ConfigurationException(&quot;Error setting system properties from &quot; + fileName, ex);</span>
+<span class="fc" id="L1146">            }</span>
+        }
+<span class="fc" id="L1148">    }</span>
+
+    /**
+     * Returns the {@code ConfigurationBuilderProvider} for the given tag. This method is called during creation of the
+     * result configuration. (It is not allowed to call it at another point of time; result is then unpredictable!) It
+     * supports all default providers and custom providers added through the parameters object as well.
+     *
+     * @param tagName the name of the tag
+     * @return the provider that was registered for this tag or &lt;b&gt;null&lt;/b&gt; if there is none
+     */
+    protected ConfigurationBuilderProvider providerForTag(final String tagName) {
+<span class="fc" id="L1159">        return currentParameters.providerForTag(tagName);</span>
+    }
+
+    /**
+     * Processes custom {@link Lookup} objects that might be declared in the definition configuration. Each {@code Lookup}
+     * object is registered at the definition configuration and at the result configuration. It is also added to all child
+     * configurations added to the resulting combined configuration.
+     *
+     * @param defConfig the definition configuration
+     * @param resultConfig the resulting configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    protected void registerConfiguredLookups(final HierarchicalConfiguration&lt;?&gt; defConfig, final Configuration resultConfig) throws ConfigurationException {
+<span class="fc" id="L1172">        final Map&lt;String, Lookup&gt; lookups = defConfig.configurationsAt(KEY_CONFIGURATION_LOOKUPS).stream().collect(</span>
+<span class="fc" id="L1173">                Collectors.toMap(config -&gt; config.getString(KEY_LOOKUP_KEY), config -&gt; (Lookup) fetchBeanHelper().createBean(new XMLBeanDeclaration(config))));</span>
+
+<span class="fc bfc" id="L1175" title="All 2 branches covered.">        if (!lookups.isEmpty()) {</span>
+<span class="fc" id="L1176">            final ConfigurationInterpolator defCI = defConfig.getInterpolator();</span>
+<span class="pc bpc" id="L1177" title="1 of 2 branches missed.">            if (defCI != null) {</span>
+<span class="fc" id="L1178">                defCI.registerLookups(lookups);</span>
+            }
+<span class="fc" id="L1180">            resultConfig.getInterpolator().registerLookups(lookups);</span>
+        }
+<span class="fc" id="L1182">    }</span>
+
+    /**
+     * Registers providers defined in the configuration.
+     *
+     * @param defConfig the definition configuration
+     */
+    private void registerConfiguredProviders(final HierarchicalConfiguration&lt;?&gt; defConfig) {
+<span class="fc" id="L1190">        defConfig.configurationsAt(KEY_CONFIGURATION_PROVIDERS).forEach(config -&gt; {</span>
+<span class="fc" id="L1191">            final XMLBeanDeclaration decl = new XMLBeanDeclaration(config);</span>
+<span class="fc" id="L1192">            final String key = config.getString(KEY_PROVIDER_KEY);</span>
+<span class="fc" id="L1193">            currentParameters.registerProvider(key, (ConfigurationBuilderProvider) fetchBeanHelper().createBean(decl));</span>
+<span class="fc" id="L1194">        });</span>
+<span class="fc" id="L1195">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation resets some specific internal state of this builder.
+     */
+    @Override
+    public synchronized void resetParameters() {
+<span class="fc" id="L1202">        super.resetParameters();</span>
+<span class="fc" id="L1203">        definitionBuilder = null;</span>
+<span class="fc" id="L1204">        definitionConfiguration = null;</span>
+<span class="fc" id="L1205">        currentParameters = null;</span>
+<span class="fc" id="L1206">        currentXMLParameters = null;</span>
+
+<span class="pc bpc" id="L1208" title="1 of 2 branches missed.">        if (sourceData != null) {</span>
+<span class="fc" id="L1209">            sourceData.cleanUp();</span>
+<span class="fc" id="L1210">            sourceData = null;</span>
+        }
+<span class="fc" id="L1212">    }</span>
+
+    /**
+     * Initializes the current parameters object. This object has either been passed at builder configuration time or it is
+     * newly created. In any case, it is manipulated during result creation.
+     */
+    private void setUpCurrentParameters() {
+<span class="fc" id="L1219">        currentParameters = CombinedBuilderParametersImpl.fromParameters(getParameters(), true);</span>
+<span class="fc" id="L1220">        currentParameters.registerMissingProviders(DEFAULT_PROVIDERS_MAP);</span>
+<span class="fc" id="L1221">    }</span>
+
+    /**
+     * Sets up an XML parameters object which is used to store properties related to XML and file-based configurations
+     * during creation of the result configuration. The properties stored in this object can be inherited to child
+     * configurations.
+     *
+     * @throws ConfigurationException if an error occurs
+     */
+    private void setUpCurrentXMLParameters() throws ConfigurationException {
+<span class="fc" id="L1231">        currentXMLParameters = new XMLBuilderParametersImpl();</span>
+<span class="fc" id="L1232">        initDefaultBasePath();</span>
+<span class="fc" id="L1233">    }</span>
+
+    /**
+     * Obtains the {@code ConfigurationBuilder} object which provides access to the configuration containing the definition
+     * of the combined configuration to create. If a definition builder is defined in the parameters, it is used. Otherwise,
+     * we check whether the combined builder parameters object contains a parameters object for the definition builder. If
+     * this is the case, a builder for an {@code XMLConfiguration} is created and configured with this object. As a last
+     * resort, it is looked for a {@link FileBasedBuilderParametersImpl} object in the properties. If found, also a XML
+     * configuration builder is created which loads this file. Note: This method is called from a synchronized block.
+     *
+     * @param params the current parameters for this builder
+     * @return the builder for the definition configuration
+     * @throws ConfigurationException if an error occurs
+     */
+    protected ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; setupDefinitionBuilder(final Map&lt;String, Object&gt; params)
+        throws ConfigurationException {
+<span class="fc" id="L1249">        final CombinedBuilderParametersImpl cbParams = CombinedBuilderParametersImpl.fromParameters(params);</span>
+<span class="fc bfc" id="L1250" title="All 2 branches covered.">        if (cbParams != null) {</span>
+<span class="fc" id="L1251">            final ConfigurationBuilder&lt;? extends HierarchicalConfiguration&lt;?&gt;&gt; defBuilder = cbParams.getDefinitionBuilder();</span>
+<span class="fc bfc" id="L1252" title="All 2 branches covered.">            if (defBuilder != null) {</span>
+<span class="fc" id="L1253">                return defBuilder;</span>
+            }
+
+<span class="fc bfc" id="L1256" title="All 2 branches covered.">            if (cbParams.getDefinitionBuilderParameters() != null) {</span>
+<span class="fc" id="L1257">                return createXMLDefinitionBuilder(cbParams.getDefinitionBuilderParameters());</span>
+            }
+        }
+
+<span class="fc" id="L1261">        final BuilderParameters fileParams = FileBasedBuilderParametersImpl.fromParameters(params);</span>
+<span class="fc bfc" id="L1262" title="All 2 branches covered.">        if (fileParams != null) {</span>
+<span class="fc" id="L1263">            return createXMLDefinitionBuilder(fileParams);</span>
+        }
+
+<span class="fc" id="L1266">        throw new ConfigurationException(&quot;No builder for configuration definition specified!&quot;);</span>
+    }
+
+    /**
+     * Sets up a parent {@code ConfigurationInterpolator} object. This object has a default {@link Lookup} querying the
+     * resulting combined configuration. Thus interpolation works globally across all configuration sources.
+     *
+     * @param resultConfig the result configuration
+     * @param defConfig the definition configuration
+     */
+    private void setUpParentInterpolator(final Configuration resultConfig, final Configuration defConfig) {
+<span class="fc" id="L1277">        parentInterpolator = new ConfigurationInterpolator();</span>
+<span class="fc" id="L1278">        parentInterpolator.addDefaultLookup(new ConfigurationLookup(resultConfig));</span>
+<span class="fc" id="L1279">        final ConfigurationInterpolator defInterpolator = defConfig.getInterpolator();</span>
+<span class="pc bpc" id="L1280" title="1 of 2 branches missed.">        if (defInterpolator != null) {</span>
+<span class="fc" id="L1281">            defInterpolator.setParentInterpolator(parentInterpolator);</span>
+        }
+<span class="fc" id="L1283">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

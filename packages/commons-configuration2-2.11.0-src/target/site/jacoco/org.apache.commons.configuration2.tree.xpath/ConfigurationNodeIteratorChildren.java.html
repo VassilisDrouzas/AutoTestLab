@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigurationNodeIteratorChildren.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree.xpath</a> &gt; <span class="el_source">ConfigurationNodeIteratorChildren.java</span></div><h1>ConfigurationNodeIteratorChildren.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree.xpath;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.commons.jxpath.ri.Compiler;
+import org.apache.commons.jxpath.ri.QName;
+import org.apache.commons.jxpath.ri.compiler.NodeNameTest;
+import org.apache.commons.jxpath.ri.compiler.NodeTest;
+import org.apache.commons.jxpath.ri.compiler.NodeTypeTest;
+import org.apache.commons.jxpath.ri.model.NodePointer;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * A specialized iterator implementation for the child nodes of a configuration node.
+ *
+ * @since 1.3
+ * @param &lt;T&gt; the type of the nodes this iterator deals with
+ */
+final class ConfigurationNodeIteratorChildren&lt;T&gt; extends AbstractConfigurationNodeIterator&lt;T&gt; {
+
+    /** The list with the sub nodes to iterate over. */
+    private final List&lt;T&gt; subNodes;
+
+    /**
+     * Creates a new instance of {@code ConfigurationNodeIteratorChildren} and initializes it.
+     *
+     * @param parent the parent pointer
+     * @param nodeTest the test selecting the sub nodes
+     * @param reverse the reverse flag
+     * @param startsWith the first element of the iteration
+     */
+    public ConfigurationNodeIteratorChildren(final ConfigurationNodePointer&lt;T&gt; parent, final NodeTest nodeTest, final boolean reverse,
+        final ConfigurationNodePointer&lt;T&gt; startsWith) {
+<span class="fc" id="L52">        super(parent, reverse);</span>
+<span class="fc" id="L53">        final T root = parent.getConfigurationNode();</span>
+<span class="fc" id="L54">        subNodes = createSubNodeList(root, nodeTest);</span>
+
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (startsWith != null) {</span>
+<span class="fc" id="L57">            setStartOffset(findStartIndex(subNodes, startsWith.getConfigurationNode()));</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        } else if (reverse) {</span>
+<span class="fc" id="L59">            setStartOffset(size());</span>
+        }
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * Creates the configuration node pointer for the current position.
+     *
+     * @param position the current position in the iteration
+     * @return the node pointer
+     */
+    @Override
+    protected NodePointer createNodePointer(final int position) {
+<span class="fc" id="L71">        return new ConfigurationNodePointer&lt;&gt;(getParent(), subNodes.get(position), getNodeHandler());</span>
+    }
+
+    /**
+     * Creates the list with sub nodes. This method gets called during initialization phase. It finds out, based on the
+     * given test, which nodes must be iterated over.
+     *
+     * @param node the current node
+     * @param test the test object
+     * @return a list with the matching nodes
+     */
+    private List&lt;T&gt; createSubNodeList(final T node, final NodeTest test) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (test == null) {</span>
+<span class="fc" id="L84">            return getNodeHandler().getChildren(node);</span>
+        }
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (test instanceof NodeNameTest) {</span>
+<span class="fc" id="L87">            final NodeNameTest nameTest = (NodeNameTest) test;</span>
+<span class="fc" id="L88">            final QName name = nameTest.getNodeName();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            return nameTest.isWildcard() ? createSubNodeListForWildcardName(node, name) : createSubNodeListForName(node, name);</span>
+        }
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (test instanceof NodeTypeTest) {</span>
+<span class="fc" id="L92">            final NodeTypeTest typeTest = (NodeTypeTest) test;</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">            if (typeTest.getNodeType() == Compiler.NODE_TYPE_NODE || typeTest.getNodeType() == Compiler.NODE_TYPE_TEXT) {</span>
+<span class="fc" id="L94">                return getNodeHandler().getChildren(node);</span>
+            }
+        }
+
+<span class="fc" id="L98">        return Collections.emptyList();</span>
+    }
+
+    /**
+     * Obtains the list of selected nodes for a {@code NodeNameTest} with either a simple or a qualified name.
+     *
+     * @param node the current node
+     * @param name the name to be selected
+     * @return the list with selected sub nodes
+     */
+    private List&lt;T&gt; createSubNodeListForName(final T node, final QName name) {
+<span class="fc" id="L109">        final String compareName = qualifiedName(name);</span>
+<span class="fc" id="L110">        final List&lt;T&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L111">        getNodeHandler().getChildren(node).forEach(child -&gt; {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (StringUtils.equals(compareName, getNodeHandler().nodeName(child))) {</span>
+<span class="fc" id="L113">                result.add(child);</span>
+            }
+<span class="fc" id="L115">        });</span>
+<span class="fc" id="L116">        return result;</span>
+    }
+
+    /**
+     * Obtains the list of selected sub nodes for a {@code NodeNameTest} with a wildcard name.
+     *
+     * @param node the current node
+     * @param name the name to be selected
+     * @return the list with selected sub nodes
+     */
+    private List&lt;T&gt; createSubNodeListForWildcardName(final T node, final QName name) {
+<span class="fc" id="L127">        final List&lt;T&gt; children = getNodeHandler().getChildren(node);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (name.getPrefix() == null) {</span>
+<span class="fc" id="L129">            return children;</span>
+        }
+<span class="fc" id="L131">        final List&lt;T&gt; prefixChildren = new ArrayList&lt;&gt;(children.size());</span>
+<span class="fc" id="L132">        final String prefix = prefixName(name.getPrefix(), null);</span>
+<span class="fc" id="L133">        children.forEach(child -&gt; {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (StringUtils.startsWith(getNodeHandler().nodeName(child), prefix)) {</span>
+<span class="fc" id="L135">                prefixChildren.add(child);</span>
+            }
+<span class="fc" id="L137">        });</span>
+<span class="fc" id="L138">        return prefixChildren;</span>
+    }
+
+    /**
+     * Determines the start position of the iteration. Finds the index of the given start node in the children of the root
+     * node.
+     *
+     * @param children the children of the root node
+     * @param startNode the start node
+     * @return the start node's index
+     */
+    private int findStartIndex(final List&lt;T&gt; children, final T startNode) {
+<span class="fc" id="L150">        int index = 0;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (final T child : children) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (child == startNode) {</span>
+<span class="fc" id="L153">                return index;</span>
+            }
+<span class="fc" id="L155">            index++;</span>
+<span class="fc" id="L156">        }</span>
+
+<span class="fc" id="L158">        return -1;</span>
+    }
+
+    /**
+     * Returns the number of elements in this iteration. This is the number of elements in the children list.
+     *
+     * @return the number of elements
+     */
+    @Override
+    protected int size() {
+<span class="fc" id="L168">        return subNodes.size();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,718 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DelegatingPreparedStatement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">DelegatingPreparedStatement.java</span></div><h1>DelegatingPreparedStatement.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.io.InputStream;
+import java.io.Reader;
+import java.math.BigDecimal;
+import java.sql.Array;
+import java.sql.Blob;
+import java.sql.Clob;
+import java.sql.Date;
+import java.sql.NClob;
+import java.sql.PreparedStatement;
+import java.sql.Ref;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.RowId;
+import java.sql.SQLException;
+import java.sql.SQLType;
+import java.sql.SQLXML;
+import java.sql.Statement;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
+
+/**
+ * A base delegating implementation of {@link PreparedStatement}.
+ * &lt;p&gt;
+ * All of the methods from the {@link PreparedStatement} interface simply check to see that the
+ * {@link PreparedStatement} is active, and call the corresponding method on the &quot;delegate&quot; provided in my constructor.
+ * &lt;p&gt;
+ * Extends AbandonedTrace to implement Statement tracking and logging of code which created the Statement. Tracking the
+ * Statement ensures that the Connection which created it can close any open Statement's on Connection close.
+ *
+ * @since 2.0
+ */
+public class DelegatingPreparedStatement extends DelegatingStatement implements PreparedStatement {
+
+    /**
+     * Create a wrapper for the Statement which traces this Statement to the Connection which created it and the code
+     * which created it.
+     *
+     * @param statement
+     *            the {@link PreparedStatement} to delegate all calls to.
+     * @param connection
+     *            the {@link DelegatingConnection} that created this statement.
+     */
+    public DelegatingPreparedStatement(final DelegatingConnection&lt;?&gt; connection, final PreparedStatement statement) {
+<span class="fc" id="L65">        super(connection, statement);</span>
+<span class="fc" id="L66">    }</span>
+
+    @Override
+    public void addBatch() throws SQLException {
+<span class="fc" id="L70">        checkOpen();</span>
+        try {
+<span class="fc" id="L72">            getDelegatePreparedStatement().addBatch();</span>
+<span class="nc" id="L73">        } catch (final SQLException e) {</span>
+<span class="nc" id="L74">            handleException(e);</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
+
+    @Override
+    public void clearParameters() throws SQLException {
+<span class="fc" id="L80">        checkOpen();</span>
+        try {
+<span class="fc" id="L82">            getDelegatePreparedStatement().clearParameters();</span>
+<span class="nc" id="L83">        } catch (final SQLException e) {</span>
+<span class="nc" id="L84">            handleException(e);</span>
+<span class="fc" id="L85">        }</span>
+<span class="fc" id="L86">    }</span>
+
+    @Override
+    public boolean execute() throws SQLException {
+<span class="fc" id="L90">        checkOpen();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (getConnectionInternal() != null) {</span>
+<span class="fc" id="L92">            getConnectionInternal().setLastUsed();</span>
+        }
+        try {
+<span class="fc" id="L95">            return getDelegatePreparedStatement().execute();</span>
+<span class="nc" id="L96">        } catch (final SQLException e) {</span>
+<span class="nc" id="L97">            handleException(e);</span>
+<span class="nc" id="L98">            return false;</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long executeLargeUpdate() throws SQLException {
+<span class="fc" id="L107">        checkOpen();</span>
+        try {
+<span class="fc" id="L109">            return getDelegatePreparedStatement().executeLargeUpdate();</span>
+<span class="nc" id="L110">        } catch (final SQLException e) {</span>
+<span class="nc" id="L111">            handleException(e);</span>
+<span class="nc" id="L112">            return 0;</span>
+        }
+    }
+
+    @Override
+    public ResultSet executeQuery() throws SQLException {
+<span class="fc" id="L118">        checkOpen();</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (getConnectionInternal() != null) {</span>
+<span class="fc" id="L120">            getConnectionInternal().setLastUsed();</span>
+        }
+        try {
+<span class="fc" id="L123">            return DelegatingResultSet.wrapResultSet(this, getDelegatePreparedStatement().executeQuery());</span>
+<span class="nc" id="L124">        } catch (final SQLException e) {</span>
+<span class="nc" id="L125">            handleException(e);</span>
+<span class="nc" id="L126">            throw new AssertionError();</span>
+        }
+    }
+
+    @Override
+    public int executeUpdate() throws SQLException {
+<span class="fc" id="L132">        checkOpen();</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (getConnectionInternal() != null) {</span>
+<span class="fc" id="L134">            getConnectionInternal().setLastUsed();</span>
+        }
+        try {
+<span class="fc" id="L137">            return getDelegatePreparedStatement().executeUpdate();</span>
+<span class="nc" id="L138">        } catch (final SQLException e) {</span>
+<span class="nc" id="L139">            handleException(e);</span>
+<span class="nc" id="L140">            return 0;</span>
+        }
+    }
+
+    private PreparedStatement getDelegatePreparedStatement() {
+<span class="fc" id="L145">        return (PreparedStatement) getDelegate();</span>
+    }
+
+    @Override
+    public ResultSetMetaData getMetaData() throws SQLException {
+<span class="fc" id="L150">        checkOpen();</span>
+        try {
+<span class="fc" id="L152">            return getDelegatePreparedStatement().getMetaData();</span>
+<span class="nc" id="L153">        } catch (final SQLException e) {</span>
+<span class="nc" id="L154">            handleException(e);</span>
+<span class="nc" id="L155">            throw new AssertionError();</span>
+        }
+    }
+
+    @Override
+    public java.sql.ParameterMetaData getParameterMetaData() throws SQLException {
+<span class="fc" id="L161">        checkOpen();</span>
+        try {
+<span class="fc" id="L163">            return getDelegatePreparedStatement().getParameterMetaData();</span>
+<span class="nc" id="L164">        } catch (final SQLException e) {</span>
+<span class="nc" id="L165">            handleException(e);</span>
+<span class="nc" id="L166">            throw new AssertionError();</span>
+        }
+    }
+
+    protected void prepareToReturn() throws SQLException {
+<span class="fc" id="L171">        setClosedInternal(true);</span>
+<span class="fc" id="L172">        removeThisTrace(getConnectionInternal());</span>
+
+        // The JDBC spec requires that a statement close any open
+        // ResultSet's when it is closed.
+        // FIXME The PreparedStatement we're wrapping should handle this for us.
+        // See DBCP-10 for what could happen when ResultSets are closed twice.
+<span class="fc" id="L178">        final List&lt;AbandonedTrace&gt; traceList = getTrace();</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        if (traceList != null) {</span>
+<span class="fc" id="L180">            final List&lt;Exception&gt; thrownList = new ArrayList&lt;&gt;();</span>
+<span class="pc" id="L181">            traceList.forEach(trace -&gt; trace.close(thrownList::add));</span>
+<span class="fc" id="L182">            clearTrace();</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (!thrownList.isEmpty()) {</span>
+<span class="nc" id="L184">                throw new SQLExceptionList(thrownList);</span>
+            }
+        }
+
+<span class="fc" id="L188">        super.passivate();</span>
+<span class="fc" id="L189">    }</span>
+
+    @Override
+    public void setArray(final int i, final Array x) throws SQLException {
+<span class="fc" id="L193">        checkOpen();</span>
+        try {
+<span class="fc" id="L195">            getDelegatePreparedStatement().setArray(i, x);</span>
+<span class="nc" id="L196">        } catch (final SQLException e) {</span>
+<span class="nc" id="L197">            handleException(e);</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc" id="L199">    }</span>
+
+    @Override
+    public void setAsciiStream(final int parameterIndex, final InputStream inputStream) throws SQLException {
+<span class="fc" id="L203">        checkOpen();</span>
+        try {
+<span class="fc" id="L205">            getDelegatePreparedStatement().setAsciiStream(parameterIndex, inputStream);</span>
+<span class="nc" id="L206">        } catch (final SQLException e) {</span>
+<span class="nc" id="L207">            handleException(e);</span>
+<span class="fc" id="L208">        }</span>
+<span class="fc" id="L209">    }</span>
+
+    @Override
+    public void setAsciiStream(final int parameterIndex, final InputStream x, final int length) throws SQLException {
+<span class="fc" id="L213">        checkOpen();</span>
+        try {
+<span class="fc" id="L215">            getDelegatePreparedStatement().setAsciiStream(parameterIndex, x, length);</span>
+<span class="nc" id="L216">        } catch (final SQLException e) {</span>
+<span class="nc" id="L217">            handleException(e);</span>
+<span class="fc" id="L218">        }</span>
+<span class="fc" id="L219">    }</span>
+
+    @Override
+    public void setAsciiStream(final int parameterIndex, final InputStream inputStream, final long length)
+            throws SQLException {
+<span class="fc" id="L224">        checkOpen();</span>
+        try {
+<span class="fc" id="L226">            getDelegatePreparedStatement().setAsciiStream(parameterIndex, inputStream, length);</span>
+<span class="nc" id="L227">        } catch (final SQLException e) {</span>
+<span class="nc" id="L228">            handleException(e);</span>
+<span class="fc" id="L229">        }</span>
+<span class="fc" id="L230">    }</span>
+
+    @Override
+    public void setBigDecimal(final int parameterIndex, final BigDecimal x) throws SQLException {
+<span class="fc" id="L234">        checkOpen();</span>
+        try {
+<span class="fc" id="L236">            getDelegatePreparedStatement().setBigDecimal(parameterIndex, x);</span>
+<span class="nc" id="L237">        } catch (final SQLException e) {</span>
+<span class="nc" id="L238">            handleException(e);</span>
+<span class="fc" id="L239">        }</span>
+<span class="fc" id="L240">    }</span>
+
+    @Override
+    public void setBinaryStream(final int parameterIndex, final InputStream inputStream) throws SQLException {
+<span class="fc" id="L244">        checkOpen();</span>
+        try {
+<span class="fc" id="L246">            getDelegatePreparedStatement().setBinaryStream(parameterIndex, inputStream);</span>
+<span class="nc" id="L247">        } catch (final SQLException e) {</span>
+<span class="nc" id="L248">            handleException(e);</span>
+<span class="fc" id="L249">        }</span>
+<span class="fc" id="L250">    }</span>
+
+    @Override
+    public void setBinaryStream(final int parameterIndex, final InputStream x, final int length) throws SQLException {
+<span class="fc" id="L254">        checkOpen();</span>
+        try {
+<span class="fc" id="L256">            getDelegatePreparedStatement().setBinaryStream(parameterIndex, x, length);</span>
+<span class="nc" id="L257">        } catch (final SQLException e) {</span>
+<span class="nc" id="L258">            handleException(e);</span>
+<span class="fc" id="L259">        }</span>
+<span class="fc" id="L260">    }</span>
+
+    @Override
+    public void setBinaryStream(final int parameterIndex, final InputStream inputStream, final long length)
+            throws SQLException {
+<span class="fc" id="L265">        checkOpen();</span>
+        try {
+<span class="fc" id="L267">            getDelegatePreparedStatement().setBinaryStream(parameterIndex, inputStream, length);</span>
+<span class="nc" id="L268">        } catch (final SQLException e) {</span>
+<span class="nc" id="L269">            handleException(e);</span>
+<span class="fc" id="L270">        }</span>
+<span class="fc" id="L271">    }</span>
+
+    @Override
+    public void setBlob(final int i, final Blob x) throws SQLException {
+<span class="fc" id="L275">        checkOpen();</span>
+        try {
+<span class="fc" id="L277">            getDelegatePreparedStatement().setBlob(i, x);</span>
+<span class="nc" id="L278">        } catch (final SQLException e) {</span>
+<span class="nc" id="L279">            handleException(e);</span>
+<span class="fc" id="L280">        }</span>
+<span class="fc" id="L281">    }</span>
+
+    @Override
+    public void setBlob(final int parameterIndex, final InputStream inputStream) throws SQLException {
+<span class="fc" id="L285">        checkOpen();</span>
+        try {
+<span class="fc" id="L287">            getDelegatePreparedStatement().setBlob(parameterIndex, inputStream);</span>
+<span class="nc" id="L288">        } catch (final SQLException e) {</span>
+<span class="nc" id="L289">            handleException(e);</span>
+<span class="fc" id="L290">        }</span>
+<span class="fc" id="L291">    }</span>
+
+    @Override
+    public void setBlob(final int parameterIndex, final InputStream inputStream, final long length)
+            throws SQLException {
+<span class="fc" id="L296">        checkOpen();</span>
+        try {
+<span class="fc" id="L298">            getDelegatePreparedStatement().setBlob(parameterIndex, inputStream, length);</span>
+<span class="nc" id="L299">        } catch (final SQLException e) {</span>
+<span class="nc" id="L300">            handleException(e);</span>
+<span class="fc" id="L301">        }</span>
+<span class="fc" id="L302">    }</span>
+
+    @Override
+    public void setBoolean(final int parameterIndex, final boolean x) throws SQLException {
+<span class="fc" id="L306">        checkOpen();</span>
+        try {
+<span class="fc" id="L308">            getDelegatePreparedStatement().setBoolean(parameterIndex, x);</span>
+<span class="nc" id="L309">        } catch (final SQLException e) {</span>
+<span class="nc" id="L310">            handleException(e);</span>
+<span class="fc" id="L311">        }</span>
+<span class="fc" id="L312">    }</span>
+
+    @Override
+    public void setByte(final int parameterIndex, final byte x) throws SQLException {
+<span class="fc" id="L316">        checkOpen();</span>
+        try {
+<span class="fc" id="L318">            getDelegatePreparedStatement().setByte(parameterIndex, x);</span>
+<span class="nc" id="L319">        } catch (final SQLException e) {</span>
+<span class="nc" id="L320">            handleException(e);</span>
+<span class="fc" id="L321">        }</span>
+<span class="fc" id="L322">    }</span>
+
+    @Override
+    public void setBytes(final int parameterIndex, final byte[] x) throws SQLException {
+<span class="fc" id="L326">        checkOpen();</span>
+        try {
+<span class="fc" id="L328">            getDelegatePreparedStatement().setBytes(parameterIndex, x);</span>
+<span class="nc" id="L329">        } catch (final SQLException e) {</span>
+<span class="nc" id="L330">            handleException(e);</span>
+<span class="fc" id="L331">        }</span>
+<span class="fc" id="L332">    }</span>
+
+    @Override
+    public void setCharacterStream(final int parameterIndex, final Reader reader) throws SQLException {
+<span class="fc" id="L336">        checkOpen();</span>
+        try {
+<span class="fc" id="L338">            getDelegatePreparedStatement().setCharacterStream(parameterIndex, reader);</span>
+<span class="nc" id="L339">        } catch (final SQLException e) {</span>
+<span class="nc" id="L340">            handleException(e);</span>
+<span class="fc" id="L341">        }</span>
+<span class="fc" id="L342">    }</span>
+
+    @Override
+    public void setCharacterStream(final int parameterIndex, final Reader reader, final int length)
+            throws SQLException {
+<span class="fc" id="L347">        checkOpen();</span>
+        try {
+<span class="fc" id="L349">            getDelegatePreparedStatement().setCharacterStream(parameterIndex, reader, length);</span>
+<span class="nc" id="L350">        } catch (final SQLException e) {</span>
+<span class="nc" id="L351">            handleException(e);</span>
+<span class="fc" id="L352">        }</span>
+<span class="fc" id="L353">    }</span>
+
+    @Override
+    public void setCharacterStream(final int parameterIndex, final Reader reader, final long length)
+            throws SQLException {
+<span class="fc" id="L358">        checkOpen();</span>
+        try {
+<span class="fc" id="L360">            getDelegatePreparedStatement().setCharacterStream(parameterIndex, reader, length);</span>
+<span class="nc" id="L361">        } catch (final SQLException e) {</span>
+<span class="nc" id="L362">            handleException(e);</span>
+<span class="fc" id="L363">        }</span>
+<span class="fc" id="L364">    }</span>
+
+    @Override
+    public void setClob(final int i, final Clob x) throws SQLException {
+<span class="fc" id="L368">        checkOpen();</span>
+        try {
+<span class="fc" id="L370">            getDelegatePreparedStatement().setClob(i, x);</span>
+<span class="nc" id="L371">        } catch (final SQLException e) {</span>
+<span class="nc" id="L372">            handleException(e);</span>
+<span class="fc" id="L373">        }</span>
+<span class="fc" id="L374">    }</span>
+
+    @Override
+    public void setClob(final int parameterIndex, final Reader reader) throws SQLException {
+<span class="fc" id="L378">        checkOpen();</span>
+        try {
+<span class="fc" id="L380">            getDelegatePreparedStatement().setClob(parameterIndex, reader);</span>
+<span class="nc" id="L381">        } catch (final SQLException e) {</span>
+<span class="nc" id="L382">            handleException(e);</span>
+<span class="fc" id="L383">        }</span>
+<span class="fc" id="L384">    }</span>
+
+    @Override
+    public void setClob(final int parameterIndex, final Reader reader, final long length) throws SQLException {
+<span class="fc" id="L388">        checkOpen();</span>
+        try {
+<span class="fc" id="L390">            getDelegatePreparedStatement().setClob(parameterIndex, reader, length);</span>
+<span class="nc" id="L391">        } catch (final SQLException e) {</span>
+<span class="nc" id="L392">            handleException(e);</span>
+<span class="fc" id="L393">        }</span>
+<span class="fc" id="L394">    }</span>
+
+    @Override
+    public void setDate(final int parameterIndex, final Date x) throws SQLException {
+<span class="fc" id="L398">        checkOpen();</span>
+        try {
+<span class="fc" id="L400">            getDelegatePreparedStatement().setDate(parameterIndex, x);</span>
+<span class="nc" id="L401">        } catch (final SQLException e) {</span>
+<span class="nc" id="L402">            handleException(e);</span>
+<span class="fc" id="L403">        }</span>
+<span class="fc" id="L404">    }</span>
+
+    @Override
+    public void setDate(final int parameterIndex, final Date x, final Calendar cal) throws SQLException {
+<span class="fc" id="L408">        checkOpen();</span>
+        try {
+<span class="fc" id="L410">            getDelegatePreparedStatement().setDate(parameterIndex, x, cal);</span>
+<span class="nc" id="L411">        } catch (final SQLException e) {</span>
+<span class="nc" id="L412">            handleException(e);</span>
+<span class="fc" id="L413">        }</span>
+<span class="fc" id="L414">    }</span>
+
+    @Override
+    public void setDouble(final int parameterIndex, final double x) throws SQLException {
+<span class="fc" id="L418">        checkOpen();</span>
+        try {
+<span class="fc" id="L420">            getDelegatePreparedStatement().setDouble(parameterIndex, x);</span>
+<span class="nc" id="L421">        } catch (final SQLException e) {</span>
+<span class="nc" id="L422">            handleException(e);</span>
+<span class="fc" id="L423">        }</span>
+<span class="fc" id="L424">    }</span>
+
+    @Override
+    public void setFloat(final int parameterIndex, final float x) throws SQLException {
+<span class="fc" id="L428">        checkOpen();</span>
+        try {
+<span class="fc" id="L430">            getDelegatePreparedStatement().setFloat(parameterIndex, x);</span>
+<span class="nc" id="L431">        } catch (final SQLException e) {</span>
+<span class="nc" id="L432">            handleException(e);</span>
+<span class="fc" id="L433">        }</span>
+<span class="fc" id="L434">    }</span>
+
+    @Override
+    public void setInt(final int parameterIndex, final int x) throws SQLException {
+<span class="fc" id="L438">        checkOpen();</span>
+        try {
+<span class="fc" id="L440">            getDelegatePreparedStatement().setInt(parameterIndex, x);</span>
+<span class="nc" id="L441">        } catch (final SQLException e) {</span>
+<span class="nc" id="L442">            handleException(e);</span>
+<span class="fc" id="L443">        }</span>
+<span class="fc" id="L444">    }</span>
+
+    @Override
+    public void setLong(final int parameterIndex, final long x) throws SQLException {
+<span class="fc" id="L448">        checkOpen();</span>
+        try {
+<span class="fc" id="L450">            getDelegatePreparedStatement().setLong(parameterIndex, x);</span>
+<span class="nc" id="L451">        } catch (final SQLException e) {</span>
+<span class="nc" id="L452">            handleException(e);</span>
+<span class="fc" id="L453">        }</span>
+<span class="fc" id="L454">    }</span>
+
+    @Override
+    public void setNCharacterStream(final int parameterIndex, final Reader reader) throws SQLException {
+<span class="fc" id="L458">        checkOpen();</span>
+        try {
+<span class="fc" id="L460">            getDelegatePreparedStatement().setNCharacterStream(parameterIndex, reader);</span>
+<span class="nc" id="L461">        } catch (final SQLException e) {</span>
+<span class="nc" id="L462">            handleException(e);</span>
+<span class="fc" id="L463">        }</span>
+<span class="fc" id="L464">    }</span>
+
+    @Override
+    public void setNCharacterStream(final int parameterIndex, final Reader value, final long length)
+            throws SQLException {
+<span class="fc" id="L469">        checkOpen();</span>
+        try {
+<span class="fc" id="L471">            getDelegatePreparedStatement().setNCharacterStream(parameterIndex, value, length);</span>
+<span class="nc" id="L472">        } catch (final SQLException e) {</span>
+<span class="nc" id="L473">            handleException(e);</span>
+<span class="fc" id="L474">        }</span>
+<span class="fc" id="L475">    }</span>
+
+    @Override
+    public void setNClob(final int parameterIndex, final NClob value) throws SQLException {
+<span class="fc" id="L479">        checkOpen();</span>
+        try {
+<span class="fc" id="L481">            getDelegatePreparedStatement().setNClob(parameterIndex, value);</span>
+<span class="nc" id="L482">        } catch (final SQLException e) {</span>
+<span class="nc" id="L483">            handleException(e);</span>
+<span class="fc" id="L484">        }</span>
+<span class="fc" id="L485">    }</span>
+
+    @Override
+    public void setNClob(final int parameterIndex, final Reader reader) throws SQLException {
+<span class="fc" id="L489">        checkOpen();</span>
+        try {
+<span class="fc" id="L491">            getDelegatePreparedStatement().setNClob(parameterIndex, reader);</span>
+<span class="nc" id="L492">        } catch (final SQLException e) {</span>
+<span class="nc" id="L493">            handleException(e);</span>
+<span class="fc" id="L494">        }</span>
+<span class="fc" id="L495">    }</span>
+
+    @Override
+    public void setNClob(final int parameterIndex, final Reader reader, final long length) throws SQLException {
+<span class="fc" id="L499">        checkOpen();</span>
+        try {
+<span class="fc" id="L501">            getDelegatePreparedStatement().setNClob(parameterIndex, reader, length);</span>
+<span class="nc" id="L502">        } catch (final SQLException e) {</span>
+<span class="nc" id="L503">            handleException(e);</span>
+<span class="fc" id="L504">        }</span>
+<span class="fc" id="L505">    }</span>
+
+    @Override
+    public void setNString(final int parameterIndex, final String value) throws SQLException {
+<span class="fc" id="L509">        checkOpen();</span>
+        try {
+<span class="fc" id="L511">            getDelegatePreparedStatement().setNString(parameterIndex, value);</span>
+<span class="nc" id="L512">        } catch (final SQLException e) {</span>
+<span class="nc" id="L513">            handleException(e);</span>
+<span class="fc" id="L514">        }</span>
+<span class="fc" id="L515">    }</span>
+
+    @Override
+    public void setNull(final int parameterIndex, final int sqlType) throws SQLException {
+<span class="fc" id="L519">        checkOpen();</span>
+        try {
+<span class="fc" id="L521">            getDelegatePreparedStatement().setNull(parameterIndex, sqlType);</span>
+<span class="nc" id="L522">        } catch (final SQLException e) {</span>
+<span class="nc" id="L523">            handleException(e);</span>
+<span class="fc" id="L524">        }</span>
+<span class="fc" id="L525">    }</span>
+
+    @Override
+    public void setNull(final int paramIndex, final int sqlType, final String typeName) throws SQLException {
+<span class="fc" id="L529">        checkOpen();</span>
+        try {
+<span class="fc" id="L531">            getDelegatePreparedStatement().setNull(paramIndex, sqlType, typeName);</span>
+<span class="nc" id="L532">        } catch (final SQLException e) {</span>
+<span class="nc" id="L533">            handleException(e);</span>
+<span class="fc" id="L534">        }</span>
+<span class="fc" id="L535">    }</span>
+
+    @Override
+    public void setObject(final int parameterIndex, final Object x) throws SQLException {
+<span class="fc" id="L539">        checkOpen();</span>
+        try {
+<span class="fc" id="L541">            getDelegatePreparedStatement().setObject(parameterIndex, x);</span>
+<span class="nc" id="L542">        } catch (final SQLException e) {</span>
+<span class="nc" id="L543">            handleException(e);</span>
+<span class="fc" id="L544">        }</span>
+<span class="fc" id="L545">    }</span>
+
+    @Override
+    public void setObject(final int parameterIndex, final Object x, final int targetSqlType) throws SQLException {
+<span class="fc" id="L549">        checkOpen();</span>
+        try {
+<span class="fc" id="L551">            getDelegatePreparedStatement().setObject(parameterIndex, x, targetSqlType);</span>
+<span class="nc" id="L552">        } catch (final SQLException e) {</span>
+<span class="nc" id="L553">            handleException(e);</span>
+<span class="fc" id="L554">        }</span>
+<span class="fc" id="L555">    }</span>
+
+    @Override
+    public void setObject(final int parameterIndex, final Object x, final int targetSqlType, final int scale)
+            throws SQLException {
+<span class="fc" id="L560">        checkOpen();</span>
+        try {
+<span class="fc" id="L562">            getDelegatePreparedStatement().setObject(parameterIndex, x, targetSqlType, scale);</span>
+<span class="nc" id="L563">        } catch (final SQLException e) {</span>
+<span class="nc" id="L564">            handleException(e);</span>
+<span class="fc" id="L565">        }</span>
+<span class="fc" id="L566">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void setObject(final int parameterIndex, final Object x, final SQLType targetSqlType) throws SQLException {
+<span class="fc" id="L573">        checkOpen();</span>
+        try {
+<span class="fc" id="L575">            getDelegatePreparedStatement().setObject(parameterIndex, x, targetSqlType);</span>
+<span class="nc" id="L576">        } catch (final SQLException e) {</span>
+<span class="nc" id="L577">            handleException(e);</span>
+<span class="fc" id="L578">        }</span>
+<span class="fc" id="L579">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void setObject(final int parameterIndex, final Object x, final SQLType targetSqlType, final int scaleOrLength) throws SQLException {
+<span class="fc" id="L586">        checkOpen();</span>
+        try {
+<span class="fc" id="L588">            getDelegatePreparedStatement().setObject(parameterIndex, x, targetSqlType, scaleOrLength);</span>
+<span class="nc" id="L589">        } catch (final SQLException e) {</span>
+<span class="nc" id="L590">            handleException(e);</span>
+<span class="fc" id="L591">        }</span>
+<span class="fc" id="L592">    }</span>
+
+    @Override
+    public void setRef(final int i, final Ref x) throws SQLException {
+<span class="fc" id="L596">        checkOpen();</span>
+        try {
+<span class="fc" id="L598">            getDelegatePreparedStatement().setRef(i, x);</span>
+<span class="nc" id="L599">        } catch (final SQLException e) {</span>
+<span class="nc" id="L600">            handleException(e);</span>
+<span class="fc" id="L601">        }</span>
+<span class="fc" id="L602">    }</span>
+
+    @Override
+    public void setRowId(final int parameterIndex, final RowId value) throws SQLException {
+<span class="fc" id="L606">        checkOpen();</span>
+        try {
+<span class="fc" id="L608">            getDelegatePreparedStatement().setRowId(parameterIndex, value);</span>
+<span class="nc" id="L609">        } catch (final SQLException e) {</span>
+<span class="nc" id="L610">            handleException(e);</span>
+<span class="fc" id="L611">        }</span>
+<span class="fc" id="L612">    }</span>
+
+    @Override
+    public void setShort(final int parameterIndex, final short x) throws SQLException {
+<span class="fc" id="L616">        checkOpen();</span>
+        try {
+<span class="fc" id="L618">            getDelegatePreparedStatement().setShort(parameterIndex, x);</span>
+<span class="nc" id="L619">        } catch (final SQLException e) {</span>
+<span class="nc" id="L620">            handleException(e);</span>
+<span class="fc" id="L621">        }</span>
+<span class="fc" id="L622">    }</span>
+
+    @Override
+    public void setSQLXML(final int parameterIndex, final SQLXML value) throws SQLException {
+<span class="fc" id="L626">        checkOpen();</span>
+        try {
+<span class="fc" id="L628">            getDelegatePreparedStatement().setSQLXML(parameterIndex, value);</span>
+<span class="nc" id="L629">        } catch (final SQLException e) {</span>
+<span class="nc" id="L630">            handleException(e);</span>
+<span class="fc" id="L631">        }</span>
+<span class="fc" id="L632">    }</span>
+
+    @Override
+    public void setString(final int parameterIndex, final String x) throws SQLException {
+<span class="fc" id="L636">        checkOpen();</span>
+        try {
+<span class="fc" id="L638">            getDelegatePreparedStatement().setString(parameterIndex, x);</span>
+<span class="nc" id="L639">        } catch (final SQLException e) {</span>
+<span class="nc" id="L640">            handleException(e);</span>
+<span class="fc" id="L641">        }</span>
+<span class="fc" id="L642">    }</span>
+
+    @Override
+    public void setTime(final int parameterIndex, final Time x) throws SQLException {
+<span class="fc" id="L646">        checkOpen();</span>
+        try {
+<span class="fc" id="L648">            getDelegatePreparedStatement().setTime(parameterIndex, x);</span>
+<span class="nc" id="L649">        } catch (final SQLException e) {</span>
+<span class="nc" id="L650">            handleException(e);</span>
+<span class="fc" id="L651">        }</span>
+<span class="fc" id="L652">    }</span>
+
+    @Override
+    public void setTime(final int parameterIndex, final Time x, final Calendar cal) throws SQLException {
+<span class="fc" id="L656">        checkOpen();</span>
+        try {
+<span class="fc" id="L658">            getDelegatePreparedStatement().setTime(parameterIndex, x, cal);</span>
+<span class="nc" id="L659">        } catch (final SQLException e) {</span>
+<span class="nc" id="L660">            handleException(e);</span>
+<span class="fc" id="L661">        }</span>
+<span class="fc" id="L662">    }</span>
+
+    @Override
+    public void setTimestamp(final int parameterIndex, final Timestamp x) throws SQLException {
+<span class="fc" id="L666">        checkOpen();</span>
+        try {
+<span class="fc" id="L668">            getDelegatePreparedStatement().setTimestamp(parameterIndex, x);</span>
+<span class="nc" id="L669">        } catch (final SQLException e) {</span>
+<span class="nc" id="L670">            handleException(e);</span>
+<span class="fc" id="L671">        }</span>
+<span class="fc" id="L672">    }</span>
+
+    @Override
+    public void setTimestamp(final int parameterIndex, final Timestamp x, final Calendar cal) throws SQLException {
+<span class="fc" id="L676">        checkOpen();</span>
+        try {
+<span class="fc" id="L678">            getDelegatePreparedStatement().setTimestamp(parameterIndex, x, cal);</span>
+<span class="nc" id="L679">        } catch (final SQLException e) {</span>
+<span class="nc" id="L680">            handleException(e);</span>
+<span class="fc" id="L681">        }</span>
+<span class="fc" id="L682">    }</span>
+
+    /** @deprecated Use setAsciiStream(), setCharacterStream() or setNCharacterStream() */
+    @Deprecated
+    @Override
+    public void setUnicodeStream(final int parameterIndex, final InputStream x, final int length) throws SQLException {
+<span class="fc" id="L688">        checkOpen();</span>
+        try {
+<span class="fc" id="L690">            getDelegatePreparedStatement().setUnicodeStream(parameterIndex, x, length);</span>
+<span class="nc" id="L691">        } catch (final SQLException e) {</span>
+<span class="nc" id="L692">            handleException(e);</span>
+<span class="fc" id="L693">        }</span>
+<span class="fc" id="L694">    }</span>
+
+    @Override
+    public void setURL(final int parameterIndex, final java.net.URL x) throws SQLException {
+<span class="fc" id="L698">        checkOpen();</span>
+        try {
+<span class="fc" id="L700">            getDelegatePreparedStatement().setURL(parameterIndex, x);</span>
+<span class="nc" id="L701">        } catch (final SQLException e) {</span>
+<span class="nc" id="L702">            handleException(e);</span>
+<span class="fc" id="L703">        }</span>
+<span class="fc" id="L704">    }</span>
+
+    /**
+     * Returns a String representation of this object.
+     *
+     * @return String
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    @Override
+    public synchronized String toString() {
+<span class="fc" id="L714">        final Statement statement = getDelegate();</span>
+<span class="pc bpc" id="L715" title="1 of 2 branches missed.">        return statement == null ? &quot;NULL&quot; : statement.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,450 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LayerManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">LayerManager.java</span></div><h1>LayerManager.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+/**
+ * Implementation of the methods to manage the layers in a layered Bloom filter.
+ * &lt;p&gt;
+ * The manager comprises a list of Bloom filters that are managed based on
+ * various rules. The last filter in the list is known as the {@code target} and
+ * is the filter into which merges are performed. The Layered manager utilizes
+ * three methods to manage the list.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;ExtendCheck - A Predicate that if true causes a new Bloom filter to be
+ * created as the new target.&lt;/li&gt;
+ * &lt;li&gt;FilterSupplier - A Supplier that produces empty Bloom filters to be used
+ * as a new target.&lt;/li&gt;
+ * &lt;li&gt;Cleanup - A Consumer of a {@code LinkedList} of BloomFilter that removes any
+ * expired or out dated filters from the list.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * When extendCheck returns {@code true} the following steps are taken:
+ * &lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;{@code Cleanup} is called&lt;/li&gt;
+ * &lt;li&gt;{@code FilterSuplier} is executed and the new filter added to the list as
+ * the {@code target} filter.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * @since 4.5
+ */
+public class LayerManager&lt;T extends BloomFilter&gt; implements BloomFilterExtractor {
+
+    /**
+     * Builder to create Layer Manager
+     */
+    public static class Builder&lt;T extends BloomFilter&gt; {
+        private Predicate&lt;LayerManager&lt;T&gt;&gt; extendCheck;
+        private Supplier&lt;T&gt; supplier;
+        private Consumer&lt;Deque&lt;T&gt;&gt; cleanup;
+
+<span class="fc" id="L64">        private Builder() {</span>
+<span class="fc" id="L65">            extendCheck = ExtendCheck.neverAdvance();</span>
+<span class="fc" id="L66">            cleanup = Cleanup.noCleanup();</span>
+<span class="fc" id="L67">        }</span>
+
+        /**
+         * Builds the layer manager with the specified properties.
+         *
+         * @return a new LayerManager.
+         */
+        public LayerManager&lt;T&gt; build() {
+<span class="fc" id="L75">            Objects.requireNonNull(supplier, &quot;Supplier must not be null&quot;);</span>
+<span class="fc" id="L76">            Objects.requireNonNull(extendCheck, &quot;ExtendCheck must not be null&quot;);</span>
+<span class="fc" id="L77">            Objects.requireNonNull(cleanup, &quot;Cleanup must not be null&quot;);</span>
+<span class="fc" id="L78">            return new LayerManager&lt;&gt;(supplier, extendCheck, cleanup, true);</span>
+        }
+
+        /**
+         * Sets the Consumer that cleans the list of Bloom filters.
+         *
+         * @param cleanup the Consumer that will modify the list of filters removing out
+         *                dated or stale filters.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setCleanup(final Consumer&lt;Deque&lt;T&gt;&gt; cleanup) {
+<span class="fc" id="L89">            this.cleanup = cleanup;</span>
+<span class="fc" id="L90">            return this;</span>
+        }
+
+        /**
+         * Sets the extendCheck predicate. When the predicate returns {@code true} a new
+         * target will be created.
+         *
+         * @param extendCheck The predicate to determine if a new target should be
+         *                    created.
+         * @return this for chaining.
+         */
+        public Builder&lt;T&gt; setExtendCheck(final Predicate&lt;LayerManager&lt;T&gt;&gt; extendCheck) {
+<span class="fc" id="L102">            this.extendCheck = extendCheck;</span>
+<span class="fc" id="L103">            return this;</span>
+        }
+
+        /**
+         * Sets the supplier of Bloom filters. When extendCheck creates a new target,
+         * the supplier provides the instance of the Bloom filter.
+         *
+         * @param supplier The supplier of new Bloom filter instances.
+         * @return this for chaining.
+         */
+        public Builder&lt;T&gt; setSupplier(final Supplier&lt;T&gt; supplier) {
+<span class="fc" id="L114">            this.supplier = supplier;</span>
+<span class="fc" id="L115">            return this;</span>
+        }
+    }
+
+    /**
+     * Static methods to create a Consumer of a List of BloomFilter perform
+     * tests on whether to reduce the collection of Bloom filters.
+     */
+    public static final class Cleanup {
+
+        /**
+         * A Cleanup that never removes anything.
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @return A Consumer suitable for the LayerManager {@code cleanup} parameter.
+         */
+        public static &lt;T extends BloomFilter&gt; Consumer&lt;Deque&lt;T&gt;&gt; noCleanup() {
+<span class="fc" id="L132">            return x -&gt; {</span>
+                // empty
+<span class="fc" id="L134">            };</span>
+        }
+
+        /**
+         * Removes the earliest filters in the list when the the number of filters
+         * exceeds maxSize.
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @param maxSize the maximum number of filters for the list. Must be greater
+         *                than 0
+         * @return A Consumer suitable for the LayerManager {@code cleanup} parameter.
+         * @throws IllegalArgumentException if {@code maxSize &lt;= 0}.
+         */
+        public static &lt;T extends BloomFilter&gt; Consumer&lt;Deque&lt;T&gt;&gt; onMaxSize(final int maxSize) {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (maxSize &lt;= 0) {</span>
+<span class="fc" id="L149">                throw new IllegalArgumentException(&quot;'maxSize' must be greater than 0&quot;);</span>
+            }
+<span class="fc" id="L151">            return ll -&gt; {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                while (ll.size() &gt; maxSize) {</span>
+<span class="fc" id="L153">                    ll.removeFirst();</span>
+                }
+<span class="fc" id="L155">            };</span>
+        }
+
+        /**
+         * Removes the last added target if it is empty.  Useful as the first in a chain
+         * of cleanup consumers.  (e.g. {@code Cleanup.removeEmptyTarget.andThen( otherConsumer )})
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @return A Consumer suitable for the LayerManager {@code cleanup} parameter.
+         */
+        public static &lt;T extends BloomFilter&gt; Consumer&lt;Deque&lt;T&gt;&gt; removeEmptyTarget() {
+<span class="fc" id="L166">            return x -&gt; {</span>
+<span class="pc bpc" id="L167" title="1 of 4 branches missed.">                if (!x.isEmpty() &amp;&amp; x.getLast().isEmpty()) {</span>
+<span class="fc" id="L168">                    x.removeLast();</span>
+                }
+<span class="fc" id="L170">            };</span>
+        }
+
+        /**
+         * Removes any layer identified by the predicate.
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @param test Predicate.
+         * @return A Consumer suitable for the LayerManager {@code cleanup} parameter.
+         */
+        public static &lt;T extends BloomFilter&gt; Consumer&lt;Deque&lt;T&gt;&gt; removeIf(final Predicate&lt;? super T&gt; test) {
+<span class="nc" id="L181">            return x -&gt; x.removeIf(test);</span>
+        }
+
+        private Cleanup() {
+        }
+    }
+
+    /**
+     * A collection of common ExtendCheck implementations to test whether to extend
+     * the depth of a LayerManager.
+     */
+    public static final class ExtendCheck {
+        /**
+         * Creates a new target after a specific number of filters have been added to
+         * the current target.
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @param breakAt the number of filters to merge into each filter in the list.
+         * @return A Predicate suitable for the LayerManager {@code extendCheck} parameter.
+         * @throws IllegalArgumentException if {@code breakAt &lt;= 0}
+         */
+        public static &lt;T extends BloomFilter&gt; Predicate&lt;LayerManager&lt;T&gt;&gt; advanceOnCount(final int breakAt) {
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            if (breakAt &lt;= 0) {</span>
+<span class="fc" id="L204">                throw new IllegalArgumentException(&quot;'breakAt' must be greater than 0&quot;);</span>
+            }
+<span class="fc" id="L206">            return new Predicate&lt;LayerManager&lt;T&gt;&gt;() {</span>
+                int count;
+
+                @Override
+                public boolean test(final LayerManager&lt;T&gt; filter) {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                    if (++count == breakAt) {</span>
+<span class="fc" id="L212">                        count = 0;</span>
+<span class="fc" id="L213">                        return true;</span>
+                    }
+<span class="fc" id="L215">                    return false;</span>
+                }
+            };
+        }
+
+        /**
+         * Advances the target once a merge has been performed.
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @return A Predicate suitable for the LayerManager {@code extendCheck} parameter.
+         */
+        public static &lt;T extends BloomFilter&gt; Predicate&lt;LayerManager&lt;T&gt;&gt; advanceOnPopulated() {
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            return lm -&gt; !lm.last().isEmpty();</span>
+        }
+
+        /**
+         * Creates a new target after the current target is saturated. Saturation is
+         * defined as the {@code Bloom filter estimated N &gt;= maxN}.
+         *
+         * &lt;p&gt;An example usage is advancing on a calculated saturation by calling:
+         * {@code ExtendCheck.advanceOnSaturation(shape.estimateMaxN()) }&lt;/p&gt;
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @param maxN the maximum number of estimated items in the filter.
+         * @return A Predicate suitable for the LayerManager {@code extendCheck} parameter.
+         * @throws IllegalArgumentException if {@code maxN &lt;= 0}
+         */
+        public static &lt;T extends BloomFilter&gt; Predicate&lt;LayerManager&lt;T&gt;&gt; advanceOnSaturation(final double maxN) {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (maxN &lt;= 0) {</span>
+<span class="fc" id="L244">                throw new IllegalArgumentException(&quot;'maxN' must be greater than 0&quot;);</span>
+            }
+<span class="fc" id="L246">            return manager -&gt; {</span>
+<span class="fc" id="L247">                final BloomFilter bf = manager.last();</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                return maxN &lt;= bf.getShape().estimateN(bf.cardinality());</span>
+            };
+        }
+
+        /**
+         * Does not automatically advance the target. @{code next()} must be called directly to
+         * perform the advance.
+         *
+         * @param &lt;T&gt; Type of BloomFilter.
+         * @return A Predicate suitable for the LayerManager {@code extendCheck} parameter.
+         */
+        public static &lt;T extends BloomFilter&gt; Predicate&lt;LayerManager&lt;T&gt;&gt; neverAdvance() {
+<span class="fc" id="L260">            return x -&gt; false;</span>
+        }
+
+        private ExtendCheck() {
+        }
+    }
+    /**
+     * Creates a new Builder with defaults of {@code ExtendCheck.neverAdvance()} and
+     * {@code Cleanup.noCleanup()}.
+     *
+     * @param &lt;T&gt; Type of BloomFilter.
+     * @return A builder.
+     * @see ExtendCheck#neverAdvance()
+     * @see Cleanup#noCleanup()
+     */
+    public static &lt;T extends BloomFilter&gt; Builder&lt;T&gt; builder() {
+<span class="fc" id="L276">        return new Builder&lt;&gt;();</span>
+    }
+
+<span class="fc" id="L279">    private final LinkedList&lt;T&gt; filters = new LinkedList&lt;&gt;();</span>
+
+    private final Consumer&lt;Deque&lt;T&gt;&gt; filterCleanup;
+
+    private final Predicate&lt;LayerManager&lt;T&gt;&gt; extendCheck;
+
+    private final Supplier&lt;T&gt; filterSupplier;
+
+    /**
+     * Constructor.
+     *
+     * @param filterSupplier the supplier of new Bloom filters to add the the list
+     *                       when necessary.
+     * @param extendCheck    The predicate that checks if a new filter should be
+     *                       added to the list.
+     * @param filterCleanup  the consumer that removes any old filters from the
+     *                       list.
+     * @param initialize     true if the filter list should be initialized.
+     */
+    private LayerManager(final Supplier&lt;T&gt; filterSupplier, final Predicate&lt;LayerManager&lt;T&gt;&gt; extendCheck,
+<span class="fc" id="L299">            final Consumer&lt;Deque&lt;T&gt;&gt; filterCleanup, final boolean initialize) {</span>
+<span class="fc" id="L300">        this.filterSupplier = filterSupplier;</span>
+<span class="fc" id="L301">        this.extendCheck = extendCheck;</span>
+<span class="fc" id="L302">        this.filterCleanup = filterCleanup;</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (initialize) {</span>
+<span class="fc" id="L304">            addFilter();</span>
+        }
+<span class="fc" id="L306">    }</span>
+
+    /**
+     * Adds a new Bloom filter to the list.
+     */
+    private void addFilter() {
+<span class="fc" id="L312">        final T bf = filterSupplier.get();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (bf == null) {</span>
+<span class="fc" id="L314">            throw new NullPointerException(&quot;filterSupplier returned null.&quot;);</span>
+        }
+<span class="fc" id="L316">        filters.add(bf);</span>
+<span class="fc" id="L317">    }</span>
+
+    /**
+     * Forces execution the configured cleanup without creating a new filter except in cases
+     * where the cleanup removes all the layers.
+     * @see LayerManager.Builder#setCleanup(Consumer)
+     */
+    void cleanup() {
+<span class="fc" id="L325">        this.filterCleanup.accept(filters);</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (filters.isEmpty()) {</span>
+<span class="fc" id="L327">            addFilter();</span>
+        }
+<span class="fc" id="L329">    }</span>
+
+    /**
+     * Removes all the filters from the layer manager, and sets up a new one as the
+     * target.
+     */
+    public final void clear() {
+<span class="fc" id="L336">        filters.clear();</span>
+<span class="fc" id="L337">        addFilter();</span>
+<span class="fc" id="L338">    }</span>
+
+    /**
+     * Creates a deep copy of this LayerManager.
+     * &lt;p&gt;&lt;em&gt;Filters in the copy are deep copies, not references, so changes in the copy
+     * are NOT reflected in the original.&lt;/em&gt;&lt;/p&gt;
+     * &lt;p&gt;The {@code filterSupplier}, {@code extendCheck}, and the {@code filterCleanup} are shared between
+     * the copy and this instance.&lt;/p&gt;
+     *
+     * @return a copy of this layer Manager.
+     */
+    public LayerManager&lt;T&gt; copy() {
+<span class="fc" id="L350">        final LayerManager&lt;T&gt; newMgr = new LayerManager&lt;&gt;(filterSupplier, extendCheck, filterCleanup, false);</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        for (final T bf : filters) {</span>
+<span class="fc" id="L352">            newMgr.filters.add(bf.copy());</span>
+<span class="fc" id="L353">        }</span>
+<span class="fc" id="L354">        return newMgr;</span>
+    }
+
+    /**
+     * Gets the Bloom filter from the first layer.
+     * No extension check is performed during this call.
+     * @return The Bloom filter from the first layer.
+     * @see #getTarget()
+     */
+    public final T first() {
+<span class="nc" id="L364">        return filters.getFirst();</span>
+    }
+
+    /**
+     * Executes a Bloom filter Predicate on each Bloom filter in the manager in
+     * depth order. Oldest filter first.
+     *
+     * @param bloomFilterPredicate the predicate to evaluate each Bloom filter with.
+     * @return {@code false} when the a filter fails the predicate test. Returns
+     *         {@code true} if all filters pass the test.
+     */
+    @Override
+    public boolean processBloomFilters(final Predicate&lt;BloomFilter&gt; bloomFilterPredicate) {
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        for (final BloomFilter bf : filters) {</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">            if (!bloomFilterPredicate.test(bf)) {</span>
+<span class="fc" id="L379">                return false;</span>
+            }
+<span class="fc" id="L381">        }</span>
+<span class="fc" id="L382">        return true;</span>
+    }
+
+    /**
+     * Gets the Bloom filter at the specified depth. The filter at depth 0 is the
+     * oldest filter.
+     *
+     * @param depth the depth at which the desired filter is to be found.
+     * @return the filter.
+     * @throws NoSuchElementException if depth is not in the range
+     *                                [0,filters.size())
+     */
+    public final T get(final int depth) {
+<span class="fc bfc" id="L395" title="All 4 branches covered.">        if (depth &lt; 0 || depth &gt;= filters.size()) {</span>
+<span class="fc" id="L396">            throw new NoSuchElementException(String.format(&quot;Depth must be in the range [0,%s)&quot;, filters.size()));</span>
+        }
+<span class="fc" id="L398">        return filters.get(depth);</span>
+    }
+
+    /**
+     * Returns the number of filters in the LayerManager.  In the default LayerManager implementation
+     * there is always at least one layer.
+     *
+     * @return the current depth.
+     */
+    public final int getDepth() {
+<span class="fc" id="L408">        return filters.size();</span>
+    }
+
+    /**
+     * Returns the current target filter. If a new filter should be created based on
+     * {@code extendCheck} it will be created before this method returns.
+     *
+     * @return the current target filter after any extension.
+     */
+    public final T getTarget() {
+<span class="fc bfc" id="L418" title="All 2 branches covered.">        if (extendCheck.test(this)) {</span>
+<span class="fc" id="L419">            next();</span>
+        }
+<span class="fc" id="L421">        return last();</span>
+    }
+
+    /**
+     * Gets the Bloom filter from the last layer.
+     * No extension check is performed during this call.
+     * @return The Bloom filter from the last layer.
+     * @see #getTarget()
+     */
+    public final T last() {
+<span class="fc" id="L431">        return filters.getLast();</span>
+    }
+
+    /**
+     * Forces an advance to the next depth. This method will clean-up the current
+     * layers and generate a new filter layer. In most cases is it unnecessary to
+     * call this method directly.
+     * &lt;p&gt;
+     * Ths method is used within {@link #getTarget()} when the configured
+     * {@code ExtendCheck} returns {@code true}.
+     * &lt;/p&gt;
+     * @see LayerManager.Builder#setExtendCheck(Predicate)
+     * @see LayerManager.Builder#setCleanup(Consumer)
+     */
+    void next() {
+<span class="fc" id="L446">        this.filterCleanup.accept(filters);</span>
+<span class="fc" id="L447">        addFilter();</span>
+<span class="fc" id="L448">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

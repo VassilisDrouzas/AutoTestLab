@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Utils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">Utils.java</span></div><h1>Utils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.text.MessageFormat;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.function.Consumer;
+
+import org.apache.commons.pool2.PooledObject;
+
+/**
+ * Utility methods.
+ *
+ * @since 2.0
+ */
+public final class Utils {
+
+<span class="fc" id="L41">    private static final ResourceBundle messages = ResourceBundle</span>
+<span class="fc" id="L42">        .getBundle(Utils.class.getPackage().getName() + &quot;.LocalStrings&quot;);</span>
+
+    /**
+     * Whether the security manager is enabled.
+     *
+     * @deprecated No replacement.
+     */
+    @Deprecated
+<span class="fc" id="L50">    public static final boolean IS_SECURITY_ENABLED = isSecurityEnabled();</span>
+
+    /** Any SQL_STATE starting with this value is considered a fatal disconnect */
+    public static final String DISCONNECTION_SQL_CODE_PREFIX = &quot;08&quot;;
+
+    /**
+     * SQL codes of fatal connection errors.
+     * &lt;ul&gt;
+     * &lt;li&gt;57P01 (Admin shutdown)&lt;/li&gt;
+     * &lt;li&gt;57P02 (Crash shutdown)&lt;/li&gt;
+     * &lt;li&gt;57P03 (Cannot connect now)&lt;/li&gt;
+     * &lt;li&gt;01002 (SQL92 disconnect error)&lt;/li&gt;
+     * &lt;li&gt;JZ0C0 (Sybase disconnect error)&lt;/li&gt;
+     * &lt;li&gt;JZ0C1 (Sybase disconnect error)&lt;/li&gt;
+     * &lt;/ul&gt;
+     * @deprecated Use {@link #getDisconnectionSqlCodes()}.
+     */
+    @Deprecated
+    public static final Set&lt;String&gt; DISCONNECTION_SQL_CODES;
+
+<span class="fc" id="L70">    static final ResultSet[] EMPTY_RESULT_SET_ARRAY = {};</span>
+
+<span class="fc" id="L72">    static final String[] EMPTY_STRING_ARRAY = {};</span>
+    static {
+<span class="fc" id="L74">        DISCONNECTION_SQL_CODES = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L75">        DISCONNECTION_SQL_CODES.add(&quot;57P01&quot;); // Admin shutdown</span>
+<span class="fc" id="L76">        DISCONNECTION_SQL_CODES.add(&quot;57P02&quot;); // Crash shutdown</span>
+<span class="fc" id="L77">        DISCONNECTION_SQL_CODES.add(&quot;57P03&quot;); // Cannot connect now</span>
+<span class="fc" id="L78">        DISCONNECTION_SQL_CODES.add(&quot;01002&quot;); // SQL92 disconnect error</span>
+<span class="fc" id="L79">        DISCONNECTION_SQL_CODES.add(&quot;JZ0C0&quot;); // Sybase disconnect error</span>
+<span class="fc" id="L80">        DISCONNECTION_SQL_CODES.add(&quot;JZ0C1&quot;); // Sybase disconnect error</span>
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Clones the given char[] if not null.
+     *
+     * @param value may be null.
+     * @return a cloned char[] or null.
+     */
+    public static char[] clone(final char[] value) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        return value == null ? null : value.clone();</span>
+    }
+
+    /**
+     * Clones the given {@link Properties} without the standard &quot;user&quot; or &quot;password&quot; entries.
+     *
+     * @param properties may be null
+     * @return a clone of the input without the standard &quot;user&quot; or &quot;password&quot; entries.
+     * @since 2.8.0
+     */
+    public static Properties cloneWithoutCredentials(final Properties properties) {
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (properties != null) {</span>
+<span class="nc" id="L102">            final Properties temp = (Properties) properties.clone();</span>
+<span class="nc" id="L103">            temp.remove(Constants.KEY_USER);</span>
+<span class="nc" id="L104">            temp.remove(Constants.KEY_PASSWORD);</span>
+<span class="nc" id="L105">            return temp;</span>
+        }
+<span class="fc" id="L107">        return properties;</span>
+    }
+
+    /**
+     * Closes the given {@link AutoCloseable} and if an exception is caught, then calls {@code exceptionHandler}.
+     *
+     * @param autoCloseable The resource to close.
+     * @param exceptionHandler Consumes exception thrown closing this resource.
+     * @since 2.10.0
+     */
+    public static void close(final AutoCloseable autoCloseable, final Consumer&lt;Exception&gt; exceptionHandler) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (autoCloseable != null) {</span>
+            try {
+<span class="fc" id="L120">                autoCloseable.close();</span>
+<span class="fc" id="L121">            } catch (final Exception e) {</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                if (exceptionHandler != null) {</span>
+<span class="fc" id="L123">                    exceptionHandler.accept(e);</span>
+                }
+<span class="fc" id="L125">            }</span>
+        }
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Closes the AutoCloseable (which may be null).
+     *
+     * @param autoCloseable an AutoCloseable, may be {@code null}
+     * @since 2.6.0
+     */
+    public static void closeQuietly(final AutoCloseable autoCloseable) {
+<span class="fc" id="L136">        close(autoCloseable, null);</span>
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * Closes the Connection (which may be null).
+     *
+     * @param connection a Connection, may be {@code null}
+     * @deprecated Use {@link #closeQuietly(AutoCloseable)}.
+     */
+    @Deprecated
+    public static void closeQuietly(final Connection connection) {
+<span class="nc" id="L147">        closeQuietly((AutoCloseable) connection);</span>
+<span class="nc" id="L148">    }</span>
+
+    /**
+     * Closes the ResultSet (which may be null).
+     *
+     * @param resultSet a ResultSet, may be {@code null}
+     * @deprecated Use {@link #closeQuietly(AutoCloseable)}.
+     */
+    @Deprecated
+    public static void closeQuietly(final ResultSet resultSet) {
+<span class="nc" id="L158">        closeQuietly((AutoCloseable) resultSet);</span>
+<span class="nc" id="L159">    }</span>
+
+    /**
+     * Closes the Statement (which may be null).
+     *
+     * @param statement a Statement, may be {@code null}.
+     * @deprecated Use {@link #closeQuietly(AutoCloseable)}.
+     */
+    @Deprecated
+    public static void closeQuietly(final Statement statement) {
+<span class="nc" id="L169">        closeQuietly((AutoCloseable) statement);</span>
+<span class="nc" id="L170">    }</span>
+
+    /**
+     * Gets a copy of SQL codes of fatal connection errors.
+     * &lt;ul&gt;
+     * &lt;li&gt;57P01 (Admin shutdown)&lt;/li&gt;
+     * &lt;li&gt;57P02 (Crash shutdown)&lt;/li&gt;
+     * &lt;li&gt;57P03 (Cannot connect now)&lt;/li&gt;
+     * &lt;li&gt;01002 (SQL92 disconnect error)&lt;/li&gt;
+     * &lt;li&gt;JZ0C0 (Sybase disconnect error)&lt;/li&gt;
+     * &lt;li&gt;JZ0C1 (Sybase disconnect error)&lt;/li&gt;
+     * &lt;/ul&gt;
+     * @return SQL codes of fatal connection errors.
+     * @since 2.10.0
+     */
+    public static Set&lt;String&gt; getDisconnectionSqlCodes() {
+<span class="fc" id="L186">        return new HashSet&lt;&gt;(DISCONNECTION_SQL_CODES);</span>
+    }
+
+    /**
+     * Gets the correct i18n message for the given key.
+     *
+     * @param key The key to look up an i18n message.
+     * @return The i18n message.
+     */
+    public static String getMessage(final String key) {
+<span class="fc" id="L196">        return getMessage(key, (Object[]) null);</span>
+    }
+
+    /**
+     * Gets the correct i18n message for the given key with placeholders replaced by the supplied arguments.
+     *
+     * @param key A message key.
+     * @param args The message arguments.
+     * @return An i18n message.
+     */
+    public static String getMessage(final String key, final Object... args) {
+<span class="fc" id="L207">        final String msg = messages.getString(key);</span>
+<span class="pc bpc" id="L208" title="1 of 4 branches missed.">        if (args == null || args.length == 0) {</span>
+<span class="fc" id="L209">            return msg;</span>
+        }
+<span class="fc" id="L211">        final MessageFormat mf = new MessageFormat(msg);</span>
+<span class="fc" id="L212">        return mf.format(args, new StringBuffer(), null).toString();</span>
+    }
+
+    static boolean isEmpty(final Collection&lt;?&gt; collection) {
+<span class="fc bfc" id="L216" title="All 4 branches covered.">        return collection == null || collection.isEmpty();</span>
+    }
+
+    static boolean isSecurityEnabled() {
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">        return System.getSecurityManager() != null;</span>
+    }
+
+    /**
+     * Converts the given String to a char[].
+     *
+     * @param value may be null.
+     * @return a char[] or null.
+     */
+    public static char[] toCharArray(final String value) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        return value != null ? value.toCharArray() : null;</span>
+    }
+
+    /**
+     * Converts the given char[] to a String.
+     *
+     * @param value may be null.
+     * @return a String or null.
+     */
+    public static String toString(final char[] value) {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        return value == null ? null : String.valueOf(value);</span>
+    }
+
+    public static void validateLifetime(final PooledObject&lt;?&gt; p, final Duration maxDuration) throws LifetimeExceededException {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (maxDuration.compareTo(Duration.ZERO) &gt; 0) {</span>
+<span class="fc" id="L245">            final Duration lifetimeDuration = Duration.between(p.getCreateInstant(), Instant.now());</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">            if (lifetimeDuration.compareTo(maxDuration) &gt; 0) {</span>
+<span class="fc" id="L247">                throw new LifetimeExceededException(Utils.getMessage(&quot;connectionFactory.lifetimeExceeded&quot;, lifetimeDuration, maxDuration));</span>
+            }
+        }
+<span class="fc" id="L250">    }</span>
+
+    private Utils() {
+        // not instantiable
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

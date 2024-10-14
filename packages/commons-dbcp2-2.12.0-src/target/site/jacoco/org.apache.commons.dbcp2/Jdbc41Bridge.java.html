@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Jdbc41Bridge.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">Jdbc41Bridge.java</span></div><h1>Jdbc41Bridge.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.io.InputStream;
+import java.io.Reader;
+import java.math.BigDecimal;
+import java.net.URL;
+import java.sql.Array;
+import java.sql.Blob;
+import java.sql.Clob;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.Date;
+import java.sql.Ref;
+import java.sql.ResultSet;
+import java.sql.RowId;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.sql.SQLXML;
+import java.sql.Statement;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.concurrent.Executor;
+import java.util.logging.Logger;
+
+import javax.sql.CommonDataSource;
+
+/**
+ * Defines bridge methods to JDBC 4.1 (Java 7 or above) methods to allow call sites to operate safely (without
+ * {@link AbstractMethodError}) when using a JDBC driver written for JDBC 4.0 (Java 6 or above).
+ * &lt;p&gt;
+ * There should be no need to this kind of code for JDBC 4.2 in Java 8 due to JDBC's use of default methods.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This should probably be moved or at least copied in some form to Apache Commons DbUtils.
+ * &lt;/p&gt;
+ *
+ * @since 2.6.0
+ */
+<span class="nc" id="L55">public class Jdbc41Bridge {</span>
+
+    /**
+     * Delegates to {@link Connection#abort(Executor)} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Connection#abort(Executor)}, then call {@link Connection#close()}.
+     * &lt;/p&gt;
+     *
+     * @param connection
+     *            the receiver
+     * @param executor
+     *            See {@link Connection#abort(Executor)}.
+     * @throws SQLException
+     *             See {@link Connection#abort(Executor)}.
+     * @see Connection#abort(Executor)
+     */
+    public static void abort(final Connection connection, final Executor executor) throws SQLException {
+        try {
+<span class="nc" id="L73">            connection.abort(executor);</span>
+<span class="nc" id="L74">        } catch (final AbstractMethodError e) {</span>
+<span class="nc" id="L75">            connection.close();</span>
+<span class="nc" id="L76">        }</span>
+<span class="nc" id="L77">    }</span>
+
+    /**
+     * Delegates to {@link Statement#closeOnCompletion()} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Statement#closeOnCompletion()}, then just check that the connection
+     * is closed to then throw an SQLException.
+     * &lt;/p&gt;
+     *
+     * @param statement
+     *            See {@link Statement#closeOnCompletion()}
+     * @throws SQLException
+     *             See {@link Statement#closeOnCompletion()}
+     * @see Statement#closeOnCompletion()
+     */
+    public static void closeOnCompletion(final Statement statement) throws SQLException {
+        try {
+<span class="fc" id="L94">            statement.closeOnCompletion();</span>
+<span class="nc" id="L95">        } catch (final AbstractMethodError e) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (statement.isClosed()) {</span>
+<span class="nc" id="L97">                throw new SQLException(&quot;Statement closed&quot;);</span>
+            }
+<span class="fc" id="L99">        }</span>
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Delegates to {@link DatabaseMetaData#generatedKeyAlwaysReturned()} without throwing a
+     * {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link DatabaseMetaData#generatedKeyAlwaysReturned()}, then return false.
+     * &lt;/p&gt;
+     *
+     * @param databaseMetaData
+     *            See {@link DatabaseMetaData#generatedKeyAlwaysReturned()}
+     * @return See {@link DatabaseMetaData#generatedKeyAlwaysReturned()}
+     * @throws SQLException
+     *             See {@link DatabaseMetaData#generatedKeyAlwaysReturned()}
+     * @see DatabaseMetaData#generatedKeyAlwaysReturned()
+     */
+    public static boolean generatedKeyAlwaysReturned(final DatabaseMetaData databaseMetaData) throws SQLException {
+        try {
+<span class="fc" id="L118">            return databaseMetaData.generatedKeyAlwaysReturned();</span>
+<span class="nc" id="L119">        } catch (final AbstractMethodError e) {</span>
+            // do nothing
+<span class="nc" id="L121">            return false;</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link Connection#getNetworkTimeout()} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Connection#getNetworkTimeout()}, then return 0.
+     * &lt;/p&gt;
+     *
+     * @param connection
+     *            the receiver
+     * @return See {@link Connection#getNetworkTimeout()}
+     * @throws SQLException
+     *             See {@link Connection#getNetworkTimeout()}
+     * @see Connection#getNetworkTimeout()
+     */
+    public static int getNetworkTimeout(final Connection connection) throws SQLException {
+        try {
+<span class="nc" id="L140">            return connection.getNetworkTimeout();</span>
+<span class="nc" id="L141">        } catch (final AbstractMethodError e) {</span>
+<span class="nc" id="L142">            return 0;</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link ResultSet#getObject(int, Class)} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link ResultSet#getObject(int, Class)}, then return 0.
+     * &lt;/p&gt;
+     *
+     * @param &lt;T&gt;
+     *            See {@link ResultSet#getObject(int, Class)}
+     * @param resultSet
+     *            See {@link ResultSet#getObject(int, Class)}
+     * @param columnIndex
+     *            See {@link ResultSet#getObject(int, Class)}
+     * @param type
+     *            See {@link ResultSet#getObject(int, Class)}
+     * @return See {@link ResultSet#getObject(int, Class)}
+     * @throws SQLException
+     *             See {@link ResultSet#getObject(int, Class)}
+     * @see ResultSet#getObject(int, Class)
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; T getObject(final ResultSet resultSet, final int columnIndex, final Class&lt;T&gt; type)
+            throws SQLException {
+        try {
+<span class="fc" id="L169">            return resultSet.getObject(columnIndex, type);</span>
+<span class="nc" id="L170">        } catch (final AbstractMethodError e) {</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">            if (type == String.class) {</span>
+<span class="nc" id="L172">                return (T) resultSet.getString(columnIndex);</span>
+            }
+            // Numbers
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            if (type == Integer.class) {</span>
+<span class="nc" id="L176">                return (T) Integer.valueOf(resultSet.getInt(columnIndex));</span>
+            }
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (type == Long.class) {</span>
+<span class="nc" id="L179">                return (T) Long.valueOf(resultSet.getLong(columnIndex));</span>
+            }
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            if (type == Double.class) {</span>
+<span class="nc" id="L182">                return (T) Double.valueOf(resultSet.getDouble(columnIndex));</span>
+            }
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            if (type == Float.class) {</span>
+<span class="nc" id="L185">                return (T) Float.valueOf(resultSet.getFloat(columnIndex));</span>
+            }
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (type == Short.class) {</span>
+<span class="nc" id="L188">                return (T) Short.valueOf(resultSet.getShort(columnIndex));</span>
+            }
+<span class="nc bnc" id="L190" title="All 2 branches missed.">            if (type == BigDecimal.class) {</span>
+<span class="nc" id="L191">                return (T) resultSet.getBigDecimal(columnIndex);</span>
+            }
+<span class="nc bnc" id="L193" title="All 2 branches missed.">            if (type == Byte.class) {</span>
+<span class="nc" id="L194">                return (T) Byte.valueOf(resultSet.getByte(columnIndex));</span>
+            }
+            // Dates
+<span class="nc bnc" id="L197" title="All 2 branches missed.">            if (type == Date.class) {</span>
+<span class="nc" id="L198">                return (T) resultSet.getDate(columnIndex);</span>
+            }
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            if (type == Time.class) {</span>
+<span class="nc" id="L201">                return (T) resultSet.getTime(columnIndex);</span>
+            }
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            if (type == Timestamp.class) {</span>
+<span class="nc" id="L204">                return (T) resultSet.getTimestamp(columnIndex);</span>
+            }
+            // Streams
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (type == InputStream.class) {</span>
+<span class="nc" id="L208">                return (T) resultSet.getBinaryStream(columnIndex);</span>
+            }
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (type == Reader.class) {</span>
+<span class="nc" id="L211">                return (T) resultSet.getCharacterStream(columnIndex);</span>
+            }
+            // Other
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            if (type == Object.class) {</span>
+<span class="nc" id="L215">                return (T) resultSet.getObject(columnIndex);</span>
+            }
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            if (type == Boolean.class) {</span>
+<span class="nc" id="L218">                return (T) Boolean.valueOf(resultSet.getBoolean(columnIndex));</span>
+            }
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            if (type == Array.class) {</span>
+<span class="nc" id="L221">                return (T) resultSet.getArray(columnIndex);</span>
+            }
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            if (type == Blob.class) {</span>
+<span class="nc" id="L224">                return (T) resultSet.getBlob(columnIndex);</span>
+            }
+<span class="nc bnc" id="L226" title="All 2 branches missed.">            if (type == Clob.class) {</span>
+<span class="nc" id="L227">                return (T) resultSet.getClob(columnIndex);</span>
+            }
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            if (type == Ref.class) {</span>
+<span class="nc" id="L230">                return (T) resultSet.getRef(columnIndex);</span>
+            }
+<span class="nc bnc" id="L232" title="All 2 branches missed.">            if (type == RowId.class) {</span>
+<span class="nc" id="L233">                return (T) resultSet.getRowId(columnIndex);</span>
+            }
+<span class="nc bnc" id="L235" title="All 2 branches missed.">            if (type == SQLXML.class) {</span>
+<span class="nc" id="L236">                return (T) resultSet.getSQLXML(columnIndex);</span>
+            }
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            if (type == URL.class) {</span>
+<span class="nc" id="L239">                return (T) resultSet.getURL(columnIndex);</span>
+            }
+<span class="nc" id="L241">            throw new SQLFeatureNotSupportedException(</span>
+<span class="nc" id="L242">                    String.format(&quot;resultSet=%s, columnIndex=%,d, type=%s&quot;, resultSet, columnIndex, type));</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link ResultSet#getObject(String, Class)} without throwing an {@link AbstractMethodError}.
+     *
+     * @param &lt;T&gt;
+     *            See {@link ResultSet#getObject(String, Class)}
+     * @param resultSet
+     *            See {@link ResultSet#getObject(String, Class)}
+     * @param columnLabel
+     *            See {@link ResultSet#getObject(String, Class)}
+     * @param type
+     *            See {@link ResultSet#getObject(String, Class)}
+     * @return See {@link ResultSet#getObject(String, Class)}
+     * @throws SQLException
+     *             See {@link ResultSet#getObject(String, Class)}
+     * @see ResultSet#getObject(int, Class)
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T&gt; T getObject(final ResultSet resultSet, final String columnLabel, final Class&lt;T&gt; type)
+            throws SQLException {
+        try {
+<span class="fc" id="L266">            return resultSet.getObject(columnLabel, type);</span>
+<span class="nc" id="L267">        } catch (final AbstractMethodError e) {</span>
+            // Numbers
+<span class="nc bnc" id="L269" title="All 2 branches missed.">            if (type == Integer.class) {</span>
+<span class="nc" id="L270">                return (T) Integer.valueOf(resultSet.getInt(columnLabel));</span>
+            }
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            if (type == Long.class) {</span>
+<span class="nc" id="L273">                return (T) Long.valueOf(resultSet.getLong(columnLabel));</span>
+            }
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            if (type == Double.class) {</span>
+<span class="nc" id="L276">                return (T) Double.valueOf(resultSet.getDouble(columnLabel));</span>
+            }
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (type == Float.class) {</span>
+<span class="nc" id="L279">                return (T) Float.valueOf(resultSet.getFloat(columnLabel));</span>
+            }
+<span class="nc bnc" id="L281" title="All 2 branches missed.">            if (type == Short.class) {</span>
+<span class="nc" id="L282">                return (T) Short.valueOf(resultSet.getShort(columnLabel));</span>
+            }
+<span class="nc bnc" id="L284" title="All 2 branches missed.">            if (type == BigDecimal.class) {</span>
+<span class="nc" id="L285">                return (T) resultSet.getBigDecimal(columnLabel);</span>
+            }
+<span class="nc bnc" id="L287" title="All 2 branches missed.">            if (type == Byte.class) {</span>
+<span class="nc" id="L288">                return (T) Byte.valueOf(resultSet.getByte(columnLabel));</span>
+            }
+            // Dates
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (type == Date.class) {</span>
+<span class="nc" id="L292">                return (T) resultSet.getDate(columnLabel);</span>
+            }
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            if (type == Time.class) {</span>
+<span class="nc" id="L295">                return (T) resultSet.getTime(columnLabel);</span>
+            }
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if (type == Timestamp.class) {</span>
+<span class="nc" id="L298">                return (T) resultSet.getTimestamp(columnLabel);</span>
+            }
+            // Streams
+<span class="nc bnc" id="L301" title="All 2 branches missed.">            if (type == InputStream.class) {</span>
+<span class="nc" id="L302">                return (T) resultSet.getBinaryStream(columnLabel);</span>
+            }
+<span class="nc bnc" id="L304" title="All 2 branches missed.">            if (type == Reader.class) {</span>
+<span class="nc" id="L305">                return (T) resultSet.getCharacterStream(columnLabel);</span>
+            }
+            // Other
+<span class="nc bnc" id="L308" title="All 2 branches missed.">            if (type == Object.class) {</span>
+<span class="nc" id="L309">                return (T) resultSet.getObject(columnLabel);</span>
+            }
+<span class="nc bnc" id="L311" title="All 2 branches missed.">            if (type == Boolean.class) {</span>
+<span class="nc" id="L312">                return (T) Boolean.valueOf(resultSet.getBoolean(columnLabel));</span>
+            }
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (type == Array.class) {</span>
+<span class="nc" id="L315">                return (T) resultSet.getArray(columnLabel);</span>
+            }
+<span class="nc bnc" id="L317" title="All 2 branches missed.">            if (type == Blob.class) {</span>
+<span class="nc" id="L318">                return (T) resultSet.getBlob(columnLabel);</span>
+            }
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            if (type == Clob.class) {</span>
+<span class="nc" id="L321">                return (T) resultSet.getClob(columnLabel);</span>
+            }
+<span class="nc bnc" id="L323" title="All 2 branches missed.">            if (type == Ref.class) {</span>
+<span class="nc" id="L324">                return (T) resultSet.getRef(columnLabel);</span>
+            }
+<span class="nc bnc" id="L326" title="All 2 branches missed.">            if (type == RowId.class) {</span>
+<span class="nc" id="L327">                return (T) resultSet.getRowId(columnLabel);</span>
+            }
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            if (type == SQLXML.class) {</span>
+<span class="nc" id="L330">                return (T) resultSet.getSQLXML(columnLabel);</span>
+            }
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (type == URL.class) {</span>
+<span class="nc" id="L333">                return (T) resultSet.getURL(columnLabel);</span>
+            }
+<span class="nc" id="L335">            throw new SQLFeatureNotSupportedException(</span>
+<span class="nc" id="L336">                    String.format(&quot;resultSet=%s, columnLabel=%s, type=%s&quot;, resultSet, columnLabel, type));</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link CommonDataSource#getParentLogger()} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link CommonDataSource#getParentLogger()}, then return null.
+     * &lt;/p&gt;
+     *
+     * @param commonDataSource
+     *            See {@link CommonDataSource#getParentLogger()}
+     * @return See {@link CommonDataSource#getParentLogger()}
+     * @throws SQLFeatureNotSupportedException
+     *             See {@link CommonDataSource#getParentLogger()}
+     */
+    public static Logger getParentLogger(final CommonDataSource commonDataSource) throws SQLFeatureNotSupportedException {
+        try {
+<span class="nc" id="L354">            return commonDataSource.getParentLogger();</span>
+<span class="nc" id="L355">        } catch (final AbstractMethodError e) {</span>
+<span class="nc" id="L356">            throw new SQLFeatureNotSupportedException(&quot;javax.sql.CommonDataSource#getParentLogger()&quot;);</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)} without throwing a
+     * {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)},
+     * then return null.
+     * &lt;/p&gt;
+     *
+     * @param databaseMetaData
+     *            the receiver
+     * @param catalog
+     *            See {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)}
+     * @param schemaPattern
+     *            See {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)}
+     * @param tableNamePattern
+     *            See {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)}
+     * @param columnNamePattern
+     *            See {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)}
+     * @return See {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)}
+     * @throws SQLException
+     *             See {@link DatabaseMetaData#getPseudoColumns(String, String, String, String)}
+     * @see DatabaseMetaData#getPseudoColumns(String, String, String, String)
+     */
+    public static ResultSet getPseudoColumns(final DatabaseMetaData databaseMetaData, final String catalog,
+            final String schemaPattern, final String tableNamePattern, final String columnNamePattern)
+            throws SQLException {
+        try {
+<span class="fc" id="L387">            return databaseMetaData.getPseudoColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);</span>
+<span class="nc" id="L388">        } catch (final AbstractMethodError e) {</span>
+            // do nothing
+<span class="nc" id="L390">            return null;</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link Connection#getSchema()} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Connection#getSchema()}, then return null.
+     * &lt;/p&gt;
+     *
+     * @param connection
+     *            the receiver
+     * @return null for a JDBC 4 driver or a value per {@link Connection#getSchema()}.
+     * @throws SQLException
+     *             See {@link Connection#getSchema()}.
+     * @see Connection#getSchema()
+     */
+    public static String getSchema(final Connection connection) throws SQLException {
+        try {
+<span class="fc" id="L409">            return connection.getSchema();</span>
+<span class="nc" id="L410">        } catch (final AbstractMethodError e) {</span>
+            // do nothing
+<span class="nc" id="L412">            return null;</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link Statement#isCloseOnCompletion()} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Statement#isCloseOnCompletion()}, then just check that the
+     * connection is closed to then throw an SQLException.
+     * &lt;/p&gt;
+     *
+     * @param statement
+     *            See {@link Statement#isCloseOnCompletion()}
+     * @return See {@link Statement#isCloseOnCompletion()}
+     * @throws SQLException
+     *             See {@link Statement#isCloseOnCompletion()}
+     * @see Statement#closeOnCompletion()
+     */
+    public static boolean isCloseOnCompletion(final Statement statement) throws SQLException {
+        try {
+<span class="fc" id="L432">            return statement.isCloseOnCompletion();</span>
+<span class="nc" id="L433">        } catch (final AbstractMethodError e) {</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">            if (statement.isClosed()) {</span>
+<span class="nc" id="L435">                throw new SQLException(&quot;Statement closed&quot;);</span>
+            }
+<span class="nc" id="L437">            return false;</span>
+        }
+    }
+
+    /**
+     * Delegates to {@link Connection#setNetworkTimeout(Executor, int)} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Connection#setNetworkTimeout(Executor, int)}, then do nothing.
+     * &lt;/p&gt;
+     *
+     * @param connection
+     *            the receiver
+     * @param executor
+     *            See {@link Connection#setNetworkTimeout(Executor, int)}
+     * @param milliseconds
+     *            {@link Connection#setNetworkTimeout(Executor, int)}
+     * @throws SQLException
+     *             {@link Connection#setNetworkTimeout(Executor, int)}
+     * @see Connection#setNetworkTimeout(Executor, int)
+     */
+    public static void setNetworkTimeout(final Connection connection, final Executor executor, final int milliseconds)
+            throws SQLException {
+        try {
+<span class="nc" id="L460">            connection.setNetworkTimeout(executor, milliseconds);</span>
+<span class="nc" id="L461">        } catch (final AbstractMethodError ignored) {</span>
+            // do nothing
+<span class="nc" id="L463">        }</span>
+<span class="nc" id="L464">    }</span>
+
+    /**
+     * Delegates to {@link Connection#setSchema(String)} without throwing an {@link AbstractMethodError}.
+     * &lt;p&gt;
+     * If the JDBC driver does not implement {@link Connection#setSchema(String)}, then do nothing.
+     * &lt;/p&gt;
+     *
+     * @param connection
+     *            the receiver
+     * @param schema
+     *            See {@link Connection#setSchema(String)}.
+     * @throws SQLException
+     *             See {@link Connection#setSchema(String)}.
+     * @see Connection#setSchema(String)
+     */
+    public static void setSchema(final Connection connection, final String schema) throws SQLException {
+        try {
+<span class="fc" id="L482">            connection.setSchema(schema);</span>
+<span class="nc" id="L483">        } catch (final AbstractMethodError ignored) {</span>
+            // do nothing
+<span class="fc" id="L485">        }</span>
+<span class="fc" id="L486">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

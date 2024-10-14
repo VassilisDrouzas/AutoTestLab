@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileHandlerReloadingDetector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.reloading</a> &gt; <span class="el_source">FileHandlerReloadingDetector.java</span></div><h1>FileHandlerReloadingDetector.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.reloading;
+
+import java.io.File;
+import java.net.MalformedURLException;
+import java.net.URL;
+
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.configuration2.io.FileLocatorUtils;
+
+/**
+ * &lt;p&gt;
+ * A specialized implementation of {@code ReloadingDetector} which monitors a file specified by a {@link FileHandler}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this class is passed a {@code FileHandler} at construction time. Each time the
+ * {@code isReloadingRequired()} method is called, it checks whether the {@code FileHandler} points to a valid location.
+ * If this is the case, the file's last modification time is obtained and compared with the last stored time. If it has
+ * changed, a reload operation should be performed.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Because file I/O may be expensive it is possible to configure a refresh delay as a time in milliseconds. This is the
+ * minimum interval between two checks. If the {@code isReloadingRequired()} method is called in shorter intervals, it
+ * does not perform a check, but directly returns &lt;b&gt;false&lt;/b&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To initialize an instance either {@code isReloadingRequired()} or {@code reloadingPerformed()} can be called. The
+ * first call of {@code isReloadingRequired} does not perform a check, but obtains the initial modification date of the
+ * monitored file. {@code reloadingPerformed()} always obtains the file's modification date and stores it internally.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class FileHandlerReloadingDetector implements ReloadingDetector {
+    /** Constant for the jar URL protocol. */
+    private static final String JAR_PROTOCOL = &quot;jar&quot;;
+
+    /** Constant for the default refresh delay. */
+    private static final int DEFAULT_REFRESH_DELAY_MILLIS = 5000;
+
+    /**
+     * Helper method for transforming a URL into a file object. This method handles file: and jar: URLs.
+     *
+     * @param url the URL to be converted
+     * @return the resulting file or &lt;b&gt;null &lt;/b&gt;
+     */
+    private static File fileFromURL(final URL url) {
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (JAR_PROTOCOL.equals(url.getProtocol())) {</span>
+<span class="fc" id="L64">            final String path = url.getPath();</span>
+            try {
+<span class="fc" id="L66">                return FileLocatorUtils.fileFromURL(new URL(path.substring(0, path.indexOf('!'))));</span>
+<span class="nc" id="L67">            } catch (final MalformedURLException mex) {</span>
+<span class="nc" id="L68">                return null;</span>
+            }
+        }
+<span class="fc" id="L71">        return FileLocatorUtils.fileFromURL(url);</span>
+    }
+
+    /** The associated file handler. */
+    private final FileHandler fileHandler;
+
+    /** The refresh delay. */
+    private final long refreshDelayMillis;
+
+    /** The last time the configuration file was modified. */
+    private long lastModifiedMillis;
+
+    /** The last time the file was checked for changes. */
+    private long lastCheckedMillis;
+
+    /**
+     * Creates a new instance of {@code FileHandlerReloadingDetector} with an uninitialized {@code FileHandler} object. The
+     * file to be monitored has to be set later by manipulating the handler object returned by {@code getFileHandler()}.
+     */
+    public FileHandlerReloadingDetector() {
+<span class="fc" id="L91">        this(null);</span>
+<span class="fc" id="L92">    }</span>
+
+    /**
+     * Creates a new instance of {@code FileHandlerReloadingDetector} and initializes it with the {@code FileHandler} to
+     * monitor and a default refresh delay.
+     *
+     * @param handler the {@code FileHandler} associated with this detector (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public FileHandlerReloadingDetector(final FileHandler handler) {
+<span class="fc" id="L101">        this(handler, DEFAULT_REFRESH_DELAY_MILLIS);</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * Creates a new instance of {@code FileHandlerReloadingDetector} and initializes it with the {@code FileHandler} to
+     * monitor and the refresh delay. The handler is directly used, no copy is created. So it is possible to change the
+     * location monitored by manipulating the {@code FileHandler} object.
+     *
+     * @param handler the {@code FileHandler} associated with this detector (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param refreshDelayMillis the refresh delay; a value of 0 means that a check is performed in all cases
+     */
+<span class="fc" id="L112">    public FileHandlerReloadingDetector(final FileHandler handler, final long refreshDelayMillis) {</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        fileHandler = handler != null ? handler : new FileHandler();</span>
+<span class="fc" id="L114">        this.refreshDelayMillis = refreshDelayMillis;</span>
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * Gets the monitored {@code File} or &lt;b&gt;null&lt;/b&gt; if it does not exist.
+     *
+     * @return the monitored {@code File} or &lt;b&gt;null&lt;/b&gt;
+     */
+    private File getExistingFile() {
+<span class="fc" id="L123">        File file = getFile();</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">        if (file != null &amp;&amp; !file.exists()) {</span>
+<span class="fc" id="L125">            file = null;</span>
+        }
+
+<span class="fc" id="L128">        return file;</span>
+    }
+
+    /**
+     * Gets the {@code File} object which is monitored by this object. This method is called every time the file's last
+     * modification time is needed. If it returns &lt;b&gt;null&lt;/b&gt;, no check is performed. This base implementation obtains the
+     * {@code File} from the associated {@code FileHandler}. It can also deal with URLs to jar files.
+     *
+     * @return the {@code File} to be monitored (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    protected File getFile() {
+<span class="fc" id="L139">        final URL url = getFileHandler().getURL();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        return url != null ? fileFromURL(url) : getFileHandler().getFile();</span>
+    }
+
+    /**
+     * Gets the {@code FileHandler} associated with this object. The underlying handler is directly returned, so changing
+     * its location also changes the file monitored by this detector.
+     *
+     * @return the associated {@code FileHandler}
+     */
+    public FileHandler getFileHandler() {
+<span class="fc" id="L150">        return fileHandler;</span>
+    }
+
+    /**
+     * Gets the date of the last modification of the monitored file. A return value of 0 indicates, that the monitored
+     * file does not exist.
+     *
+     * @return the last modification date in milliseconds.
+     */
+    protected long getLastModificationDate() {
+<span class="fc" id="L160">        final File file = getExistingFile();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        return file != null ? file.lastModified() : 0;</span>
+    }
+
+    /**
+     * Gets the refresh delay. This is a time in milliseconds. The {@code isReloadingRequired()} method first checks
+     * whether the time since the previous check is more than this value in the past. Otherwise, no check is performed. This
+     * is a means to limit file I/O caused by this class.
+     *
+     * @return the refresh delay used by this object
+     */
+    public long getRefreshDelay() {
+<span class="fc" id="L172">        return refreshDelayMillis;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation checks whether the associated {@link FileHandler} points to a valid file and
+     * whether the last modification time of this time has changed since the last check. The refresh delay is taken into
+     * account, too; a check is only performed if at least this time has passed since the last check.
+     */
+    @Override
+    public boolean isReloadingRequired() {
+<span class="fc" id="L182">        final long nowMillis = System.currentTimeMillis();</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (nowMillis &gt;= lastCheckedMillis + getRefreshDelay()) {</span>
+<span class="fc" id="L184">            lastCheckedMillis = nowMillis;</span>
+
+<span class="fc" id="L186">            final long modifiedMillis = getLastModificationDate();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (modifiedMillis &gt; 0) {</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                if (lastModifiedMillis != 0) {</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">                    return modifiedMillis != lastModifiedMillis;</span>
+                }
+                // initialization
+<span class="fc" id="L192">                updateLastModified(modifiedMillis);</span>
+            }
+        }
+
+<span class="fc" id="L196">        return false;</span>
+    }
+
+    /**
+     * Tells this implementation that the internally stored state should be refreshed. This method is intended to be called
+     * after the creation of an instance.
+     */
+    public void refresh() {
+<span class="fc" id="L204">        updateLastModified(getLastModificationDate());</span>
+<span class="fc" id="L205">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation updates the internally stored last modification date with the current modification
+     * date of the monitored file. So the next change is detected when this file is changed again.
+     */
+    @Override
+    public void reloadingPerformed() {
+<span class="fc" id="L213">        updateLastModified(getLastModificationDate());</span>
+<span class="fc" id="L214">    }</span>
+
+    /**
+     * Updates the last modification date of the monitored file. The need for a reload is detected only if the file's
+     * modification date is different from this value.
+     *
+     * @param timeMillis the new last modification date
+     */
+    protected void updateLastModified(final long timeMillis) {
+<span class="fc" id="L223">        lastModifiedMillis = timeMillis;</span>
+<span class="fc" id="L224">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

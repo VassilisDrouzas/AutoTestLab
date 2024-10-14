@@ -1,0 +1,888 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PropertiesConfigurationLayout.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">PropertiesConfigurationLayout.java</span></div><h1>PropertiesConfigurationLayout.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.net.URL;
+import java.util.ArrayDeque;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * &lt;p&gt;
+ * A helper class used by {@link PropertiesConfiguration} to keep the layout of a properties file.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Instances of this class are associated with a {@code PropertiesConfiguration} object. They are responsible for
+ * analyzing properties files and for extracting as much information about the file layout (e.g. empty lines, comments)
+ * as possible. When the properties file is written back again it should be close to the original.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The {@code PropertiesConfigurationLayout} object associated with a {@code PropertiesConfiguration} object can be
+ * obtained using the {@code getLayout()} method of the configuration. Then the methods provided by this class can be
+ * used to alter the properties file's layout.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: This is a very simple implementation, which is far away from being perfect, i.e. the original
+ * layout of a properties file won't be reproduced in all cases. One limitation is that comments for multi-valued
+ * property keys are concatenated. Maybe this implementation can later be improved.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To get an impression how this class works consider the following properties file:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * # A demo configuration file
+ * # for Demo App 1.42
+ *
+ * # Application name
+ * AppName=Demo App
+ *
+ * # Application vendor
+ * AppVendor=DemoSoft
+ *
+ *
+ * # GUI properties
+ * # Window Color
+ * windowColors=0xFFFFFF,0x000000
+ *
+ * # Include some setting
+ * include=settings.properties
+ * # Another vendor
+ * AppVendor=TestSoft
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * For this example the following points are relevant:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;The first two lines are set as header comment. The header comment is determined by the last blank line before the
+ * first property definition.&lt;/li&gt;
+ * &lt;li&gt;For the property {@code AppName} one comment line and one leading blank line is stored.&lt;/li&gt;
+ * &lt;li&gt;For the property {@code windowColors} two comment lines and two leading blank lines are stored.&lt;/li&gt;
+ * &lt;li&gt;Include files is something this class cannot deal with well. When saving the properties configuration back, the
+ * included properties are simply contained in the original file. The comment before the include property is
+ * skipped.&lt;/li&gt;
+ * &lt;li&gt;For all properties except for {@code AppVendor} the &amp;quot;single line&amp;quot; flag is set. This is relevant only
+ * for {@code windowColors}, which has multiple values defined in one line using the separator character.&lt;/li&gt;
+ * &lt;li&gt;The {@code AppVendor} property appears twice. The comment lines are concatenated, so that
+ * {@code layout.getComment(&quot;AppVendor&quot;);} will result in {@code Application vendor&amp;lt;CR&amp;gt;Another vendor}, with
+ * {@code &amp;lt;CR&amp;gt;} meaning the line separator. In addition the &amp;quot;single line&amp;quot; flag is set to &lt;b&gt;false&lt;/b&gt;
+ * for this property. When the file is saved, two property definitions will be written (in series).&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 1.3
+ */
+public class PropertiesConfigurationLayout implements EventListener&lt;ConfigurationEvent&gt; {
+    /**
+     * A helper class for storing all layout related information for a configuration property.
+     */
+    static class PropertyLayoutData implements Cloneable {
+        /** Stores the comment for the property. */
+        private StringBuffer comment;
+
+        /** The separator to be used for this property. */
+        private String separator;
+
+        /** Stores the number of blank lines before this property. */
+        private int blankLines;
+
+        /** Stores the single line property. */
+        private boolean singleLine;
+
+        /**
+         * Creates a new instance of {@code PropertyLayoutData}.
+         */
+<span class="fc" id="L123">        public PropertyLayoutData() {</span>
+<span class="fc" id="L124">            singleLine = true;</span>
+<span class="fc" id="L125">            separator = PropertiesConfiguration.DEFAULT_SEPARATOR;</span>
+<span class="fc" id="L126">        }</span>
+
+        /**
+         * Adds a comment for this property. If already a comment exists, the new comment is added (separated by a newline).
+         *
+         * @param s the comment to add
+         */
+        public void addComment(final String s) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (s != null) {</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                if (comment == null) {</span>
+<span class="nc" id="L136">                    comment = new StringBuffer(s);</span>
+                } else {
+<span class="fc" id="L138">                    comment.append(CR).append(s);</span>
+                }
+            }
+<span class="fc" id="L141">        }</span>
+
+        /**
+         * Creates a copy of this object.
+         *
+         * @return the copy
+         */
+        @Override
+        public PropertyLayoutData clone() {
+            try {
+<span class="fc" id="L151">                final PropertyLayoutData copy = (PropertyLayoutData) super.clone();</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                if (comment != null) {</span>
+                    // must copy string buffer, too
+<span class="fc" id="L154">                    copy.comment = new StringBuffer(getComment());</span>
+                }
+<span class="fc" id="L156">                return copy;</span>
+<span class="nc" id="L157">            } catch (final CloneNotSupportedException cnex) {</span>
+                // This cannot happen!
+<span class="nc" id="L159">                throw new ConfigurationRuntimeException(cnex);</span>
+            }
+        }
+
+        /**
+         * Gets the number of blank lines before this property.
+         *
+         * @return the number of blank lines before this property
+         * @deprecated Use {#link {@link #getBlankLines()}}.
+         */
+        @Deprecated
+        public int getBlancLines() {
+<span class="nc" id="L171">            return getBlankLines();</span>
+        }
+
+        /**
+         * Gets the number of blank lines before this property.
+         *
+         * @return the number of blank lines before this property
+         * @since 2.8.0
+         */
+        public int getBlankLines() {
+<span class="fc" id="L181">            return blankLines;</span>
+        }
+
+        /**
+         * Gets the comment for this property. The comment is returned as it is, without processing of comment characters.
+         *
+         * @return the comment (can be &lt;b&gt;null&lt;/b&gt;)
+         */
+        public String getComment() {
+<span class="fc" id="L190">            return Objects.toString(comment, null);</span>
+        }
+
+        /**
+         * Gets the separator that was used for this property.
+         *
+         * @return the property separator
+         */
+        public String getSeparator() {
+<span class="fc" id="L199">            return separator;</span>
+        }
+
+        /**
+         * Returns the single line flag.
+         *
+         * @return the single line flag
+         */
+        public boolean isSingleLine() {
+<span class="fc" id="L208">            return singleLine;</span>
+        }
+
+        /**
+         * Sets the number of properties before this property.
+         *
+         * @param blankLines the number of properties before this property
+         * @deprecated Use {@link #setBlankLines(int)}.
+         */
+        @Deprecated
+        public void setBlancLines(final int blankLines) {
+<span class="nc" id="L219">            setBlankLines(blankLines);</span>
+<span class="nc" id="L220">        }</span>
+
+        /**
+         * Sets the number of properties before this property.
+         *
+         * @param blankLines the number of properties before this property
+         * @since 2.8.0
+         */
+        public void setBlankLines(final int blankLines) {
+<span class="fc" id="L229">            this.blankLines = blankLines;</span>
+<span class="fc" id="L230">        }</span>
+
+        /**
+         * Sets the comment for this property.
+         *
+         * @param s the new comment (can be &lt;b&gt;null&lt;/b&gt;)
+         */
+        public void setComment(final String s) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            if (s == null) {</span>
+<span class="fc" id="L239">                comment = null;</span>
+            } else {
+<span class="fc" id="L241">                comment = new StringBuffer(s);</span>
+            }
+<span class="fc" id="L243">        }</span>
+
+        /**
+         * Sets the separator to be used for the represented property.
+         *
+         * @param separator the property separator
+         */
+        public void setSeparator(final String separator) {
+<span class="fc" id="L251">            this.separator = separator;</span>
+<span class="fc" id="L252">        }</span>
+
+        /**
+         * Sets the single line flag.
+         *
+         * @param singleLine the single line flag
+         */
+        public void setSingleLine(final boolean singleLine) {
+<span class="fc" id="L260">            this.singleLine = singleLine;</span>
+<span class="fc" id="L261">        }</span>
+    }
+
+    /** Constant for the line break character. */
+    private static final String CR = &quot;\n&quot;;
+
+    /** Constant for the default comment prefix. */
+    private static final String COMMENT_PREFIX = &quot;# &quot;;
+
+    /**
+     * Helper method for generating a comment string. Depending on the boolean argument the resulting string either has no
+     * comment characters or a leading comment character at each line.
+     *
+     * @param comment the comment string to be processed
+     * @param commentChar determines the presence of comment characters
+     * @return the canonical comment string (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    private static String constructCanonicalComment(final String comment, final boolean commentChar) {
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        return comment == null ? null : trimComment(comment, commentChar);</span>
+    }
+
+    /**
+     * Tests whether a line is a comment, i.e. whether it starts with a comment character.
+     *
+     * @param line the line
+     * @return a flag if this is a comment line
+     */
+    static boolean isCommentLine(final String line) {
+<span class="fc" id="L289">        return PropertiesConfiguration.isCommentLine(line);</span>
+    }
+
+    /**
+     * Either removes the comment character from the given comment line or ensures that the line starts with a comment
+     * character.
+     *
+     * @param s the comment line
+     * @param comment if &lt;b&gt;true&lt;/b&gt;, a comment character will always be enforced; if &lt;b&gt;false&lt;/b&gt;, it will be removed
+     * @return the line without comment character
+     */
+    static String stripCommentChar(final String s, final boolean comment) {
+<span class="fc bfc" id="L301" title="All 4 branches covered.">        if (StringUtils.isBlank(s) || isCommentLine(s) == comment) {</span>
+<span class="fc" id="L302">            return s;</span>
+        }
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (!comment) {</span>
+<span class="fc" id="L305">            int pos = 0;</span>
+            // find first comment character
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            while (PropertiesConfiguration.COMMENT_CHARS.indexOf(s.charAt(pos)) &lt; 0) {</span>
+<span class="fc" id="L308">                pos++;</span>
+            }
+
+            // Remove leading spaces
+<span class="fc" id="L312">            pos++;</span>
+<span class="pc bpc" id="L313" title="1 of 4 branches missed.">            while (pos &lt; s.length() &amp;&amp; Character.isWhitespace(s.charAt(pos))) {</span>
+<span class="fc" id="L314">                pos++;</span>
+            }
+
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">            return pos &lt; s.length() ? s.substring(pos) : StringUtils.EMPTY;</span>
+        }
+<span class="fc" id="L319">        return COMMENT_PREFIX + s;</span>
+    }
+
+    /**
+     * Trims a comment. This method either removes all comment characters from the given string, leaving only the plain
+     * comment text or ensures that every line starts with a valid comment character.
+     *
+     * @param s the string to be processed
+     * @param comment if &lt;b&gt;true&lt;/b&gt;, a comment character will always be enforced; if &lt;b&gt;false&lt;/b&gt;, it will be removed
+     * @return the trimmed comment
+     */
+    static String trimComment(final String s, final boolean comment) {
+<span class="fc" id="L331">        final StringBuilder buf = new StringBuilder(s.length());</span>
+<span class="fc" id="L332">        int lastPos = 0;</span>
+        int pos;
+
+        do {
+<span class="fc" id="L336">            pos = s.indexOf(CR, lastPos);</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            if (pos &gt;= 0) {</span>
+<span class="fc" id="L338">                final String line = s.substring(lastPos, pos);</span>
+<span class="fc" id="L339">                buf.append(stripCommentChar(line, comment)).append(CR);</span>
+<span class="fc" id="L340">                lastPos = pos + CR.length();</span>
+            }
+<span class="fc bfc" id="L342" title="All 2 branches covered.">        } while (pos &gt;= 0);</span>
+
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (lastPos &lt; s.length()) {</span>
+<span class="fc" id="L345">            buf.append(stripCommentChar(s.substring(lastPos), comment));</span>
+        }
+<span class="fc" id="L347">        return buf.toString();</span>
+    }
+
+    /**
+     * Helper method for writing a comment line. This method ensures that the correct line separator is used if the comment
+     * spans multiple lines.
+     *
+     * @param writer the writer
+     * @param comment the comment to write
+     * @throws IOException if an IO error occurs
+     */
+    private static void writeComment(final PropertiesConfiguration.PropertiesWriter writer, final String comment) throws IOException {
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        if (comment != null) {</span>
+<span class="fc" id="L360">            writer.writeln(StringUtils.replace(comment, CR, writer.getLineSeparator()));</span>
+        }
+<span class="fc" id="L362">    }</span>
+
+    /** Stores a map with the contained layout information. */
+    private final Map&lt;String, PropertyLayoutData&gt; layoutData;
+
+    /** Stores the header comment. */
+    private String headerComment;
+
+    /** Stores the footer comment. */
+    private String footerComment;
+
+    /** The global separator that will be used for all properties. */
+    private String globalSeparator;
+
+    /** The line separator. */
+    private String lineSeparator;
+
+    /** A counter for determining nested load calls. */
+    private final AtomicInteger loadCounter;
+
+    /** Stores the force single line flag. */
+    private boolean forceSingleLine;
+
+    /** Seen includes. */
+<span class="fc" id="L386">    private final ArrayDeque&lt;URL&gt; seenStack = new ArrayDeque&lt;&gt;();</span>
+
+    /**
+     * Creates a new, empty instance of {@code PropertiesConfigurationLayout}.
+     */
+    public PropertiesConfigurationLayout() {
+<span class="fc" id="L392">        this(null);</span>
+<span class="fc" id="L393">    }</span>
+
+    /**
+     * Creates a new instance of {@code PropertiesConfigurationLayout} and copies the data of the specified layout object.
+     *
+     * @param c the layout object to be copied
+     */
+<span class="fc" id="L400">    public PropertiesConfigurationLayout(final PropertiesConfigurationLayout c) {</span>
+<span class="fc" id="L401">        loadCounter = new AtomicInteger();</span>
+<span class="fc" id="L402">        layoutData = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        if (c != null) {</span>
+<span class="fc" id="L405">            copyFrom(c);</span>
+        }
+<span class="fc" id="L407">    }</span>
+
+    /**
+     * Checks if parts of the passed in comment can be used as header comment. This method checks whether a header comment
+     * can be defined (i.e. whether this is the first comment in the loaded file). If this is the case, it is searched for
+     * the latest blank line. This line will mark the end of the header comment. The return value is the index of the first
+     * line in the passed in list, which does not belong to the header comment.
+     *
+     * @param commentLines the comment lines
+     * @return the index of the next line after the header comment
+     */
+    private int checkHeaderComment(final List&lt;String&gt; commentLines) {
+<span class="fc bfc" id="L419" title="All 4 branches covered.">        if (loadCounter.get() == 1 &amp;&amp; layoutData.isEmpty()) {</span>
+<span class="fc" id="L420">            int index = commentLines.size() - 1;</span>
+            // strip comments that belong to first key
+<span class="fc bfc" id="L422" title="All 4 branches covered.">            while (index &gt;= 0 &amp;&amp; StringUtils.isNotEmpty(commentLines.get(index))) {</span>
+<span class="fc" id="L423">                index--;</span>
+            }
+            // strip blank lines
+<span class="fc bfc" id="L426" title="All 4 branches covered.">            while (index &gt;= 0 &amp;&amp; StringUtils.isEmpty(commentLines.get(index))) {</span>
+<span class="fc" id="L427">                index--;</span>
+            }
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            if (getHeaderComment() == null) {</span>
+<span class="fc" id="L430">                setHeaderComment(extractComment(commentLines, 0, index));</span>
+            }
+<span class="fc" id="L432">            return index + 1;</span>
+        }
+<span class="fc" id="L434">        return 0;</span>
+    }
+
+    /**
+     * Removes all content from this layout object.
+     */
+    private void clear() {
+<span class="fc" id="L441">        seenStack.clear();</span>
+<span class="fc" id="L442">        layoutData.clear();</span>
+<span class="fc" id="L443">        setHeaderComment(null);</span>
+<span class="fc" id="L444">        setFooterComment(null);</span>
+<span class="fc" id="L445">    }</span>
+
+    /**
+     * Copies the data from the given layout object.
+     *
+     * @param c the layout object to copy
+     */
+    private void copyFrom(final PropertiesConfigurationLayout c) {
+<span class="fc" id="L453">        c.getKeys().forEach(key -&gt; layoutData.put(key, c.layoutData.get(key).clone()));</span>
+
+<span class="fc" id="L455">        setHeaderComment(c.getHeaderComment());</span>
+<span class="fc" id="L456">        setFooterComment(c.getFooterComment());</span>
+<span class="fc" id="L457">    }</span>
+
+    /**
+     * Extracts a comment string from the given range of the specified comment lines. The single lines are added using a
+     * line feed as separator.
+     *
+     * @param commentLines a list with comment lines
+     * @param from the start index
+     * @param to the end index (inclusive)
+     * @return the comment string (&lt;b&gt;null&lt;/b&gt; if it is undefined)
+     */
+    private String extractComment(final List&lt;String&gt; commentLines, final int from, final int to) {
+<span class="fc bfc" id="L469" title="All 2 branches covered.">        if (to &lt; from) {</span>
+<span class="fc" id="L470">            return null;</span>
+        }
+<span class="fc" id="L472">        final StringBuilder buf = new StringBuilder(commentLines.get(from));</span>
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        for (int i = from + 1; i &lt;= to; i++) {</span>
+<span class="fc" id="L474">            buf.append(CR);</span>
+<span class="fc" id="L475">            buf.append(commentLines.get(i));</span>
+        }
+<span class="fc" id="L477">        return buf.toString();</span>
+    }
+
+    /**
+     * Returns a layout data object for the specified key. If this is a new key, a new object is created and initialized
+     * with default values.
+     *
+     * @param key the key
+     * @return the corresponding layout data object
+     */
+    private PropertyLayoutData fetchLayoutData(final String key) {
+<span class="fc bfc" id="L488" title="All 2 branches covered.">        if (key == null) {</span>
+<span class="fc" id="L489">            throw new IllegalArgumentException(&quot;Property key must not be null!&quot;);</span>
+        }
+
+        // PropertyLayoutData defaults to singleLine = true
+<span class="fc" id="L493">        return layoutData.computeIfAbsent(key, k -&gt; new PropertyLayoutData());</span>
+    }
+
+    /**
+     * Gets the number of blank lines before this property key. If this key does not exist, 0 will be returned.
+     *
+     * @param key the property key
+     * @return the number of blank lines before the property definition for this key
+     * @deprecated Use {@link #getBlankLinesBefore(String)}.
+     */
+    @Deprecated
+    public int getBlancLinesBefore(final String key) {
+<span class="nc" id="L505">        return getBlankLinesBefore(key);</span>
+    }
+
+    /**
+     * Gets the number of blank lines before this property key. If this key does not exist, 0 will be returned.
+     *
+     * @param key the property key
+     * @return the number of blank lines before the property definition for this key
+     */
+    public int getBlankLinesBefore(final String key) {
+<span class="fc" id="L515">        return fetchLayoutData(key).getBlankLines();</span>
+    }
+
+    /**
+     * Gets the comment for the specified property key in a canonical form. &amp;quot;Canonical&amp;quot; means that either all
+     * lines start with a comment character or none. If the {@code commentChar} parameter is &lt;b&gt;false&lt;/b&gt;, all comment
+     * characters are removed, so that the result is only the plain text of the comment. Otherwise it is ensured that each
+     * line of the comment starts with a comment character. Also, line breaks in the comment are normalized to the line
+     * separator &amp;quot;\n&amp;quot;.
+     *
+     * @param key the key of the property
+     * @param commentChar determines whether all lines should start with comment characters or not
+     * @return the canonical comment for this key (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public String getCanonicalComment(final String key, final boolean commentChar) {
+<span class="fc" id="L530">        return constructCanonicalComment(getComment(key), commentChar);</span>
+    }
+
+    /**
+     * Gets the footer comment of the represented properties file in a canonical form. This method works like
+     * {@code getCanonicalHeaderComment()}, but reads the footer comment.
+     *
+     * @param commentChar determines the presence of comment characters
+     * @return the footer comment (can be &lt;b&gt;null&lt;/b&gt;)
+     * @see #getCanonicalHeaderComment(boolean)
+     * @since 2.0
+     */
+    public String getCanonicalFooterCooment(final boolean commentChar) {
+<span class="fc" id="L543">        return constructCanonicalComment(getFooterComment(), commentChar);</span>
+    }
+
+    /**
+     * Gets the header comment of the represented properties file in a canonical form. With the {@code commentChar}
+     * parameter it can be specified whether comment characters should be stripped or be always present.
+     *
+     * @param commentChar determines the presence of comment characters
+     * @return the header comment (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public String getCanonicalHeaderComment(final boolean commentChar) {
+<span class="fc" id="L554">        return constructCanonicalComment(getHeaderComment(), commentChar);</span>
+    }
+
+    /**
+     * Gets the comment for the specified property key. The comment is returned as it was set (either manually by calling
+     * {@code setComment()} or when it was loaded from a properties file). No modifications are performed.
+     *
+     * @param key the key of the property
+     * @return the comment for this key (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public String getComment(final String key) {
+<span class="fc" id="L565">        return fetchLayoutData(key).getComment();</span>
+    }
+
+    /**
+     * Gets the footer comment of the represented properties file. This method returns the footer comment exactly as it
+     * was set using {@code setFooterComment()} or extracted from the loaded properties file.
+     *
+     * @return the footer comment (can be &lt;b&gt;null&lt;/b&gt;)
+     * @since 2.0
+     */
+    public String getFooterComment() {
+<span class="fc" id="L576">        return footerComment;</span>
+    }
+
+    /**
+     * Gets the global separator.
+     *
+     * @return the global properties separator
+     * @since 1.7
+     */
+    public String getGlobalSeparator() {
+<span class="fc" id="L586">        return globalSeparator;</span>
+    }
+
+    /**
+     * Gets the header comment of the represented properties file. This method returns the header comment exactly as it
+     * was set using {@code setHeaderComment()} or extracted from the loaded properties file.
+     *
+     * @return the header comment (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public String getHeaderComment() {
+<span class="fc" id="L596">        return headerComment;</span>
+    }
+
+    /**
+     * Gets a set with all property keys managed by this object.
+     *
+     * @return a set with all contained property keys
+     */
+    public Set&lt;String&gt; getKeys() {
+<span class="fc" id="L605">        return layoutData.keySet();</span>
+    }
+
+    /**
+     * Gets the line separator.
+     *
+     * @return the line separator
+     * @since 1.7
+     */
+    public String getLineSeparator() {
+<span class="fc" id="L615">        return lineSeparator;</span>
+    }
+
+    /**
+     * Gets the separator for the property with the given key.
+     *
+     * @param key the property key
+     * @return the property separator for this property
+     * @since 1.7
+     */
+    public String getSeparator(final String key) {
+<span class="fc" id="L626">        return fetchLayoutData(key).getSeparator();</span>
+    }
+
+    /**
+     * Returns the &amp;quot;force single line&amp;quot; flag.
+     *
+     * @return the force single line flag
+     * @see #setForceSingleLine(boolean)
+     */
+    public boolean isForceSingleLine() {
+<span class="fc" id="L636">        return forceSingleLine;</span>
+    }
+
+    /**
+     * Returns a flag whether the specified property is defined on a single line. This is meaningful only if this property
+     * has multiple values.
+     *
+     * @param key the property key
+     * @return a flag if this property is defined on a single line
+     */
+    public boolean isSingleLine(final String key) {
+<span class="fc" id="L647">        return fetchLayoutData(key).isSingleLine();</span>
+    }
+
+    /**
+     * Reads a properties file and stores its internal structure. The found properties will be added to the specified
+     * configuration object.
+     *
+     * @param config the associated configuration object
+     * @param reader the reader to the properties file
+     * @throws ConfigurationException if an error occurs
+     */
+    public void load(final PropertiesConfiguration config, final Reader reader) throws ConfigurationException {
+<span class="fc" id="L659">        loadCounter.incrementAndGet();</span>
+        @SuppressWarnings(&quot;resource&quot;) // createPropertiesReader wraps the reader.
+<span class="fc" id="L661">        final PropertiesConfiguration.PropertiesReader pReader = config.getIOFactory().createPropertiesReader(reader);</span>
+
+        try {
+<span class="fc bfc" id="L664" title="All 2 branches covered.">            while (pReader.nextProperty()) {</span>
+<span class="fc bfc" id="L665" title="All 2 branches covered.">                if (config.propertyLoaded(pReader.getPropertyName(), pReader.getPropertyValue(), seenStack)) {</span>
+<span class="fc" id="L666">                    final boolean contained = layoutData.containsKey(pReader.getPropertyName());</span>
+<span class="fc" id="L667">                    int blankLines = 0;</span>
+<span class="fc" id="L668">                    int idx = checkHeaderComment(pReader.getCommentLines());</span>
+<span class="fc bfc" id="L669" title="All 4 branches covered.">                    while (idx &lt; pReader.getCommentLines().size() &amp;&amp; StringUtils.isEmpty(pReader.getCommentLines().get(idx))) {</span>
+<span class="fc" id="L670">                        idx++;</span>
+<span class="fc" id="L671">                        blankLines++;</span>
+                    }
+<span class="fc" id="L673">                    final String comment = extractComment(pReader.getCommentLines(), idx, pReader.getCommentLines().size() - 1);</span>
+<span class="fc" id="L674">                    final PropertyLayoutData data = fetchLayoutData(pReader.getPropertyName());</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">                    if (contained) {</span>
+<span class="fc" id="L676">                        data.addComment(comment);</span>
+<span class="fc" id="L677">                        data.setSingleLine(false);</span>
+                    } else {
+<span class="fc" id="L679">                        data.setComment(comment);</span>
+<span class="fc" id="L680">                        data.setBlankLines(blankLines);</span>
+<span class="fc" id="L681">                        data.setSeparator(pReader.getPropertySeparator());</span>
+                    }
+<span class="fc" id="L683">                }</span>
+            }
+
+<span class="fc" id="L686">            setFooterComment(extractComment(pReader.getCommentLines(), 0, pReader.getCommentLines().size() - 1));</span>
+<span class="nc" id="L687">        } catch (final IOException ioex) {</span>
+<span class="nc" id="L688">            throw new ConfigurationException(ioex);</span>
+        } finally {
+<span class="fc" id="L690">            loadCounter.decrementAndGet();</span>
+        }
+<span class="fc" id="L692">    }</span>
+
+    /**
+     * The event listener callback. Here event notifications of the configuration object are processed to update the layout
+     * object properly.
+     *
+     * @param event the event object
+     */
+    @Override
+    public void onEvent(final ConfigurationEvent event) {
+<span class="pc bpc" id="L702" title="1 of 4 branches missed.">        if (!event.isBeforeUpdate() &amp;&amp; loadCounter.get() == 0) {</span>
+<span class="fc bfc" id="L703" title="All 2 branches covered.">            if (ConfigurationEvent.ADD_PROPERTY.equals(event.getEventType())) {</span>
+<span class="fc" id="L704">                final boolean contained = layoutData.containsKey(event.getPropertyName());</span>
+<span class="fc" id="L705">                final PropertyLayoutData data = fetchLayoutData(event.getPropertyName());</span>
+<span class="fc bfc" id="L706" title="All 2 branches covered.">                data.setSingleLine(!contained);</span>
+<span class="fc bfc" id="L707" title="All 2 branches covered.">            } else if (ConfigurationEvent.CLEAR_PROPERTY.equals(event.getEventType())) {</span>
+<span class="fc" id="L708">                layoutData.remove(event.getPropertyName());</span>
+<span class="fc bfc" id="L709" title="All 2 branches covered.">            } else if (ConfigurationEvent.CLEAR.equals(event.getEventType())) {</span>
+<span class="fc" id="L710">                clear();</span>
+<span class="pc bpc" id="L711" title="1 of 2 branches missed.">            } else if (ConfigurationEvent.SET_PROPERTY.equals(event.getEventType())) {</span>
+<span class="fc" id="L712">                fetchLayoutData(event.getPropertyName());</span>
+            }
+        }
+<span class="fc" id="L715">    }</span>
+
+    /**
+     * Writes the properties file to the given writer, preserving as much of its structure as possible.
+     *
+     * @param config the associated configuration object
+     * @param writer the writer
+     * @throws ConfigurationException if an error occurs
+     */
+    public void save(final PropertiesConfiguration config, final Writer writer) throws ConfigurationException {
+        try {
+            @SuppressWarnings(&quot;resource&quot;) // createPropertiesReader wraps the writer.
+<span class="fc" id="L727">            final PropertiesConfiguration.PropertiesWriter pWriter = config.getIOFactory().createPropertiesWriter(writer, config.getListDelimiterHandler());</span>
+<span class="fc" id="L728">            pWriter.setGlobalSeparator(getGlobalSeparator());</span>
+<span class="fc bfc" id="L729" title="All 2 branches covered.">            if (getLineSeparator() != null) {</span>
+<span class="fc" id="L730">                pWriter.setLineSeparator(getLineSeparator());</span>
+            }
+
+<span class="fc bfc" id="L733" title="All 2 branches covered.">            if (headerComment != null) {</span>
+<span class="fc" id="L734">                writeComment(pWriter, getCanonicalHeaderComment(true));</span>
+            }
+
+<span class="fc" id="L737">            boolean firstKey = true;</span>
+<span class="fc bfc" id="L738" title="All 2 branches covered.">            for (final String key : getKeys()) {</span>
+<span class="fc bfc" id="L739" title="All 2 branches covered.">                if (config.containsKeyInternal(key)) {</span>
+                    // preset header comment needs to be separated from key
+<span class="fc bfc" id="L741" title="All 6 branches covered.">                    if (firstKey &amp;&amp; headerComment != null &amp;&amp; getBlankLinesBefore(key) == 0) {</span>
+<span class="fc" id="L742">                        pWriter.writeln(null);</span>
+                    }
+
+                    // Output blank lines before property
+<span class="fc bfc" id="L746" title="All 2 branches covered.">                    for (int i = 0; i &lt; getBlankLinesBefore(key); i++) {</span>
+<span class="fc" id="L747">                        pWriter.writeln(null);</span>
+                    }
+
+                    // Output the comment
+<span class="fc" id="L751">                    writeComment(pWriter, getCanonicalComment(key, true));</span>
+
+                    // Output the property and its value
+<span class="fc bfc" id="L754" title="All 4 branches covered.">                    final boolean singleLine = isForceSingleLine() || isSingleLine(key);</span>
+<span class="fc" id="L755">                    pWriter.setCurrentSeparator(getSeparator(key));</span>
+<span class="fc" id="L756">                    pWriter.writeProperty(key, config.getPropertyInternal(key), singleLine);</span>
+                }
+<span class="fc" id="L758">                firstKey = false;</span>
+<span class="fc" id="L759">            }</span>
+
+<span class="fc" id="L761">            writeComment(pWriter, getCanonicalFooterCooment(true));</span>
+<span class="fc" id="L762">            pWriter.flush();</span>
+<span class="nc" id="L763">        } catch (final IOException ioex) {</span>
+<span class="nc" id="L764">            throw new ConfigurationException(ioex);</span>
+<span class="fc" id="L765">        }</span>
+<span class="fc" id="L766">    }</span>
+
+    /**
+     * Sets the number of blank lines before the given property key. This can be used for a logical grouping of properties.
+     *
+     * @param key the property key
+     * @param number the number of blank lines to add before this property definition
+     * @deprecated use {@link PropertiesConfigurationLayout#setBlankLinesBefore(String, int)}.
+     */
+    @Deprecated
+    public void setBlancLinesBefore(final String key, final int number) {
+<span class="nc" id="L777">        setBlankLinesBefore(key, number);</span>
+<span class="nc" id="L778">    }</span>
+
+    /**
+     * Sets the number of blank lines before the given property key. This can be used for a logical grouping of properties.
+     *
+     * @param key the property key
+     * @param number the number of blank lines to add before this property definition
+     * @since 2.8.0
+     */
+    public void setBlankLinesBefore(final String key, final int number) {
+<span class="fc" id="L788">        fetchLayoutData(key).setBlankLines(number);</span>
+<span class="fc" id="L789">    }</span>
+
+    /**
+     * Sets the comment for the specified property key. The comment (or its single lines if it is a multi-line comment) can
+     * start with a comment character. If this is the case, it will be written without changes. Otherwise a default comment
+     * character is added automatically.
+     *
+     * @param key the key of the property
+     * @param comment the comment for this key (can be &lt;b&gt;null&lt;/b&gt;, then the comment will be removed)
+     */
+    public void setComment(final String key, final String comment) {
+<span class="fc" id="L800">        fetchLayoutData(key).setComment(comment);</span>
+<span class="fc" id="L801">    }</span>
+
+    /**
+     * Sets the footer comment for the represented properties file. This comment will be output at the bottom of the file.
+     *
+     * @param footerComment the footer comment
+     * @since 2.0
+     */
+    public void setFooterComment(final String footerComment) {
+<span class="fc" id="L810">        this.footerComment = footerComment;</span>
+<span class="fc" id="L811">    }</span>
+
+    /**
+     * Sets the &amp;quot;force single line&amp;quot; flag. If this flag is set, all properties with multiple values are written on
+     * single lines. This mode provides more compatibility with {@link Properties}, which cannot deal with
+     * multiple definitions of a single property. This mode has no effect if the list delimiter parsing is disabled.
+     *
+     * @param f the force single line flag
+     */
+    public void setForceSingleLine(final boolean f) {
+<span class="fc" id="L821">        forceSingleLine = f;</span>
+<span class="fc" id="L822">    }</span>
+
+    /**
+     * Sets the global separator for properties. With this method a separator can be set that will be used for all
+     * properties when writing the configuration. This is an easy way of determining the properties separator globally. To
+     * be compatible with the properties format only the characters {@code =} and {@code :} (with or without whitespace)
+     * should be used, but this method does not enforce this - it accepts arbitrary strings. If the global separator is set
+     * to &lt;b&gt;null&lt;/b&gt;, property separators are not changed. This is the default behavior as it produces results that are
+     * closer to the original properties file.
+     *
+     * @param globalSeparator the separator to be used for all properties
+     * @since 1.7
+     */
+    public void setGlobalSeparator(final String globalSeparator) {
+<span class="fc" id="L836">        this.globalSeparator = globalSeparator;</span>
+<span class="fc" id="L837">    }</span>
+
+    /**
+     * Sets the header comment for the represented properties file. This comment will be output on top of the file.
+     *
+     * @param comment the comment
+     */
+    public void setHeaderComment(final String comment) {
+<span class="fc" id="L845">        headerComment = comment;</span>
+<span class="fc" id="L846">    }</span>
+
+    /**
+     * Sets the line separator. When writing the properties configuration, all lines are terminated with this separator. If
+     * no separator was set, the platform-specific default line separator is used.
+     *
+     * @param lineSeparator the line separator
+     * @since 1.7
+     */
+    public void setLineSeparator(final String lineSeparator) {
+<span class="fc" id="L856">        this.lineSeparator = lineSeparator;</span>
+<span class="fc" id="L857">    }</span>
+
+    /**
+     * Sets the separator to be used for the property with the given key. The separator is the string between the property
+     * key and its value. For new properties &amp;quot; = &amp;quot; is used. When a properties file is read, the layout tries to
+     * determine the separator for each property. With this method the separator can be changed. To be compatible with the
+     * properties format only the characters {@code =} and {@code :} (with or without whitespace) should be used, but this
+     * method does not enforce this - it accepts arbitrary strings. If the key refers to a property with multiple values
+     * that are written on multiple lines, this separator will be used on all lines.
+     *
+     * @param key the key for the property
+     * @param sep the separator to be used for this property
+     * @since 1.7
+     */
+    public void setSeparator(final String key, final String sep) {
+<span class="fc" id="L872">        fetchLayoutData(key).setSeparator(sep);</span>
+<span class="fc" id="L873">    }</span>
+
+    /**
+     * Sets the &amp;quot;single line flag&amp;quot; for the specified property key. This flag is evaluated if the property has
+     * multiple values (i.e. if it is a list property). In this case, if the flag is set, all values will be written in a
+     * single property definition using the list delimiter as separator. Otherwise multiple lines will be written for this
+     * property, each line containing one property value.
+     *
+     * @param key the property key
+     * @param f the single line flag
+     */
+    public void setSingleLine(final String key, final boolean f) {
+<span class="fc" id="L885">        fetchLayoutData(key).setSingleLine(f);</span>
+<span class="fc" id="L886">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

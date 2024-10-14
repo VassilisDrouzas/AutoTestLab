@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InvokerTransformer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.functors</a> &gt; <span class="el_source">InvokerTransformer.java</span></div><h1>InvokerTransformer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.functors;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Objects;
+
+import org.apache.commons.collections4.FunctorException;
+import org.apache.commons.collections4.Transformer;
+
+/**
+ * Transformer implementation that creates a new object instance by reflection.
+ * &lt;p&gt;
+ * &lt;b&gt;WARNING:&lt;/b&gt; from v4.1 onwards this class will &lt;b&gt;not&lt;/b&gt; be serializable anymore
+ * in order to prevent potential remote code execution exploits. Please refer to
+ * &lt;a href=&quot;https://issues.apache.org/jira/browse/COLLECTIONS-580&quot;&gt;COLLECTIONS-580&lt;/a&gt;
+ * for more details.
+ * &lt;/p&gt;
+ *
+ * @since 3.0
+ */
+public class InvokerTransformer&lt;I, O&gt; implements Transformer&lt;I, O&gt; {
+
+    /**
+     * Gets an instance of this transformer calling a specific method with no arguments.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param methodName  the method name to call
+     * @return an invoker transformer
+     * @throws NullPointerException if methodName is null
+     * @since 3.1
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; invokerTransformer(final String methodName) {
+<span class="fc" id="L50">        return new InvokerTransformer&lt;&gt;(Objects.requireNonNull(methodName, &quot;methodName&quot;));</span>
+    }
+    /**
+     * Gets an instance of this transformer calling a specific method with specific values.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param methodName  the method name to call
+     * @param paramTypes  the parameter types of the method
+     * @param args  the arguments to pass to the method
+     * @return an invoker transformer
+     * @throws NullPointerException if methodName is null
+     * @throws IllegalArgumentException if paramTypes does not match args
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; invokerTransformer(final String methodName, final Class&lt;?&gt;[] paramTypes,
+                                                              final Object[] args) {
+<span class="fc" id="L66">        Objects.requireNonNull(methodName, &quot;methodName&quot;);</span>
+<span class="pc bpc" id="L67" title="1 of 14 branches missed.">        if (paramTypes == null &amp;&amp; args != null</span>
+            || paramTypes != null &amp;&amp; args == null
+            || paramTypes != null &amp;&amp; args != null &amp;&amp; paramTypes.length != args.length) {
+<span class="fc" id="L70">            throw new IllegalArgumentException(&quot;The parameter types must match the arguments&quot;);</span>
+        }
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">        if (paramTypes == null || paramTypes.length == 0) {</span>
+<span class="fc" id="L73">            return new InvokerTransformer&lt;&gt;(methodName);</span>
+        }
+<span class="fc" id="L75">        return new InvokerTransformer&lt;&gt;(methodName, paramTypes, args);</span>
+    }
+    /** The method name to call */
+    private final String iMethodName;
+
+    /** The array of reflection parameter types */
+    private final Class&lt;?&gt;[] iParamTypes;
+
+    /** The array of reflection arguments */
+    private final Object[] iArgs;
+
+    /**
+     * Constructor for no arg instance.
+     *
+     * @param methodName  the method to call
+     */
+<span class="fc" id="L91">    private InvokerTransformer(final String methodName) {</span>
+<span class="fc" id="L92">        iMethodName = methodName;</span>
+<span class="fc" id="L93">        iParamTypes = null;</span>
+<span class="fc" id="L94">        iArgs = null;</span>
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * Constructor that performs no validation.
+     * Use {@code invokerTransformer} if you want that.
+     * &lt;p&gt;
+     * Note: from 4.0, the input parameters will be cloned
+     *
+     * @param methodName  the method to call
+     * @param paramTypes  the constructor parameter types
+     * @param args  the constructor arguments
+     */
+<span class="fc" id="L107">    public InvokerTransformer(final String methodName, final Class&lt;?&gt;[] paramTypes, final Object[] args) {</span>
+<span class="fc" id="L108">        iMethodName = methodName;</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        iParamTypes = paramTypes != null ? paramTypes.clone() : null;</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        iArgs = args != null ? args.clone() : null;</span>
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Transforms the input to result by invoking a method on the input.
+     *
+     * @param input  the input object to transform
+     * @return the transformed result, null if null input
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public O transform(final Object input) {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (input == null) {</span>
+<span class="fc" id="L123">            return null;</span>
+        }
+        try {
+<span class="fc" id="L126">            final Class&lt;?&gt; cls = input.getClass();</span>
+<span class="fc" id="L127">            final Method method = cls.getMethod(iMethodName, iParamTypes);</span>
+<span class="fc" id="L128">            return (O) method.invoke(input, iArgs);</span>
+<span class="fc" id="L129">        } catch (final NoSuchMethodException ex) {</span>
+<span class="fc" id="L130">            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; +</span>
+<span class="fc" id="L131">                                       input.getClass() + &quot;' does not exist&quot;);</span>
+<span class="nc" id="L132">        } catch (final IllegalAccessException ex) {</span>
+<span class="nc" id="L133">            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; +</span>
+<span class="nc" id="L134">                                       input.getClass() + &quot;' cannot be accessed&quot;);</span>
+<span class="nc" id="L135">        } catch (final InvocationTargetException ex) {</span>
+<span class="nc" id="L136">            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; +</span>
+<span class="nc" id="L137">                                       input.getClass() + &quot;' threw an exception&quot;, ex);</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

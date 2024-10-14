@@ -1,0 +1,899 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DynamicCombinedConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">DynamicCombinedConfiguration.java</span></div><h1>DynamicCombinedConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.apache.commons.configuration2.event.BaseEventSource;
+import org.apache.commons.configuration2.event.Event;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.event.EventType;
+import org.apache.commons.configuration2.interpol.ConfigurationInterpolator;
+import org.apache.commons.configuration2.interpol.Lookup;
+import org.apache.commons.configuration2.io.ConfigurationLogger;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.NodeCombiner;
+
+/**
+ * &lt;p&gt;
+ * DynamicCombinedConfiguration allows a set of CombinedConfigurations to be used.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Each CombinedConfiguration is referenced by a key that is dynamically constructed from a key pattern on each call.
+ * The key pattern will be resolved using the configured ConfigurationInterpolator.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This Configuration implementation uses the configured {@code Synchronizer} to guard itself against concurrent access.
+ * If there are multiple threads accessing an instance concurrently, a fully functional {@code Synchronizer}
+ * implementation (e.g. {@code ReadWriteSynchronizer}) has to be used to ensure consistency and to avoid exceptions. The
+ * {@code Synchronizer} assigned to an instance is also passed to child configuration objects when they are created.
+ * &lt;/p&gt;
+ *
+ * @since 1.6
+ */
+public class DynamicCombinedConfiguration extends CombinedConfiguration {
+    /**
+     * Internal class that identifies each Configuration.
+     */
+    static class ConfigData {
+        /** Stores a reference to the configuration. */
+        private final Configuration configuration;
+
+        /** Stores the name under which the configuration is stored. */
+        private final String name;
+
+        /** Stores the at string. */
+        private final String at;
+
+        /**
+         * Creates a new instance of {@code ConfigData} and initializes it.
+         *
+         * @param config the configuration
+         * @param n the name
+         * @param at the at position
+         */
+<span class="fc" id="L81">        public ConfigData(final Configuration config, final String n, final String at) {</span>
+<span class="fc" id="L82">            configuration = config;</span>
+<span class="fc" id="L83">            name = n;</span>
+<span class="fc" id="L84">            this.at = at;</span>
+<span class="fc" id="L85">        }</span>
+
+        /**
+         * Gets the at position of this configuration.
+         *
+         * @return the at position
+         */
+        public String getAt() {
+<span class="fc" id="L93">            return at;</span>
+        }
+
+        /**
+         * Gets the stored configuration.
+         *
+         * @return the configuration
+         */
+        public Configuration getConfiguration() {
+<span class="fc" id="L102">            return configuration;</span>
+        }
+
+        /**
+         * Gets the configuration's name.
+         *
+         * @return the name
+         */
+        public String getName() {
+<span class="fc" id="L111">            return name;</span>
+        }
+
+    }
+
+    /**
+     * A simple data class holding information about the current configuration while an operation for a thread is processed.
+     */
+    private static final class CurrentConfigHolder {
+        /** Stores the current configuration of the current thread. */
+        private CombinedConfiguration currentConfiguration;
+
+        /**
+         * Stores the key of the configuration evaluated for the current thread at the beginning of an operation.
+         */
+        private final String key;
+
+        /** A counter for reentrant locks. */
+        private int lockCount;
+
+        /**
+         * Creates a new instance of {@code CurrentConfigHolder} and initializes it with the key for the current configuration.
+         *
+         * @param curKey the current key
+         */
+<span class="fc" id="L136">        public CurrentConfigHolder(final String curKey) {</span>
+<span class="fc" id="L137">            key = curKey;</span>
+<span class="fc" id="L138">        }</span>
+
+        /**
+         * Decrements the lock counter and checks whether it has reached 0. In this cause, the operation is complete, and the
+         * lock can be released.
+         *
+         * @return &lt;b&gt;true&lt;/b&gt; if the lock count reaches 0, &lt;b&gt;false&lt;/b&gt; otherwise
+         */
+        public boolean decrementLockCountAndCheckRelease() {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            return --lockCount == 0;</span>
+        }
+
+        /**
+         * Gets the current configuration.
+         *
+         * @return the current configuration
+         */
+        public CombinedConfiguration getCurrentConfiguration() {
+<span class="fc" id="L156">            return currentConfiguration;</span>
+        }
+
+        /**
+         * Gets the current key.
+         *
+         * @return the current key
+         */
+        public String getKey() {
+<span class="fc" id="L165">            return key;</span>
+        }
+
+        /**
+         * Increments the lock counter.
+         */
+        public void incrementLockCount() {
+<span class="fc" id="L172">            lockCount++;</span>
+<span class="fc" id="L173">        }</span>
+
+        /**
+         * Sets the current configuration.
+         *
+         * @param currentConfiguration the current configuration
+         */
+        public void setCurrentConfiguration(final CombinedConfiguration currentConfiguration) {
+<span class="fc" id="L181">            this.currentConfiguration = currentConfiguration;</span>
+<span class="fc" id="L182">        }</span>
+    }
+
+    /**
+     * Stores the current configuration for each involved thread. This value is set at the beginning of an operation and
+     * removed at the end.
+     */
+<span class="fc" id="L189">    private static final ThreadLocal&lt;CurrentConfigHolder&gt; CURRENT_CONFIG = new ThreadLocal&lt;&gt;();</span>
+
+    /** The CombinedConfigurations */
+<span class="pc" id="L192">    private final ConcurrentMap&lt;String, CombinedConfiguration&gt; configs = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /** Stores a list with the contained configurations. */
+<span class="pc" id="L195">    private final List&lt;ConfigData&gt; configurations = new ArrayList&lt;&gt;();</span>
+
+    /** Stores a map with the named configurations. */
+<span class="pc" id="L198">    private final Map&lt;String, Configuration&gt; namedConfigurations = new HashMap&lt;&gt;();</span>
+
+    /** The key pattern for the CombinedConfiguration map */
+    private String keyPattern;
+
+    /** Stores the combiner. */
+    private NodeCombiner nodeCombiner;
+
+    /** The name of the logger to use for each CombinedConfiguration */
+<span class="pc" id="L207">    private String loggerName = DynamicCombinedConfiguration.class.getName();</span>
+
+    /** The object for handling variable substitution in key patterns. */
+    private final ConfigurationInterpolator localSubst;
+
+    /**
+     * Creates a new instance of {@code DynamicCombinedConfiguration} that uses a union combiner.
+     *
+     * @see org.apache.commons.configuration2.tree.UnionCombiner
+     */
+<span class="fc" id="L217">    public DynamicCombinedConfiguration() {</span>
+<span class="fc" id="L218">        initLogger(new ConfigurationLogger(DynamicCombinedConfiguration.class));</span>
+<span class="fc" id="L219">        localSubst = initLocalInterpolator();</span>
+<span class="fc" id="L220">    }</span>
+
+    /**
+     * Creates a new instance of {@code DynamicCombinedConfiguration} and initializes the combiner to be used.
+     *
+     * @param comb the node combiner (can be &lt;b&gt;null&lt;/b&gt;, then a union combiner is used as default)
+     */
+<span class="nc" id="L227">    public DynamicCombinedConfiguration(final NodeCombiner comb) {</span>
+<span class="nc" id="L228">        setNodeCombiner(comb);</span>
+<span class="nc" id="L229">        initLogger(new ConfigurationLogger(DynamicCombinedConfiguration.class));</span>
+<span class="nc" id="L230">        localSubst = initLocalInterpolator();</span>
+<span class="nc" id="L231">    }</span>
+
+    /**
+     * Adds a new configuration to this combined configuration. It is possible (but not mandatory) to give the new
+     * configuration a name. This name must be unique, otherwise a {@code ConfigurationRuntimeException} will be thrown.
+     * With the optional {@code at} argument you can specify where in the resulting node structure the content of the added
+     * configuration should appear. This is a string that uses dots as property delimiters (independent on the current
+     * expression engine). For instance if you pass in the string {@code &quot;database.tables&quot;}, all properties of the added
+     * configuration will occur in this branch.
+     *
+     * @param config the configuration to add (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param name the name of this configuration (can be &lt;b&gt;null&lt;/b&gt;)
+     * @param at the position of this configuration in the combined tree (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    @Override
+    public void addConfiguration(final Configuration config, final String name, final String at) {
+<span class="fc" id="L247">        beginWrite(true);</span>
+        try {
+<span class="fc" id="L249">            final ConfigData cd = new ConfigData(config, name, at);</span>
+<span class="fc" id="L250">            configurations.add(cd);</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">            if (name != null) {</span>
+<span class="fc" id="L252">                namedConfigurations.put(name, config);</span>
+            }
+
+            // clear cache of all child configurations
+<span class="fc" id="L256">            configs.clear();</span>
+        } finally {
+<span class="fc" id="L258">            endWrite();</span>
+        }
+<span class="fc" id="L260">    }</span>
+
+    @Override
+    public &lt;T extends Event&gt; void addEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="nc" id="L264">        configs.values().forEach(cc -&gt; cc.addEventListener(eventType, listener));</span>
+<span class="nc" id="L265">        super.addEventListener(eventType, listener);</span>
+<span class="nc" id="L266">    }</span>
+
+    @Override
+    protected void addNodesInternal(final String key, final Collection&lt;? extends ImmutableNode&gt; nodes) {
+<span class="nc" id="L270">        getCurrentConfig().addNodes(key, nodes);</span>
+<span class="nc" id="L271">    }</span>
+
+    @Override
+    protected void addPropertyInternal(final String key, final Object value) {
+<span class="fc" id="L275">        getCurrentConfig().addProperty(key, value);</span>
+<span class="fc" id="L276">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation ensures that the current configuration is initialized. The lock counter is
+     * increased.
+     */
+    @Override
+    protected void beginRead(final boolean optimize) {
+<span class="fc" id="L284">        final CurrentConfigHolder cch = ensureCurrentConfiguration();</span>
+<span class="fc" id="L285">        cch.incrementLockCount();</span>
+<span class="fc bfc" id="L286" title="All 4 branches covered.">        if (!optimize &amp;&amp; cch.getCurrentConfiguration() == null) {</span>
+            // delegate to beginWrite() which creates the child configuration
+<span class="fc" id="L288">            beginWrite(false);</span>
+<span class="fc" id="L289">            endWrite();</span>
+        }
+
+        // This actually uses our own synchronizer
+<span class="fc" id="L293">        cch.getCurrentConfiguration().beginRead(optimize);</span>
+<span class="fc" id="L294">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation ensures that the current configuration is initialized. If necessary, a new child
+     * configuration instance is created.
+     */
+    @Override
+    protected void beginWrite(final boolean optimize) {
+<span class="fc" id="L302">        final CurrentConfigHolder cch = ensureCurrentConfiguration();</span>
+<span class="fc" id="L303">        cch.incrementLockCount();</span>
+
+<span class="fc" id="L305">        super.beginWrite(optimize);</span>
+<span class="fc bfc" id="L306" title="All 4 branches covered.">        if (!optimize &amp;&amp; cch.getCurrentConfiguration() == null) {</span>
+<span class="fc" id="L307">            cch.setCurrentConfiguration(createChildConfiguration());</span>
+<span class="fc" id="L308">            configs.put(cch.getKey(), cch.getCurrentConfiguration());</span>
+<span class="fc" id="L309">            initChildConfiguration(cch.getCurrentConfiguration());</span>
+        }
+<span class="fc" id="L311">    }</span>
+
+    @Override
+    public void clearErrorListeners() {
+<span class="nc" id="L315">        configs.values().forEach(BaseEventSource::clearErrorListeners);</span>
+<span class="nc" id="L316">        super.clearErrorListeners();</span>
+<span class="nc" id="L317">    }</span>
+
+    @Override
+    public void clearEventListeners() {
+<span class="nc" id="L321">        configs.values().forEach(CombinedConfiguration::clearEventListeners);</span>
+<span class="nc" id="L322">        super.clearEventListeners();</span>
+<span class="nc" id="L323">    }</span>
+
+    @Override
+    protected void clearInternal() {
+<span class="nc" id="L327">        getCurrentConfig().clear();</span>
+<span class="nc" id="L328">    }</span>
+
+    @Override
+    protected void clearPropertyDirect(final String key) {
+<span class="nc" id="L332">        getCurrentConfig().clearProperty(key);</span>
+<span class="nc" id="L333">    }</span>
+
+    @Override
+    protected Object clearTreeInternal(final String key) {
+<span class="nc" id="L337">        getCurrentConfig().clearTree(key);</span>
+<span class="nc" id="L338">        return Collections.emptyList();</span>
+    }
+
+    @Override
+    public HierarchicalConfiguration&lt;ImmutableNode&gt; configurationAt(final String key) {
+<span class="nc" id="L343">        return getCurrentConfig().configurationAt(key);</span>
+    }
+
+    @Override
+    public HierarchicalConfiguration&lt;ImmutableNode&gt; configurationAt(final String key, final boolean supportUpdates) {
+<span class="nc" id="L348">        return getCurrentConfig().configurationAt(key, supportUpdates);</span>
+    }
+
+    @Override
+    public List&lt;HierarchicalConfiguration&lt;ImmutableNode&gt;&gt; configurationsAt(final String key) {
+<span class="nc" id="L353">        return getCurrentConfig().configurationsAt(key);</span>
+    }
+
+    @Override
+    protected boolean containsKeyInternal(final String key) {
+<span class="nc" id="L358">        return getCurrentConfig().containsKey(key);</span>
+    }
+
+    /**
+     * Tests whether this configuration contains one or more matches to this value. This operation stops at first
+     * match but may be more expensive than the containsKey method.
+     * @since 2.11.0
+     */
+    @Override
+    protected boolean containsValueInternal(final Object value) {
+<span class="nc" id="L368">        return getCurrentConfig().contains(getKeys(), value);</span>
+    }
+
+    /**
+     * Creates a new, uninitialized child configuration.
+     *
+     * @return the new child configuration
+     */
+    private CombinedConfiguration createChildConfiguration() {
+<span class="fc" id="L377">        return new CombinedConfiguration(getNodeCombiner());</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation clears the current configuration if necessary.
+     */
+    @Override
+    protected void endRead() {
+<span class="fc" id="L385">        CURRENT_CONFIG.get().getCurrentConfiguration().endRead();</span>
+<span class="fc" id="L386">        releaseLock();</span>
+<span class="fc" id="L387">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation clears the current configuration if necessary.
+     */
+    @Override
+    protected void endWrite() {
+<span class="fc" id="L394">        super.endWrite();</span>
+<span class="fc" id="L395">        releaseLock();</span>
+<span class="fc" id="L396">    }</span>
+
+    /**
+     * Checks whether the current configuration is set. If not, a {@code CurrentConfigHolder} is now created and
+     * initialized, and associated with the current thread. The member for the current configuration is undefined if for the
+     * current key no configuration exists yet.
+     *
+     * @return the {@code CurrentConfigHolder} instance for the current thread
+     */
+    private CurrentConfigHolder ensureCurrentConfiguration() {
+<span class="fc" id="L406">        CurrentConfigHolder cch = CURRENT_CONFIG.get();</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (cch == null) {</span>
+<span class="fc" id="L408">            final String key = String.valueOf(localSubst.interpolate(keyPattern));</span>
+<span class="fc" id="L409">            cch = new CurrentConfigHolder(key);</span>
+<span class="fc" id="L410">            cch.setCurrentConfiguration(configs.get(key));</span>
+<span class="fc" id="L411">            CURRENT_CONFIG.set(cch);</span>
+        }
+<span class="fc" id="L413">        return cch;</span>
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(final String key) {
+<span class="nc" id="L418">        return getCurrentConfig().getBigDecimal(key);</span>
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(final String key, final BigDecimal defaultValue) {
+<span class="nc" id="L423">        return getCurrentConfig().getBigDecimal(key, defaultValue);</span>
+    }
+
+    @Override
+    public BigInteger getBigInteger(final String key) {
+<span class="nc" id="L428">        return getCurrentConfig().getBigInteger(key);</span>
+    }
+
+    @Override
+    public BigInteger getBigInteger(final String key, final BigInteger defaultValue) {
+<span class="nc" id="L433">        return getCurrentConfig().getBigInteger(key, defaultValue);</span>
+    }
+
+    @Override
+    public boolean getBoolean(final String key) {
+<span class="nc" id="L438">        return getCurrentConfig().getBoolean(key);</span>
+    }
+
+    @Override
+    public boolean getBoolean(final String key, final boolean defaultValue) {
+<span class="nc" id="L443">        return getCurrentConfig().getBoolean(key, defaultValue);</span>
+    }
+
+    @Override
+    public Boolean getBoolean(final String key, final Boolean defaultValue) {
+<span class="nc" id="L448">        return getCurrentConfig().getBoolean(key, defaultValue);</span>
+    }
+
+    @Override
+    public byte getByte(final String key) {
+<span class="nc" id="L453">        return getCurrentConfig().getByte(key);</span>
+    }
+
+    @Override
+    public byte getByte(final String key, final byte defaultValue) {
+<span class="nc" id="L458">        return getCurrentConfig().getByte(key, defaultValue);</span>
+    }
+
+    @Override
+    public Byte getByte(final String key, final Byte defaultValue) {
+<span class="nc" id="L463">        return getCurrentConfig().getByte(key, defaultValue);</span>
+    }
+
+    /**
+     * Gets the configuration at the specified index. The contained configurations are numbered in the order they were
+     * added to this combined configuration. The index of the first configuration is 0.
+     *
+     * @param index the index
+     * @return the configuration at this index
+     */
+    @Override
+    public Configuration getConfiguration(final int index) {
+<span class="fc" id="L475">        beginRead(false);</span>
+        try {
+<span class="fc" id="L477">            final ConfigData cd = configurations.get(index);</span>
+<span class="fc" id="L478">            return cd.getConfiguration();</span>
+        } finally {
+<span class="fc" id="L480">            endRead();</span>
+        }
+    }
+
+    /**
+     * Gets the configuration with the given name. This can be &lt;b&gt;null&lt;/b&gt; if no such configuration exists.
+     *
+     * @param name the name of the configuration
+     * @return the configuration with this name
+     */
+    @Override
+    public Configuration getConfiguration(final String name) {
+<span class="fc" id="L492">        beginRead(false);</span>
+        try {
+<span class="fc" id="L494">            return namedConfigurations.get(name);</span>
+        } finally {
+<span class="fc" id="L496">            endRead();</span>
+        }
+    }
+
+    /**
+     * Gets a set with the names of all configurations contained in this combined configuration. Of course here are only
+     * these configurations listed, for which a name was specified when they were added.
+     *
+     * @return a set with the names of the contained configurations (never &lt;b&gt;null&lt;/b&gt;)
+     */
+    @Override
+    public Set&lt;String&gt; getConfigurationNames() {
+<span class="fc" id="L508">        beginRead(false);</span>
+        try {
+<span class="fc" id="L510">            return namedConfigurations.keySet();</span>
+        } finally {
+<span class="fc" id="L512">            endRead();</span>
+        }
+    }
+
+    /**
+     * Gets the current configuration. This configuration was initialized at the beginning of an operation and stored in
+     * a thread-local variable. Some methods of this class call this method directly without requesting a lock before. To
+     * deal with this, we always request an additional read lock.
+     *
+     * @return the current configuration
+     */
+    private CombinedConfiguration getCurrentConfig() {
+        CombinedConfiguration config;
+        String key;
+<span class="fc" id="L526">        beginRead(false);</span>
+        try {
+<span class="fc" id="L528">            config = CURRENT_CONFIG.get().getCurrentConfiguration();</span>
+<span class="fc" id="L529">            key = CURRENT_CONFIG.get().getKey();</span>
+        } finally {
+<span class="fc" id="L531">            endRead();</span>
+        }
+
+<span class="pc bpc" id="L534" title="1 of 2 branches missed.">        if (getLogger().isDebugEnabled()) {</span>
+<span class="nc" id="L535">            getLogger().debug(&quot;Returning config for &quot; + key + &quot;: &quot; + config);</span>
+        }
+<span class="fc" id="L537">        return config;</span>
+    }
+
+    @Override
+    public double getDouble(final String key) {
+<span class="nc" id="L542">        return getCurrentConfig().getDouble(key);</span>
+    }
+
+    @Override
+    public double getDouble(final String key, final double defaultValue) {
+<span class="nc" id="L547">        return getCurrentConfig().getDouble(key, defaultValue);</span>
+    }
+
+    @Override
+    public Double getDouble(final String key, final Double defaultValue) {
+<span class="nc" id="L552">        return getCurrentConfig().getDouble(key, defaultValue);</span>
+    }
+
+    @Override
+    public float getFloat(final String key) {
+<span class="nc" id="L557">        return getCurrentConfig().getFloat(key);</span>
+    }
+
+    @Override
+    public float getFloat(final String key, final float defaultValue) {
+<span class="nc" id="L562">        return getCurrentConfig().getFloat(key, defaultValue);</span>
+    }
+
+    @Override
+    public Float getFloat(final String key, final Float defaultValue) {
+<span class="nc" id="L567">        return getCurrentConfig().getFloat(key, defaultValue);</span>
+    }
+
+    @Override
+    public int getInt(final String key) {
+<span class="fc" id="L572">        return getCurrentConfig().getInt(key);</span>
+    }
+
+    @Override
+    public int getInt(final String key, final int defaultValue) {
+<span class="nc" id="L577">        return getCurrentConfig().getInt(key, defaultValue);</span>
+    }
+
+    @Override
+    public Integer getInteger(final String key, final Integer defaultValue) {
+<span class="nc" id="L582">        return getCurrentConfig().getInteger(key, defaultValue);</span>
+    }
+
+    public String getKeyPattern() {
+<span class="nc" id="L586">        return this.keyPattern;</span>
+    }
+
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal() {
+<span class="nc" id="L591">        return getCurrentConfig().getKeys();</span>
+    }
+
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal(final String prefix) {
+<span class="nc" id="L596">        return getCurrentConfig().getKeys(prefix);</span>
+    }
+
+    @Override
+    public List&lt;Object&gt; getList(final String key) {
+<span class="nc" id="L601">        return getCurrentConfig().getList(key);</span>
+    }
+
+    @Override
+    public List&lt;Object&gt; getList(final String key, final List&lt;?&gt; defaultValue) {
+<span class="nc" id="L606">        return getCurrentConfig().getList(key, defaultValue);</span>
+    }
+
+    @Override
+    public long getLong(final String key) {
+<span class="nc" id="L611">        return getCurrentConfig().getLong(key);</span>
+    }
+
+    @Override
+    public long getLong(final String key, final long defaultValue) {
+<span class="nc" id="L616">        return getCurrentConfig().getLong(key, defaultValue);</span>
+    }
+
+    @Override
+    public Long getLong(final String key, final Long defaultValue) {
+<span class="nc" id="L621">        return getCurrentConfig().getLong(key, defaultValue);</span>
+    }
+
+    @Override
+    protected int getMaxIndexInternal(final String key) {
+<span class="fc" id="L626">        return getCurrentConfig().getMaxIndex(key);</span>
+    }
+
+    /**
+     * Gets the node combiner that is used for creating the combined node structure.
+     *
+     * @return the node combiner
+     */
+    @Override
+    public NodeCombiner getNodeCombiner() {
+<span class="fc" id="L636">        return nodeCombiner;</span>
+    }
+
+    /**
+     * Gets the number of configurations that are contained in this combined configuration.
+     *
+     * @return the number of contained configurations
+     */
+    @Override
+    public int getNumberOfConfigurations() {
+<span class="fc" id="L646">        beginRead(false);</span>
+        try {
+<span class="fc" id="L648">            return configurations.size();</span>
+        } finally {
+<span class="fc" id="L650">            endRead();</span>
+        }
+    }
+
+    @Override
+    public Properties getProperties(final String key) {
+<span class="nc" id="L656">        return getCurrentConfig().getProperties(key);</span>
+    }
+
+    @Override
+    protected Object getPropertyInternal(final String key) {
+<span class="fc" id="L661">        return getCurrentConfig().getProperty(key);</span>
+    }
+
+    @Override
+    public short getShort(final String key) {
+<span class="nc" id="L666">        return getCurrentConfig().getShort(key);</span>
+    }
+
+    @Override
+    public short getShort(final String key, final short defaultValue) {
+<span class="nc" id="L671">        return getCurrentConfig().getShort(key, defaultValue);</span>
+    }
+
+    @Override
+    public Short getShort(final String key, final Short defaultValue) {
+<span class="nc" id="L676">        return getCurrentConfig().getShort(key, defaultValue);</span>
+    }
+
+    /**
+     * Gets the configuration source, in which the specified key is defined. This method will determine the configuration
+     * node that is identified by the given key. The following constellations are possible:
+     * &lt;ul&gt;
+     * &lt;li&gt;If no node object is found for this key, &lt;b&gt;null&lt;/b&gt; is returned.&lt;/li&gt;
+     * &lt;li&gt;If the key maps to multiple nodes belonging to different configuration sources, a
+     * {@code IllegalArgumentException} is thrown (in this case no unique source can be determined).&lt;/li&gt;
+     * &lt;li&gt;If exactly one node is found for the key, the (child) configuration object, to which the node belongs is
+     * determined and returned.&lt;/li&gt;
+     * &lt;li&gt;For keys that have been added directly to this combined configuration and that do not belong to the namespaces
+     * defined by existing child configurations this configuration will be returned.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param key the key of a configuration property
+     * @return the configuration, to which this property belongs or &lt;b&gt;null&lt;/b&gt; if the key cannot be resolved
+     * @throws IllegalArgumentException if the key maps to multiple properties and the source cannot be determined, or if
+     *         the key is &lt;b&gt;null&lt;/b&gt;
+     */
+    @Override
+    public Configuration getSource(final String key) {
+<span class="nc bnc" id="L699" title="All 2 branches missed.">        if (key == null) {</span>
+<span class="nc" id="L700">            throw new IllegalArgumentException(&quot;Key must not be null!&quot;);</span>
+        }
+<span class="nc" id="L702">        return getCurrentConfig().getSource(key);</span>
+    }
+
+    @Override
+    public String getString(final String key) {
+<span class="fc" id="L707">        return getCurrentConfig().getString(key);</span>
+    }
+
+    @Override
+    public String getString(final String key, final String defaultValue) {
+<span class="fc" id="L712">        return getCurrentConfig().getString(key, defaultValue);</span>
+    }
+
+    @Override
+    public String[] getStringArray(final String key) {
+<span class="nc" id="L717">        return getCurrentConfig().getStringArray(key);</span>
+    }
+
+    /**
+     * Initializes a newly created child configuration. This method copies a bunch of settings from this instance to the
+     * child configuration.
+     *
+     * @param config the child configuration to be initialized
+     */
+    private void initChildConfiguration(final CombinedConfiguration config) {
+<span class="pc bpc" id="L727" title="1 of 2 branches missed.">        if (loggerName != null) {</span>
+<span class="fc" id="L728">            config.setLogger(new ConfigurationLogger(loggerName));</span>
+        }
+<span class="fc" id="L730">        config.setExpressionEngine(getExpressionEngine());</span>
+<span class="fc" id="L731">        config.setConversionExpressionEngine(getConversionExpressionEngine());</span>
+<span class="fc" id="L732">        config.setListDelimiterHandler(getListDelimiterHandler());</span>
+<span class="fc" id="L733">        copyEventListeners(config);</span>
+<span class="fc" id="L734">        configurations.forEach(data -&gt; config.addConfiguration(data.getConfiguration(), data.getName(), data.getAt()));</span>
+<span class="fc" id="L735">        config.setSynchronizer(getSynchronizer());</span>
+<span class="fc" id="L736">    }</span>
+
+    /**
+     * Creates a {@code ConfigurationInterpolator} instance for performing local variable substitutions. This implementation
+     * returns an object which shares the prefix lookups from this configuration's {@code ConfigurationInterpolator}, but
+     * does not define any other lookups.
+     *
+     * @return the {@code ConfigurationInterpolator}
+     */
+    private ConfigurationInterpolator initLocalInterpolator() {
+<span class="fc" id="L746">        return new ConfigurationInterpolator() {</span>
+            @Override
+            protected Lookup fetchLookupForPrefix(final String prefix) {
+<span class="fc" id="L749">                return nullSafeLookup(getInterpolator().getLookups().get(prefix));</span>
+            }
+        };
+    }
+
+    @Override
+    public Configuration interpolatedConfiguration() {
+<span class="nc" id="L756">        return getCurrentConfig().interpolatedConfiguration();</span>
+    }
+
+    /**
+     * Invalidates the current combined configuration. This means that the next time a property is accessed the combined
+     * node structure must be re-constructed. Invalidation of a combined configuration also means that an event of type
+     * {@code EVENT_COMBINED_INVALIDATE} is fired. Note that while other events most times appear twice (once before and
+     * once after an update), this event is only fired once (after update).
+     */
+    @Override
+    public void invalidate() {
+<span class="nc" id="L767">        getCurrentConfig().invalidate();</span>
+<span class="nc" id="L768">    }</span>
+
+    public void invalidateAll() {
+<span class="fc" id="L771">        configs.values().forEach(CombinedConfiguration::invalidate);</span>
+<span class="fc" id="L772">    }</span>
+
+    @Override
+    protected boolean isEmptyInternal() {
+<span class="fc" id="L776">        return getCurrentConfig().isEmpty();</span>
+    }
+
+    /**
+     * Decrements the lock count of the current configuration holder. If it reaches 0, the current configuration is removed.
+     * (It is then reevaluated when the next operation starts.)
+     */
+    private void releaseLock() {
+<span class="fc" id="L784">        final CurrentConfigHolder cch = CURRENT_CONFIG.get();</span>
+<span class="pc bpc" id="L785" title="1 of 2 branches missed.">        assert cch != null : &quot;No current configuration!&quot;;</span>
+<span class="fc bfc" id="L786" title="All 2 branches covered.">        if (cch.decrementLockCountAndCheckRelease()) {</span>
+<span class="fc" id="L787">            CURRENT_CONFIG.remove();</span>
+        }
+<span class="fc" id="L789">    }</span>
+
+    /**
+     * Removes the specified configuration from this combined configuration.
+     *
+     * @param config the configuration to be removed
+     * @return a flag whether this configuration was found and could be removed
+     */
+    @Override
+    public boolean removeConfiguration(final Configuration config) {
+<span class="fc" id="L799">        beginWrite(false);</span>
+        try {
+<span class="pc bpc" id="L801" title="1 of 2 branches missed.">            for (int index = 0; index &lt; getNumberOfConfigurations(); index++) {</span>
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">                if (configurations.get(index).getConfiguration() == config) {</span>
+<span class="fc" id="L803">                    removeConfigurationAt(index);</span>
+<span class="fc" id="L804">                    return true;</span>
+                }
+            }
+
+<span class="nc" id="L808">            return false;</span>
+        } finally {
+<span class="fc" id="L810">            endWrite();</span>
+        }
+    }
+
+    /**
+     * Removes the configuration with the specified name.
+     *
+     * @param name the name of the configuration to be removed
+     * @return the removed configuration (&lt;b&gt;null&lt;/b&gt; if this configuration was not found)
+     */
+    @Override
+    public Configuration removeConfiguration(final String name) {
+<span class="fc" id="L822">        final Configuration conf = getConfiguration(name);</span>
+<span class="pc bpc" id="L823" title="1 of 2 branches missed.">        if (conf != null) {</span>
+<span class="fc" id="L824">            removeConfiguration(conf);</span>
+        }
+<span class="fc" id="L826">        return conf;</span>
+    }
+
+    /**
+     * Removes the configuration at the specified index.
+     *
+     * @param index the index
+     * @return the removed configuration
+     */
+    @Override
+    public Configuration removeConfigurationAt(final int index) {
+<span class="fc" id="L837">        beginWrite(false);</span>
+        try {
+<span class="fc" id="L839">            final ConfigData cd = configurations.remove(index);</span>
+<span class="pc bpc" id="L840" title="1 of 2 branches missed.">            if (cd.getName() != null) {</span>
+<span class="fc" id="L841">                namedConfigurations.remove(cd.getName());</span>
+            }
+<span class="fc" id="L843">            return cd.getConfiguration();</span>
+        } finally {
+<span class="fc" id="L845">            endWrite();</span>
+        }
+    }
+
+    @Override
+    public &lt;T extends Event&gt; boolean removeEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="nc" id="L851">        configs.values().forEach(cc -&gt; cc.removeEventListener(eventType, listener));</span>
+<span class="nc" id="L852">        return super.removeEventListener(eventType, listener);</span>
+    }
+
+    public void setKeyPattern(final String pattern) {
+<span class="fc" id="L856">        this.keyPattern = pattern;</span>
+<span class="fc" id="L857">    }</span>
+
+    /**
+     * Sets the name of the Logger to use on each CombinedConfiguration.
+     *
+     * @param name The Logger name.
+     */
+    public void setLoggerName(final String name) {
+<span class="fc" id="L865">        this.loggerName = name;</span>
+<span class="fc" id="L866">    }</span>
+
+    /**
+     * Sets the node combiner. This object will be used when the combined node structure is to be constructed. It must not
+     * be &lt;b&gt;null&lt;/b&gt;, otherwise an {@code IllegalArgumentException} exception is thrown. Changing the node combiner causes
+     * an invalidation of this combined configuration, so that the new combiner immediately takes effect.
+     *
+     * @param nodeCombiner the node combiner
+     */
+    @Override
+    public void setNodeCombiner(final NodeCombiner nodeCombiner) {
+<span class="pc bpc" id="L877" title="1 of 2 branches missed.">        if (nodeCombiner == null) {</span>
+<span class="nc" id="L878">            throw new IllegalArgumentException(&quot;Node combiner must not be null!&quot;);</span>
+        }
+<span class="fc" id="L880">        this.nodeCombiner = nodeCombiner;</span>
+<span class="fc" id="L881">        invalidateAll();</span>
+<span class="fc" id="L882">    }</span>
+
+    @Override
+    protected void setPropertyInternal(final String key, final Object value) {
+<span class="nc" id="L886">        getCurrentConfig().setProperty(key, value);</span>
+<span class="nc" id="L887">    }</span>
+
+    @Override
+    protected int sizeInternal() {
+<span class="fc" id="L891">        return getCurrentConfig().size();</span>
+    }
+
+    @Override
+    public Configuration subset(final String prefix) {
+<span class="nc" id="L896">        return getCurrentConfig().subset(prefix);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

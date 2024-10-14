@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SparseBloomFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">SparseBloomFilter.java</span></div><h1>SparseBloomFilter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.Objects;
+import java.util.TreeSet;
+import java.util.function.IntPredicate;
+import java.util.function.LongPredicate;
+
+/**
+ * A bloom filter using a TreeSet of integers to track enabled bits. This is a standard
+ * implementation and should work well for most low cardinality Bloom filters.
+ * @since 4.5
+ */
+public final class SparseBloomFilter implements BloomFilter {
+
+    /**
+     * The bitSet that defines this BloomFilter.
+     */
+    private final TreeSet&lt;Integer&gt; indices;
+
+    /**
+     * The shape of this BloomFilter.
+     */
+    private final Shape shape;
+
+    /**
+     * Constructs an empty BitSetBloomFilter.
+     *
+     * @param shape The shape of the filter.
+     */
+<span class="fc" id="L46">    public SparseBloomFilter(final Shape shape) {</span>
+<span class="fc" id="L47">        Objects.requireNonNull(shape, &quot;shape&quot;);</span>
+<span class="fc" id="L48">        this.shape = shape;</span>
+<span class="fc" id="L49">        this.indices = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L50">    }</span>
+
+<span class="fc" id="L52">    private SparseBloomFilter(final SparseBloomFilter source) {</span>
+<span class="fc" id="L53">        shape = source.shape;</span>
+<span class="fc" id="L54">        indices = new TreeSet&lt;&gt;(source.indices);</span>
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * Adds the index to the indices.
+     * @param idx the index to add.
+     * @return {@code true} always
+     */
+    private boolean add(final int idx) {
+<span class="fc" id="L63">        indices.add(idx);</span>
+<span class="fc" id="L64">        return true;</span>
+    }
+
+    @Override
+    public long[] asBitMapArray() {
+<span class="fc" id="L69">        final long[] result = new long[BitMaps.numberOfBitMaps(shape.getNumberOfBits())];</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (final int i : indices) {</span>
+<span class="fc" id="L71">            BitMaps.set(result, i);</span>
+<span class="fc" id="L72">        }</span>
+<span class="fc" id="L73">        return result;</span>
+    }
+
+    @Override
+    public int cardinality() {
+<span class="fc" id="L78">        return indices.size();</span>
+    }
+
+    @Override
+    public int characteristics() {
+<span class="fc" id="L83">        return SPARSE;</span>
+    }
+
+    @Override
+    public void clear() {
+<span class="fc" id="L88">        indices.clear();</span>
+<span class="fc" id="L89">    }</span>
+
+    @Override
+    public boolean contains(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L93">        return contains(IndexExtractor.fromBitMapExtractor(bitMapExtractor));</span>
+    }
+
+    @Override
+    public boolean contains(final IndexExtractor indexExtractor) {
+<span class="fc" id="L98">        return indexExtractor.processIndices(indices::contains);</span>
+    }
+
+    @Override
+    public SparseBloomFilter copy() {
+<span class="fc" id="L103">        return new SparseBloomFilter(this);</span>
+    }
+
+    @Override
+    public boolean processBitMaps(final LongPredicate consumer) {
+<span class="fc" id="L108">        Objects.requireNonNull(consumer, &quot;consumer&quot;);</span>
+<span class="fc" id="L109">        final int limit = BitMaps.numberOfBitMaps(shape.getNumberOfBits());</span>
+        /*
+         * because our indices are always in order we can shorten the time necessary to
+         * create the longs for the consumer
+         */
+        // the currently constructed bitMap
+<span class="fc" id="L115">        long bitMap = 0;</span>
+        // the bitmap we are working on
+<span class="fc" id="L117">        int idx = 0;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (final int i : indices) {</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            while (BitMaps.getLongIndex(i) != idx) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (!consumer.test(bitMap)) {</span>
+<span class="fc" id="L121">                    return false;</span>
+                }
+<span class="fc" id="L123">                bitMap = 0;</span>
+<span class="fc" id="L124">                idx++;</span>
+            }
+<span class="fc" id="L126">            bitMap |= BitMaps.getLongBit(i);</span>
+<span class="fc" id="L127">        }</span>
+        // we fall through with data in the bitMap
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (!consumer.test(bitMap)) {</span>
+<span class="fc" id="L130">            return false;</span>
+        }
+        // account for hte bitMap in the previous block + the next one
+<span class="fc" id="L133">        idx++;</span>
+        // while there are more blocks to generate send zero to the consumer.
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        while (idx &lt; limit) {</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (!consumer.test(0L)) {</span>
+<span class="fc" id="L137">                return false;</span>
+            }
+<span class="fc" id="L139">            idx++;</span>
+        }
+<span class="fc" id="L141">        return true;</span>
+    }
+
+    @Override
+    public boolean processIndices(final IntPredicate consumer) {
+<span class="fc" id="L146">        Objects.requireNonNull(consumer, &quot;consumer&quot;);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (final int value : indices) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (!consumer.test(value)) {</span>
+<span class="fc" id="L149">                return false;</span>
+            }
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">        return true;</span>
+    }
+
+    @Override
+    public Shape getShape() {
+<span class="fc" id="L157">        return shape;</span>
+    }
+
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L162">        return indices.isEmpty();</span>
+    }
+
+    @Override
+    public boolean merge(final BitMapExtractor bitMapExtractor) {
+<span class="fc" id="L167">        Objects.requireNonNull(bitMapExtractor, &quot;bitMapExtractor&quot;);</span>
+<span class="fc" id="L168">        return this.merge(IndexExtractor.fromBitMapExtractor(bitMapExtractor));</span>
+    }
+
+    @Override
+    public boolean merge(final BloomFilter other) {
+<span class="fc" id="L173">        Objects.requireNonNull(other, &quot;other&quot;);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        final IndexExtractor indexExtractor = (other.characteristics() &amp; SPARSE) != 0 ? (IndexExtractor) other : IndexExtractor.fromBitMapExtractor(other);</span>
+<span class="fc" id="L175">        merge(indexExtractor);</span>
+<span class="fc" id="L176">        return true;</span>
+    }
+
+    @Override
+    public boolean merge(final Hasher hasher) {
+<span class="fc" id="L181">        Objects.requireNonNull(hasher, &quot;hasher&quot;);</span>
+<span class="fc" id="L182">        merge(hasher.indices(shape));</span>
+<span class="fc" id="L183">        return true;</span>
+    }
+
+    @Override
+    public boolean merge(final IndexExtractor indexExtractor) {
+<span class="fc" id="L188">        Objects.requireNonNull(indexExtractor, &quot;indexExtractor&quot;);</span>
+<span class="fc" id="L189">        indexExtractor.processIndices(this::add);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (!this.indices.isEmpty()) {</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (this.indices.last() &gt;= shape.getNumberOfBits()) {</span>
+<span class="fc" id="L192">                throw new IllegalArgumentException(String.format(&quot;Value in list %s is greater than maximum value (%s)&quot;,</span>
+<span class="fc" id="L193">                        this.indices.last(), shape.getNumberOfBits() - 1));</span>
+            }
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (this.indices.first() &lt; 0) {</span>
+<span class="fc" id="L196">                throw new IllegalArgumentException(</span>
+<span class="fc" id="L197">                        String.format(&quot;Value in list %s is less than 0&quot;, this.indices.first()));</span>
+            }
+        }
+<span class="fc" id="L200">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

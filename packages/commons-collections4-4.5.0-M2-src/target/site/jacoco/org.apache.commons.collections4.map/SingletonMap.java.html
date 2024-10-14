@@ -1,0 +1,595 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingletonMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">SingletonMap.java</span></div><h1>SingletonMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.Serializable;
+import java.util.AbstractSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+import org.apache.commons.collections4.BoundedMap;
+import org.apache.commons.collections4.KeyValue;
+import org.apache.commons.collections4.OrderedMap;
+import org.apache.commons.collections4.OrderedMapIterator;
+import org.apache.commons.collections4.ResettableIterator;
+import org.apache.commons.collections4.iterators.SingletonIterator;
+import org.apache.commons.collections4.keyvalue.TiedMapEntry;
+
+/**
+ * A {@code Map} implementation that holds a single item and is fixed size.
+ * &lt;p&gt;
+ * The single key/value pair is specified at creation.
+ * The map is fixed size so any action that would change the size is disallowed.
+ * However, the {@code put} or {@code setValue} methods can &lt;i&gt;change&lt;/i&gt;
+ * the value associated with the key.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If trying to remove or clear the map, an UnsupportedOperationException is thrown.
+ * If trying to put a new mapping into the map, an  IllegalArgumentException is thrown.
+ * The put method will only succeed if the key specified is the same as the
+ * singleton key.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The key and value can be obtained by:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;normal Map methods and views
+ * &lt;li&gt;the {@code MapIterator}, see {@link #mapIterator()}
+ * &lt;li&gt;the {@code KeyValue} interface (just cast - no object creation)
+ * &lt;/ul&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.1
+ */
+public class SingletonMap&lt;K, V&gt;
+        implements OrderedMap&lt;K, V&gt;, BoundedMap&lt;K, V&gt;, KeyValue&lt;K, V&gt;, Serializable, Cloneable {
+
+    /**
+     * SingletonMapIterator.
+     */
+    static class SingletonMapIterator&lt;K, V&gt; implements OrderedMapIterator&lt;K, V&gt;, ResettableIterator&lt;K&gt; {
+        private final SingletonMap&lt;K, V&gt; parent;
+<span class="nc" id="L71">        private boolean hasNext = true;</span>
+        private boolean canGetSet;
+
+<span class="nc" id="L74">        SingletonMapIterator(final SingletonMap&lt;K, V&gt; parent) {</span>
+<span class="nc" id="L75">            this.parent = parent;</span>
+<span class="nc" id="L76">        }</span>
+
+        @Override
+        public K getKey() {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            if (!canGetSet) {</span>
+<span class="nc" id="L81">                throw new IllegalStateException(AbstractHashedMap.GETKEY_INVALID);</span>
+            }
+<span class="nc" id="L83">            return parent.getKey();</span>
+        }
+
+        @Override
+        public V getValue() {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">            if (!canGetSet) {</span>
+<span class="nc" id="L89">                throw new IllegalStateException(AbstractHashedMap.GETVALUE_INVALID);</span>
+            }
+<span class="nc" id="L91">            return parent.getValue();</span>
+        }
+
+        @Override
+        public boolean hasNext() {
+<span class="nc" id="L96">            return hasNext;</span>
+        }
+
+        @Override
+        public boolean hasPrevious() {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            return !hasNext;</span>
+        }
+
+        @Override
+        public K next() {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (!hasNext) {</span>
+<span class="nc" id="L107">                throw new NoSuchElementException(AbstractHashedMap.NO_NEXT_ENTRY);</span>
+            }
+<span class="nc" id="L109">            hasNext = false;</span>
+<span class="nc" id="L110">            canGetSet = true;</span>
+<span class="nc" id="L111">            return parent.getKey();</span>
+        }
+
+        @Override
+        public K previous() {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (hasNext) {</span>
+<span class="nc" id="L117">                throw new NoSuchElementException(AbstractHashedMap.NO_PREVIOUS_ENTRY);</span>
+            }
+<span class="nc" id="L119">            hasNext = true;</span>
+<span class="nc" id="L120">            return parent.getKey();</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc" id="L125">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        public void reset() {
+<span class="nc" id="L130">            hasNext = true;</span>
+<span class="nc" id="L131">        }</span>
+
+        @Override
+        public V setValue(final V value) {
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (!canGetSet) {</span>
+<span class="nc" id="L136">                throw new IllegalStateException(AbstractHashedMap.SETVALUE_INVALID);</span>
+            }
+<span class="nc" id="L138">            return parent.setValue(value);</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (hasNext) {</span>
+<span class="nc" id="L144">                return &quot;Iterator[]&quot;;</span>
+            }
+<span class="nc" id="L146">            return &quot;Iterator[&quot; + getKey() + &quot;=&quot; + getValue() + &quot;]&quot;;</span>
+        }
+    }
+
+    /**
+     * Values implementation for the SingletonMap.
+     * This class is needed as values is a view that must update as the map updates.
+     */
+    static class SingletonValues&lt;V&gt; extends AbstractSet&lt;V&gt; implements Serializable {
+        private static final long serialVersionUID = -3689524741863047872L;
+        private final SingletonMap&lt;?, V&gt; parent;
+
+<span class="fc" id="L158">        SingletonValues(final SingletonMap&lt;?, V&gt; parent) {</span>
+<span class="fc" id="L159">            this.parent = parent;</span>
+<span class="fc" id="L160">        }</span>
+
+        @Override
+        public void clear() {
+<span class="nc" id="L164">            throw new UnsupportedOperationException();</span>
+        }
+        @Override
+        public boolean contains(final Object object) {
+<span class="fc" id="L168">            return parent.containsValue(object);</span>
+        }
+        @Override
+        public boolean isEmpty() {
+<span class="fc" id="L172">            return false;</span>
+        }
+        @Override
+        public Iterator&lt;V&gt; iterator() {
+<span class="fc" id="L176">            return new SingletonIterator&lt;&gt;(parent.getValue(), false);</span>
+        }
+        @Override
+        public int size() {
+<span class="fc" id="L180">            return 1;</span>
+        }
+    }
+    /** Serialization version */
+    private static final long serialVersionUID = -8931271118676803261L;
+
+    /** Singleton key */
+    private final K key;
+
+    /** Singleton value */
+    private V value;
+
+    /**
+     * Constructor that creates a map of {@code null} to {@code null}.
+     */
+<span class="nc" id="L195">    public SingletonMap() {</span>
+<span class="nc" id="L196">        this.key = null;</span>
+<span class="nc" id="L197">    }</span>
+
+    /**
+     * Constructor specifying the key and value.
+     *
+     * @param key  the key to use
+     * @param value  the value to use
+     */
+<span class="fc" id="L205">    public SingletonMap(final K key, final V value) {</span>
+<span class="fc" id="L206">        this.key = key;</span>
+<span class="fc" id="L207">        this.value = value;</span>
+<span class="fc" id="L208">    }</span>
+
+    /**
+     * Constructor specifying the key and value as a {@code KeyValue}.
+     *
+     * @param keyValue  the key value pair to use
+     */
+<span class="nc" id="L215">    public SingletonMap(final KeyValue&lt;K, V&gt; keyValue) {</span>
+<span class="nc" id="L216">        this.key = keyValue.getKey();</span>
+<span class="nc" id="L217">        this.value = keyValue.getValue();</span>
+<span class="nc" id="L218">    }</span>
+
+    /**
+     * Constructor specifying the key and value as a {@code MapEntry}.
+     *
+     * @param mapEntry  the mapEntry to use
+     */
+<span class="nc" id="L225">    public SingletonMap(final Map.Entry&lt;? extends K, ? extends V&gt; mapEntry) {</span>
+<span class="nc" id="L226">        this.key = mapEntry.getKey();</span>
+<span class="nc" id="L227">        this.value = mapEntry.getValue();</span>
+<span class="nc" id="L228">    }</span>
+
+    /**
+     * Constructor copying elements from another map.
+     *
+     * @param map  the map to copy, must be size 1
+     * @throws NullPointerException if the map is null
+     * @throws IllegalArgumentException if the size is not 1
+     */
+<span class="nc" id="L237">    public SingletonMap(final Map&lt;? extends K, ? extends V&gt; map) {</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (map.size() != 1) {</span>
+<span class="nc" id="L239">            throw new IllegalArgumentException(&quot;The map size must be 1&quot;);</span>
+        }
+<span class="nc" id="L241">        final Map.Entry&lt;? extends K, ? extends V&gt; entry = map.entrySet().iterator().next();</span>
+<span class="nc" id="L242">        this.key = entry.getKey();</span>
+<span class="nc" id="L243">        this.value = entry.getValue();</span>
+<span class="nc" id="L244">    }</span>
+
+    /**
+     * Unsupported operation.
+     */
+    @Override
+    public void clear() {
+<span class="fc" id="L251">        throw new UnsupportedOperationException();</span>
+    }
+
+    /**
+     * Clones the map without cloning the key or value.
+     *
+     * @return a shallow clone
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public SingletonMap&lt;K, V&gt; clone() {
+        try {
+<span class="fc" id="L263">            return (SingletonMap&lt;K, V&gt;) super.clone();</span>
+<span class="nc" id="L264">        } catch (final CloneNotSupportedException ex) {</span>
+<span class="nc" id="L265">            throw new UnsupportedOperationException(ex);</span>
+        }
+    }
+
+    /**
+     * Checks whether the map contains the specified key.
+     *
+     * @param key  the key to search for
+     * @return true if the map contains the key
+     */
+    @Override
+    public boolean containsKey(final Object key) {
+<span class="fc" id="L277">        return isEqualKey(key);</span>
+    }
+
+    /**
+     * Checks whether the map contains the specified value.
+     *
+     * @param value  the value to search for
+     * @return true if the map contains the key
+     */
+    @Override
+    public boolean containsValue(final Object value) {
+<span class="fc" id="L288">        return isEqualValue(value);</span>
+    }
+
+    /**
+     * Gets the entrySet view of the map.
+     * Changes made via {@code setValue} affect this map.
+     * To simply iterate through the entries, use {@link #mapIterator()}.
+     *
+     * @return the entrySet view
+     */
+    @Override
+    public Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc" id="L300">        final Map.Entry&lt;K, V&gt; entry = new TiedMapEntry&lt;&gt;(this, getKey());</span>
+<span class="fc" id="L301">        return Collections.singleton(entry);</span>
+    }
+
+    /**
+     * Compares this map with another.
+     *
+     * @param obj  the object to compare to
+     * @return true if equal
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L313">            return true;</span>
+        }
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        if (!(obj instanceof Map)) {</span>
+<span class="fc" id="L316">            return false;</span>
+        }
+<span class="fc" id="L318">        final Map&lt;?, ?&gt; other = (Map&lt;?, ?&gt;) obj;</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        if (other.size() != 1) {</span>
+<span class="fc" id="L320">            return false;</span>
+        }
+<span class="fc" id="L322">        final Map.Entry&lt;?, ?&gt; entry = other.entrySet().iterator().next();</span>
+<span class="pc bpc" id="L323" title="2 of 4 branches missed.">        return isEqualKey(entry.getKey()) &amp;&amp; isEqualValue(entry.getValue());</span>
+    }
+
+    /**
+     * Gets the first (and only) key in the map.
+     *
+     * @return the key
+     */
+    @Override
+    public K firstKey() {
+<span class="fc" id="L333">        return getKey();</span>
+    }
+
+    // Map
+    /**
+     * Gets the value mapped to the key specified.
+     *
+     * @param key  the key
+     * @return the mapped value, null if no match
+     */
+    @Override
+    public V get(final Object key) {
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">        if (isEqualKey(key)) {</span>
+<span class="fc" id="L346">            return value;</span>
+        }
+<span class="nc" id="L348">        return null;</span>
+    }
+
+    // KeyValue
+    /**
+     * Gets the key.
+     *
+     * @return the key
+     */
+    @Override
+    public K getKey() {
+<span class="fc" id="L359">        return key;</span>
+    }
+
+    /**
+     * Gets the value.
+     *
+     * @return the value
+     */
+    @Override
+    public V getValue() {
+<span class="fc" id="L369">        return value;</span>
+    }
+
+    /**
+     * Gets the standard Map hashCode.
+     *
+     * @return the hash code defined in the Map interface
+     */
+    @Override
+    public int hashCode() {
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        return (getKey() == null ? 0 : getKey().hashCode()) ^</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">               (getValue() == null ? 0 : getValue().hashCode());</span>
+    }
+
+    /**
+     * Checks whether the map is currently empty, which it never is.
+     *
+     * @return false always
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L390">        return false;</span>
+    }
+
+    /**
+     * Compares the specified key to the stored key.
+     *
+     * @param key  the key to compare
+     * @return true if equal
+     */
+    protected boolean isEqualKey(final Object key) {
+<span class="pc bpc" id="L400" title="3 of 4 branches missed.">        return key == null ? getKey() == null : key.equals(getKey());</span>
+    }
+
+    /**
+     * Compares the specified value to the stored value.
+     *
+     * @param value  the value to compare
+     * @return true if equal
+     */
+    protected boolean isEqualValue(final Object value) {
+<span class="pc bpc" id="L410" title="3 of 4 branches missed.">        return value == null ? getValue() == null : value.equals(getValue());</span>
+    }
+
+    // BoundedMap
+    /**
+     * Is the map currently full, always true.
+     *
+     * @return true always
+     */
+    @Override
+    public boolean isFull() {
+<span class="fc" id="L421">        return true;</span>
+    }
+
+    /**
+     * Gets the unmodifiable keySet view of the map.
+     * Changes made to the view affect this map.
+     * To simply iterate through the keys, use {@link #mapIterator()}.
+     *
+     * @return the keySet view
+     */
+    @Override
+    public Set&lt;K&gt; keySet() {
+<span class="fc" id="L433">        return Collections.singleton(key);</span>
+    }
+
+    /**
+     * Gets the last (and only) key in the map.
+     *
+     * @return the key
+     */
+    @Override
+    public K lastKey() {
+<span class="fc" id="L443">        return getKey();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public OrderedMapIterator&lt;K, V&gt; mapIterator() {
+<span class="nc" id="L451">        return new SingletonMapIterator&lt;&gt;(this);</span>
+    }
+
+    /**
+     * Gets the maximum size of the map, always 1.
+     *
+     * @return 1 always
+     */
+    @Override
+    public int maxSize() {
+<span class="fc" id="L461">        return 1;</span>
+    }
+
+    /**
+     * Gets the next key after the key specified, always null.
+     *
+     * @param key  the next key
+     * @return null always
+     */
+    @Override
+    public K nextKey(final K key) {
+<span class="fc" id="L472">        return null;</span>
+    }
+
+    /**
+     * Gets the previous key before the key specified, always null.
+     *
+     * @param key  the next key
+     * @return null always
+     */
+    @Override
+    public K previousKey(final K key) {
+<span class="fc" id="L483">        return null;</span>
+    }
+
+    /**
+     * Puts a key-value mapping into this map where the key must match the existing key.
+     * &lt;p&gt;
+     * An IllegalArgumentException is thrown if the key does not match as the map
+     * is fixed size.
+     *
+     * @param key  the key to set, must be the key of the map
+     * @param value  the value to set
+     * @return the value previously mapped to this key, null if none
+     * @throws IllegalArgumentException if the key does not match
+     */
+    @Override
+    public V put(final K key, final V value) {
+<span class="pc bpc" id="L499" title="1 of 2 branches missed.">        if (isEqualKey(key)) {</span>
+<span class="fc" id="L500">            return setValue(value);</span>
+        }
+<span class="nc" id="L502">        throw new IllegalArgumentException(&quot;Cannot put new key/value pair - Map is fixed size singleton&quot;);</span>
+    }
+
+    /**
+     * Puts the values from the specified map into this map.
+     * &lt;p&gt;
+     * The map must be of size 0 or size 1.
+     * If it is size 1, the key must match the key of this map otherwise an
+     * IllegalArgumentException is thrown.
+     *
+     * @param map  the map to add, must be size 0 or 1, and the key must match
+     * @throws NullPointerException if the map is null
+     * @throws IllegalArgumentException if the key does not match
+     */
+    @Override
+    public void putAll(final Map&lt;? extends K, ? extends V&gt; map) {
+<span class="nc bnc" id="L518" title="All 3 branches missed.">        switch (map.size()) {</span>
+        case 0:
+<span class="nc" id="L520">            return;</span>
+
+        case 1:
+<span class="nc" id="L523">            final Map.Entry&lt;? extends K, ? extends V&gt; entry = map.entrySet().iterator().next();</span>
+<span class="nc" id="L524">            put(entry.getKey(), entry.getValue());</span>
+<span class="nc" id="L525">            return;</span>
+
+        default:
+<span class="nc" id="L528">            throw new IllegalArgumentException(&quot;The map size must be 0 or 1&quot;);</span>
+        }
+    }
+
+    /**
+     * Unsupported operation.
+     *
+     * @param key  the mapping to remove
+     * @return the value mapped to the removed key, null if key not in map
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    public V remove(final Object key) {
+<span class="fc" id="L541">        throw new UnsupportedOperationException();</span>
+    }
+
+    /**
+     * Sets the value.
+     *
+     * @param value  the new value to set
+     * @return the old value
+     */
+    public V setValue(final V value) {
+<span class="fc" id="L551">        final V old = this.value;</span>
+<span class="fc" id="L552">        this.value = value;</span>
+<span class="fc" id="L553">        return old;</span>
+    }
+
+    /**
+     * Gets the size of the map, always 1.
+     *
+     * @return the size of 1
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L563">        return 1;</span>
+    }
+
+    /**
+     * Gets the map as a String.
+     *
+     * @return a string version of the map
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L573">        return new StringBuilder(128)</span>
+<span class="fc" id="L574">            .append('{')</span>
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">            .append(getKey() == this ? &quot;(this Map)&quot; : getKey())</span>
+<span class="fc" id="L576">            .append('=')</span>
+<span class="pc bpc" id="L577" title="1 of 2 branches missed.">            .append(getValue() == this ? &quot;(this Map)&quot; : getValue())</span>
+<span class="fc" id="L578">            .append('}')</span>
+<span class="fc" id="L579">            .toString();</span>
+    }
+
+    /**
+     * Gets the unmodifiable values view of the map.
+     * Changes made to the view affect this map.
+     * To simply iterate through the values, use {@link #mapIterator()}.
+     *
+     * @return the values view
+     */
+    @Override
+    public Collection&lt;V&gt; values() {
+<span class="fc" id="L591">        return new SingletonValues&lt;&gt;(this);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

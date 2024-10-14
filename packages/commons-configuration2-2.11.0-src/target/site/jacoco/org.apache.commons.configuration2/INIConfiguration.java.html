@@ -1,0 +1,986 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>INIConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">INIConfiguration.java</span></div><h1>INIConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.convert.ListDelimiterHandler;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.InMemoryNodeModel;
+import org.apache.commons.configuration2.tree.InMemoryNodeModelSupport;
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.configuration2.tree.NodeHandlerDecorator;
+import org.apache.commons.configuration2.tree.NodeSelector;
+import org.apache.commons.configuration2.tree.TrackedNodeModel;
+
+/**
+ * &lt;p&gt;
+ * A specialized hierarchical configuration implementation for parsing ini files.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An initialization or ini file is a configuration file typically found on Microsoft's Windows operating system and
+ * contains data for Windows based applications.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Although popularized by Windows, ini files can be used on any system or platform due to the fact that they are merely
+ * text files that can easily be parsed and modified by both humans and computers.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * A typical ini file could look something like:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * [section1]
+ * ; this is a comment!
+ * var1 = foo
+ * var2 = bar
+ *
+ * [section2]
+ * var1 = doo
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * The format of ini files is fairly straight forward and is composed of three components:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Sections:&lt;/b&gt; Ini files are split into sections, each section starting with a section declaration. A section
+ * declaration starts with a '[' and ends with a ']'. Sections occur on one line only.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Parameters:&lt;/b&gt; Items in a section are known as parameters. Parameters have a typical {@code key = value}
+ * format.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Comments:&lt;/b&gt; Lines starting with a ';' are assumed to be comments.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * There are various implementations of the ini file format by various vendors which has caused a number of differences
+ * to appear. As far as possible this configuration tries to be lenient and support most of the differences.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Some of the differences supported are as follows:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Comments:&lt;/b&gt; The '#' character is also accepted as a comment signifier.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Key value separator:&lt;/b&gt; The ':' character is also accepted in place of '=' to separate keys and values in
+ * parameters, for example {@code var1 : foo}.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Duplicate sections:&lt;/b&gt; Typically duplicate sections are not allowed, this configuration does however support
+ * this feature. In the event of a duplicate section, the two section's values are merged so that there is only a single
+ * section. &lt;strong&gt;Note&lt;/strong&gt;: This also affects the internal data of the configuration. If it is saved, only a
+ * single section is written!&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Duplicate parameters:&lt;/b&gt; Typically duplicate parameters are only allowed if they are in two different
+ * sections, thus they are local to sections; this configuration simply merges duplicates; if a section has a duplicate
+ * parameter the values are then added to the key as a list.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Global parameters are also allowed; any parameters declared before a section is declared are added to a global
+ * section. It is important to note that this global section does not have a name.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * In all instances, a parameter's key is prepended with its section name and a '.' (period). Thus a parameter named
+ * &quot;var1&quot; in &quot;section1&quot; will have the key {@code section1.var1} in this configuration. (This is the default behavior.
+ * Because this is a hierarchical configuration you can change this by setting a different
+ * {@link org.apache.commons.configuration2.tree.ExpressionEngine}.)
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Implementation Details:&lt;/strong&gt; Consider the following ini file:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ *  default = ok
+ *
+ *  [section1]
+ *  var1 = foo
+ *  var2 = doodle
+ *
+ *  [section2]
+ *  ; a comment
+ *  var1 = baz
+ *  var2 = shoodle
+ *  bad =
+ *  = worse
+ *
+ *  [section3]
+ *  # another comment
+ *  var1 : foo
+ *  var2 : bar
+ *  var5 : test1
+ *
+ *  [section3]
+ *  var3 = foo
+ *  var4 = bar
+ *  var5 = test2
+ *
+ *  [sectionSeparators]
+ *  passwd : abc=def
+ *  a:b = &quot;value&quot;
+ *
+ *  []
+ *  var = emptySection
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * This ini file will be parsed without error. Note:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;The parameter named &quot;default&quot; is added to the global section, it's value is accessed simply using
+ * {@code getProperty(&quot;default&quot;)}.&lt;/li&gt;
+ * &lt;li&gt;Section 1's parameters can be accessed using {@code getProperty(&quot;section1.var1&quot;)}.&lt;/li&gt;
+ * &lt;li&gt;The parameter named &quot;bad&quot; simply adds the parameter with an empty value.&lt;/li&gt;
+ * &lt;li&gt;The empty key with value &quot;= worse&quot; is added using a key consisting of a single space character. This key is still
+ * added to section 2 and the value can be accessed using {@code getProperty(&quot;section2. &quot;)}, notice the period '.' and
+ * the space following the section name.&lt;/li&gt;
+ * &lt;li&gt;Section three uses both '=' and ':' to separate keys and values.&lt;/li&gt;
+ * &lt;li&gt;Section 3 has a duplicate key named &quot;var5&quot;. The value for this key is [test1, test2], and is represented as a
+ * List.&lt;/li&gt;
+ * &lt;li&gt;The section called &lt;em&gt;sectionSeparators&lt;/em&gt; demonstrates how the configuration deals with multiple occurrences
+ * of separator characters. Per default the first separator character in a line is detected and used to split the key
+ * from the value. Therefore the first property definition in this section has the key {@code passwd} and the value
+ * {@code abc=def}. This default behavior can be changed by using quotes. If there is a separator character before the
+ * first quote character (ignoring whitespace), this character is used as separator. Thus the second property definition
+ * in the section has the key {@code a:b} and the value {@code value}.&lt;/li&gt;
+ * &lt;li&gt;The empty section is added using a key consisting of a single space character. The parameters can be accessed
+ * using {@code getProperty(&quot; .var&quot;)}&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Internally, this configuration maps the content of the represented ini file to its node structure in the following
+ * way:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;Sections are represented by direct child nodes of the root node.&lt;/li&gt;
+ * &lt;li&gt;For the content of a section, corresponding nodes are created as children of the section node.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * This explains how the keys for the properties can be constructed. You can also use other methods of
+ * {@link HierarchicalConfiguration} for querying or manipulating the hierarchy of configuration nodes, for instance the
+ * {@code configurationAt()} method for obtaining the data of a specific section. However, be careful that the storage
+ * scheme described above is not violated (e.g. by adding multiple levels of nodes or inserting duplicate section
+ * nodes). Otherwise, the special methods for ini configurations may not work correctly!
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The set of sections in this configuration can be retrieved using the {@code getSections()} method. For obtaining a
+ * {@code SubnodeConfiguration} with the content of a specific section the {@code getSection()} method can be used.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Like other {@code Configuration} implementations, this class uses a {@code Synchronizer} object to control concurrent
+ * access. By choosing a suitable implementation of the {@code Synchronizer} interface, an instance can be made
+ * thread-safe or not. Note that access to most of the properties typically set through a builder is not protected by
+ * the {@code Synchronizer}. The intended usage is that these properties are set once at construction time through the
+ * builder and after that remain constant. If you wish to change such properties during life time of an instance, you
+ * have to use the {@code lock()} and {@code unlock()} methods manually to ensure that other threads see your changes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * As this class extends {@link AbstractConfiguration}, all basic features like variable interpolation, list handling,
+ * or data type conversions are available as well. This is described in the chapter
+ * &lt;a href=&quot;https://commons.apache.org/proper/commons-configuration/userguide/howto_basicfeatures.html&quot;&gt; Basic features
+ * and AbstractConfiguration&lt;/a&gt; of the user's guide.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Note that this configuration does not support properties with null values. Such properties are considered to be
+ * section nodes.
+ * &lt;/p&gt;
+ *
+ * @since 1.6
+ */
+public class INIConfiguration extends BaseHierarchicalConfiguration implements FileBasedConfiguration {
+
+    /**
+     * Builds instances of INIConfiguration.
+     *
+     * @since 2.9.0
+     */
+<span class="fc" id="L211">    public static class Builder {</span>
+
+        /**
+         * The flag for decision, whether inline comments on the section line are allowed.
+         */
+        private boolean sectionInLineCommentsAllowed;
+
+        public INIConfiguration build() {
+<span class="fc" id="L219">            return new INIConfiguration(sectionInLineCommentsAllowed);</span>
+        }
+
+        public Builder setSectionInLineCommentsAllowed(final boolean sectionInLineCommentsAllowed) {
+<span class="fc" id="L223">            this.sectionInLineCommentsAllowed = sectionInLineCommentsAllowed;</span>
+<span class="fc" id="L224">            return this;</span>
+        }
+
+    }
+
+    /**
+     * A specialized node model implementation for the sub configuration representing the global section of the INI file.
+     * This is a regular {@code TrackedNodeModel} with one exception: The {@code NodeHandler} used by this model applies a
+     * filter on the children of the root node so that only nodes are visible that are no sub sections.
+     */
+    private static final class GlobalSectionNodeModel extends TrackedNodeModel {
+        /**
+         * Creates a new instance of {@code GlobalSectionNodeModel} and initializes it with the given underlying model.
+         *
+         * @param modelSupport the underlying {@code InMemoryNodeModel}
+         * @param selector the {@code NodeSelector}
+         */
+        public GlobalSectionNodeModel(final InMemoryNodeModelSupport modelSupport, final NodeSelector selector) {
+<span class="fc" id="L242">            super(modelSupport, selector, true);</span>
+<span class="fc" id="L243">        }</span>
+
+        @Override
+        public NodeHandler&lt;ImmutableNode&gt; getNodeHandler() {
+<span class="fc" id="L247">            return new NodeHandlerDecorator&lt;ImmutableNode&gt;() {</span>
+                /**
+                 * Filters the child nodes of the global section. This method checks whether the passed in node is the root node of the
+                 * configuration. If so, from the list of children all nodes are filtered which are section nodes.
+                 *
+                 * @param node the node in question
+                 * @param children the children of this node
+                 * @return a list with the filtered children
+                 */
+                private List&lt;ImmutableNode&gt; filterChildrenOfGlobalSection(final ImmutableNode node, final List&lt;ImmutableNode&gt; children) {
+                    final List&lt;ImmutableNode&gt; filteredList;
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                    if (node == getRootNode()) {</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                        filteredList = children.stream().filter(child -&gt; !isSectionNode(child)).collect(Collectors.toList());</span>
+                    } else {
+<span class="fc" id="L261">                        filteredList = children;</span>
+                    }
+
+<span class="fc" id="L264">                    return filteredList;</span>
+                }
+
+                @Override
+                public ImmutableNode getChild(final ImmutableNode node, final int index) {
+<span class="fc" id="L269">                    final List&lt;ImmutableNode&gt; children = super.getChildren(node);</span>
+<span class="fc" id="L270">                    return filterChildrenOfGlobalSection(node, children).get(index);</span>
+                }
+
+                @Override
+                public List&lt;ImmutableNode&gt; getChildren(final ImmutableNode node) {
+<span class="fc" id="L275">                    final List&lt;ImmutableNode&gt; children = super.getChildren(node);</span>
+<span class="fc" id="L276">                    return filterChildrenOfGlobalSection(node, children);</span>
+                }
+
+                @Override
+                public List&lt;ImmutableNode&gt; getChildren(final ImmutableNode node, final String name) {
+<span class="fc" id="L281">                    final List&lt;ImmutableNode&gt; children = super.getChildren(node, name);</span>
+<span class="fc" id="L282">                    return filterChildrenOfGlobalSection(node, children);</span>
+                }
+
+                @Override
+                public int getChildrenCount(final ImmutableNode node, final String name) {
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">                    final List&lt;ImmutableNode&gt; children = name != null ? super.getChildren(node, name) : super.getChildren(node);</span>
+<span class="fc" id="L288">                    return filterChildrenOfGlobalSection(node, children).size();</span>
+                }
+
+                @Override
+                protected NodeHandler&lt;ImmutableNode&gt; getDecoratedNodeHandler() {
+<span class="fc" id="L293">                    return GlobalSectionNodeModel.super.getNodeHandler();</span>
+                }
+
+                @Override
+                public int indexOfChild(final ImmutableNode parent, final ImmutableNode child) {
+<span class="fc" id="L298">                    final List&lt;ImmutableNode&gt; children = super.getChildren(parent);</span>
+<span class="fc" id="L299">                    return filterChildrenOfGlobalSection(parent, children).indexOf(child);</span>
+                }
+            };
+        }
+    }
+
+    /**
+     * The empty key.
+     */
+    private static final String EMPTY_KEY = &quot; &quot;;
+
+    /**
+     * The default characters that signal the start of a comment line.
+     */
+    protected static final String COMMENT_CHARS = &quot;#;&quot;;
+
+    /**
+     * The default characters used to separate keys from values.
+     */
+    protected static final String SEPARATOR_CHARS = &quot;=:&quot;;
+
+    /**
+     * Constant for the line separator.
+     */
+<span class="fc" id="L323">    private static final String LINE_SEPARATOR = System.lineSeparator();</span>
+
+    /**
+     * The characters used for quoting values.
+     */
+    private static final String QUOTE_CHARACTERS = &quot;\&quot;'&quot;;
+
+    /**
+     * The line continuation character.
+     */
+    private static final String LINE_CONT = &quot;\\&quot;;
+
+    /**
+     * Creates a new builder.
+     *
+     * @return a new builder.
+     * @since 2.9.0
+     */
+    public static Builder builder() {
+<span class="fc" id="L342">        return new Builder();</span>
+    }
+
+    /**
+     * Creates a new root node from the builders constructed while reading the configuration file.
+     *
+     * @param rootBuilder the builder for the top-level section
+     * @param sectionBuilders a map storing the section builders
+     * @return the root node of the newly created hierarchy
+     */
+    private static ImmutableNode createNewRootNode(final ImmutableNode.Builder rootBuilder, final Map&lt;String, ImmutableNode.Builder&gt; sectionBuilders) {
+<span class="fc" id="L353">        sectionBuilders.forEach((k, v) -&gt; rootBuilder.addChild(v.name(k).create()));</span>
+<span class="fc" id="L354">        return rootBuilder.create();</span>
+    }
+
+    /**
+     * Checks for the occurrence of the specified separators in the given line. The index of the first separator is
+     * returned.
+     *
+     * @param line the line to be investigated
+     * @param separators a string with the separator characters to look for
+     * @return the lowest index of a separator character or -1 if no separator is found
+     */
+    private static int findFirstOccurrence(final String line, final String separators) {
+<span class="fc" id="L366">        int index = -1;</span>
+
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        for (int i = 0; i &lt; separators.length(); i++) {</span>
+<span class="fc" id="L369">            final char sep = separators.charAt(i);</span>
+<span class="fc" id="L370">            final int pos = line.indexOf(sep);</span>
+<span class="fc bfc" id="L371" title="All 6 branches covered.">            if (pos &gt;= 0 &amp;&amp; (index &lt; 0 || pos &lt; index)) {</span>
+<span class="fc" id="L372">                index = pos;</span>
+            }
+        }
+
+<span class="fc" id="L376">        return index;</span>
+    }
+
+    /**
+     * Searches for a separator character directly before a quoting character. If the first non-whitespace character before
+     * a quote character is a separator, it is considered the &quot;real&quot; separator in this line - even if there are other
+     * separators before.
+     *
+     * @param line the line to be investigated
+     * @param quoteIndex the index of the quote character
+     * @return the index of the separator before the quote or &amp;lt; 0 if there is none
+     */
+    private static int findSeparatorBeforeQuote(final String line, final int quoteIndex) {
+<span class="fc" id="L389">        int index = quoteIndex - 1;</span>
+<span class="fc bfc" id="L390" title="All 4 branches covered.">        while (index &gt;= 0 &amp;&amp; Character.isWhitespace(line.charAt(index))) {</span>
+<span class="fc" id="L391">            index--;</span>
+        }
+
+<span class="pc bpc" id="L394" title="1 of 4 branches missed.">        if (index &gt;= 0 &amp;&amp; SEPARATOR_CHARS.indexOf(line.charAt(index)) &lt; 0) {</span>
+<span class="nc" id="L395">            index = -1;</span>
+        }
+
+<span class="fc" id="L398">        return index;</span>
+    }
+
+    /**
+     * Determine if the given line contains a section - inline comments are allowed.
+     *
+     * @param line The line to check.
+     * @return true if the line contains a section
+     */
+    private static boolean isNonStrictSection(final String line) {
+<span class="pc bpc" id="L408" title="1 of 4 branches missed.">        return line.startsWith(&quot;[&quot;) &amp;&amp; line.contains(&quot;]&quot;);</span>
+    }
+
+    /**
+     * Checks whether the specified configuration node represents a section.
+     *
+     * @param node the node in question
+     * @return a flag whether this node represents a section
+     */
+    private static boolean isSectionNode(final ImmutableNode node) {
+<span class="fc bfc" id="L418" title="All 2 branches covered.">        return node.getValue() == null;</span>
+    }
+
+    /**
+     * Determine if the entire given line is a section - inline comments are not allowed.
+     *
+     * @param line The line to check.
+     * @return true if the entire line is a section
+     */
+    private static boolean isStrictSection(final String line) {
+<span class="fc bfc" id="L428" title="All 4 branches covered.">        return line.startsWith(&quot;[&quot;) &amp;&amp; line.endsWith(&quot;]&quot;);</span>
+    }
+
+    /**
+     * Tests whether the specified string contains a line continuation marker.
+     *
+     * @param line the string to check
+     * @return a flag whether this line continues
+     */
+    private static boolean lineContinues(final String line) {
+<span class="fc" id="L438">        final String s = line.trim();</span>
+<span class="fc bfc" id="L439" title="All 8 branches covered.">        return s.equals(LINE_CONT) || s.length() &gt; 2 &amp;&amp; s.endsWith(LINE_CONT) &amp;&amp; Character.isWhitespace(s.charAt(s.length() - 2));</span>
+    }
+
+    /**
+     * The separator used when writing an INI file.
+     */
+<span class="pc" id="L445">    private String separatorUsedInOutput = &quot; = &quot;;</span>
+
+    /**
+     * The separator used when reading an INI file.
+     */
+<span class="pc" id="L450">    private String separatorUsedInInput = SEPARATOR_CHARS;</span>
+
+    /**
+     * The characters used to separate keys from values when reading an INI file.
+     */
+<span class="pc" id="L455">    private String commentCharsUsedInInput = COMMENT_CHARS;</span>
+
+    /**
+     * The flag for decision, whether inline comments on the section line are allowed.
+     */
+    private boolean sectionInLineCommentsAllowed;
+
+    /**
+     * Create a new empty INI Configuration.
+     */
+<span class="fc" id="L465">    public INIConfiguration() {</span>
+<span class="fc" id="L466">    }</span>
+
+    /**
+     * Create a new empty INI Configuration with option to allow inline comments on the section line.
+     *
+     * @param sectionInLineCommentsAllowed when true inline comments on the section line are allowed
+     */
+<span class="fc" id="L473">    private INIConfiguration(final boolean sectionInLineCommentsAllowed) {</span>
+<span class="fc" id="L474">        this.sectionInLineCommentsAllowed = sectionInLineCommentsAllowed;</span>
+<span class="fc" id="L475">    }</span>
+
+    /**
+     * Creates a new instance of {@code INIConfiguration} with the content of the specified
+     * {@code HierarchicalConfiguration}.
+     *
+     * @param c the configuration to be copied
+     * @since 2.0
+     */
+    public INIConfiguration(final HierarchicalConfiguration&lt;ImmutableNode&gt; c) {
+<span class="nc" id="L485">        super(c);</span>
+<span class="nc" id="L486">    }</span>
+
+    /**
+     * Reads the content of an INI file from the passed in reader and creates a structure of builders for constructing the
+     * {@code ImmutableNode} objects representing the data.
+     *
+     * @param in the reader
+     * @param rootBuilder the builder for the top-level section
+     * @param sectionBuilders a map storing the section builders
+     * @throws IOException if an I/O error occurs.
+     */
+    private void createNodeBuilders(final BufferedReader in, final ImmutableNode.Builder rootBuilder, final Map&lt;String, ImmutableNode.Builder&gt; sectionBuilders)
+        throws IOException {
+<span class="fc" id="L499">        ImmutableNode.Builder sectionBuilder = rootBuilder;</span>
+<span class="fc" id="L500">        String line = in.readLine();</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        while (line != null) {</span>
+<span class="fc" id="L502">            line = line.trim();</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">            if (!isCommentLine(line)) {</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">                if (isSectionLine(line)) {</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">                    final int length = sectionInLineCommentsAllowed ? line.indexOf(&quot;]&quot;) : line.length() - 1;</span>
+<span class="fc" id="L506">                    String section = line.substring(1, length);</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">                    if (section.isEmpty()) {</span>
+                        // use space for sections with no key
+<span class="fc" id="L509">                        section = EMPTY_KEY;</span>
+                    }
+<span class="fc" id="L511">                    sectionBuilder = sectionBuilders.computeIfAbsent(section, k -&gt; new ImmutableNode.Builder());</span>
+<span class="fc" id="L512">                } else {</span>
+                    String key;
+<span class="fc" id="L514">                    String value = &quot;&quot;;</span>
+<span class="fc" id="L515">                    final int index = findSeparator(line);</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">                    if (index &gt;= 0) {</span>
+<span class="fc" id="L517">                        key = line.substring(0, index);</span>
+<span class="fc" id="L518">                        value = parseValue(line.substring(index + 1), in);</span>
+                    } else {
+<span class="fc" id="L520">                        key = line;</span>
+                    }
+<span class="fc" id="L522">                    key = key.trim();</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">                    if (key.isEmpty()) {</span>
+                        // use space for properties with no key
+<span class="fc" id="L525">                        key = EMPTY_KEY;</span>
+                    }
+<span class="fc" id="L527">                    createValueNodes(sectionBuilder, key, value);</span>
+                }
+            }
+
+<span class="fc" id="L531">            line = in.readLine();</span>
+        }
+<span class="fc" id="L533">    }</span>
+
+    /**
+     * Creates the node(s) for the given key value-pair. If delimiter parsing is enabled, the value string is split if
+     * possible, and for each single value a node is created. Otherwise only a single node is added to the section.
+     *
+     * @param sectionBuilder the section builder for adding new nodes
+     * @param key the key
+     * @param value the value string
+     */
+    private void createValueNodes(final ImmutableNode.Builder sectionBuilder, final String key, final String value) {
+<span class="fc" id="L544">        getListDelimiterHandler().split(value, false).forEach(v -&gt; sectionBuilder.addChild(new ImmutableNode.Builder().name(key).value(v).create()));</span>
+<span class="fc" id="L545">    }</span>
+
+    /**
+     * Escapes comment characters in the given value.
+     *
+     * @param value the value to be escaped
+     * @return the value with comment characters escaped
+     */
+    private String escapeComments(final String value) {
+<span class="fc" id="L554">        final String commentChars = getCommentLeadingCharsUsedInInput();</span>
+<span class="fc" id="L555">        boolean quoted = false;</span>
+
+<span class="fc bfc" id="L557" title="All 2 branches covered.">        for (int i = 0; i &lt; commentChars.length(); i++) {</span>
+<span class="fc" id="L558">            final char c = commentChars.charAt(i);</span>
+<span class="fc bfc" id="L559" title="All 2 branches covered.">            if (value.indexOf(c) != -1) {</span>
+<span class="fc" id="L560">                quoted = true;</span>
+<span class="fc" id="L561">                break;</span>
+            }
+        }
+
+<span class="fc bfc" id="L565" title="All 2 branches covered.">        if (quoted) {</span>
+<span class="fc" id="L566">            return '&quot;' + value.replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;) + '&quot;';</span>
+        }
+<span class="fc" id="L568">        return value;</span>
+    }
+
+    /**
+     * Escapes the given property value before it is written. This method add quotes around the specified value if it
+     * contains a comment character and handles list delimiter characters.
+     *
+     * @param value the string to be escaped
+     */
+    private String escapeValue(final String value) {
+<span class="fc" id="L578">        return String.valueOf(getListDelimiterHandler().escape(escapeComments(value), ListDelimiterHandler.NOOP_TRANSFORMER));</span>
+    }
+
+    /**
+     * Tries to find the index of the separator character in the given string. This method checks for the presence of
+     * separator characters in the given string. If multiple characters are found, the first one is assumed to be the
+     * correct separator. If there are quoting characters, they are taken into account, too.
+     *
+     * @param line the line to be checked
+     * @return the index of the separator character or -1 if none is found
+     */
+    private int findSeparator(final String line) {
+<span class="fc" id="L590">        int index = findSeparatorBeforeQuote(line, findFirstOccurrence(line, QUOTE_CHARACTERS));</span>
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (index &lt; 0) {</span>
+<span class="fc" id="L592">            index = findFirstOccurrence(line, getSeparatorUsedInInput());</span>
+        }
+<span class="fc" id="L594">        return index;</span>
+    }
+
+    /**
+     * Gets comment leading separator used in INI reading. see {@code setCommentLeadingCharsUsedInInput} for further
+     * explanation
+     *
+     * @return the current separator for reading the INI input
+     * @since 2.5
+     */
+    public String getCommentLeadingCharsUsedInInput() {
+<span class="fc" id="L605">        beginRead(false);</span>
+        try {
+<span class="fc" id="L607">            return commentCharsUsedInInput;</span>
+        } finally {
+<span class="fc" id="L609">            endRead();</span>
+        }
+    }
+
+    /**
+     * Creates a sub configuration for the global section of the represented INI configuration.
+     *
+     * @return the sub configuration for the global section
+     */
+    private SubnodeConfiguration getGlobalSection() {
+<span class="fc" id="L619">        final InMemoryNodeModel parentModel = getSubConfigurationParentModel();</span>
+<span class="fc" id="L620">        final NodeSelector selector = new NodeSelector(null); // selects parent</span>
+<span class="fc" id="L621">        parentModel.trackNode(selector, this);</span>
+<span class="fc" id="L622">        final GlobalSectionNodeModel model = new GlobalSectionNodeModel(this, selector);</span>
+<span class="fc" id="L623">        final SubnodeConfiguration sub = new SubnodeConfiguration(this, model);</span>
+<span class="fc" id="L624">        initSubConfigurationForThisParent(sub);</span>
+<span class="fc" id="L625">        return sub;</span>
+    }
+
+    /**
+     * Gets a configuration with the content of the specified section. This provides an easy way of working with a single
+     * section only. The way this configuration is structured internally, this method is very similar to calling
+     * {@link HierarchicalConfiguration#configurationAt(String)} with the name of the section in question. There are the
+     * following differences however:
+     * &lt;ul&gt;
+     * &lt;li&gt;This method never throws an exception. If the section does not exist, it is created now. The configuration
+     * returned in this case is empty.&lt;/li&gt;
+     * &lt;li&gt;If section is contained multiple times in the configuration, the configuration returned by this method is
+     * initialized with the first occurrence of the section. (This can only happen if {@code addProperty()} has been used in
+     * a way that does not conform to the storage scheme used by {@code INIConfiguration}. If used correctly, there will not
+     * be duplicate sections.)&lt;/li&gt;
+     * &lt;li&gt;There is special support for the global section: Passing in &lt;b&gt;null&lt;/b&gt; as section name returns a configuration
+     * with the content of the global section (which may also be empty).&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param name the name of the section in question; &lt;b&gt;null&lt;/b&gt; represents the global section
+     * @return a configuration containing only the properties of the specified section
+     */
+    public SubnodeConfiguration getSection(final String name) {
+<span class="fc bfc" id="L648" title="All 2 branches covered.">        if (name == null) {</span>
+<span class="fc" id="L649">            return getGlobalSection();</span>
+        }
+        try {
+<span class="fc" id="L652">            return (SubnodeConfiguration) configurationAt(name, true);</span>
+<span class="fc" id="L653">        } catch (final ConfigurationRuntimeException iex) {</span>
+            // the passed in key does not map to exactly one node
+            // obtain the node for the section, create it on demand
+<span class="fc" id="L656">            final InMemoryNodeModel parentModel = getSubConfigurationParentModel();</span>
+<span class="fc" id="L657">            final NodeSelector selector = parentModel.trackChildNodeWithCreation(null, name, this);</span>
+<span class="fc" id="L658">            return createSubConfigurationForTrackedNode(selector, this);</span>
+        }
+    }
+
+    /**
+     * Gets a set containing the sections in this ini configuration. Note that changes to this set do not affect the
+     * configuration.
+     *
+     * @return a set containing the sections.
+     */
+    public Set&lt;String&gt; getSections() {
+<span class="fc" id="L669">        final Set&lt;String&gt; sections = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L670">        boolean globalSection = false;</span>
+<span class="fc" id="L671">        boolean inSection = false;</span>
+
+<span class="fc" id="L673">        beginRead(false);</span>
+        try {
+<span class="fc bfc" id="L675" title="All 2 branches covered.">            for (final ImmutableNode node : getModel().getNodeHandler().getRootNode().getChildren()) {</span>
+<span class="fc bfc" id="L676" title="All 2 branches covered.">                if (isSectionNode(node)) {</span>
+<span class="fc" id="L677">                    inSection = true;</span>
+<span class="fc" id="L678">                    sections.add(node.getNodeName());</span>
+<span class="pc bpc" id="L679" title="1 of 4 branches missed.">                } else if (!inSection &amp;&amp; !globalSection) {</span>
+<span class="fc" id="L680">                    globalSection = true;</span>
+<span class="fc" id="L681">                    sections.add(null);</span>
+                }
+<span class="fc" id="L683">            }</span>
+        } finally {
+<span class="fc" id="L685">            endRead();</span>
+        }
+
+<span class="fc" id="L688">        return sections;</span>
+    }
+
+    /**
+     * Gets separator used in INI reading. see {@code setSeparatorUsedInInput} for further explanation
+     *
+     * @return the current separator for reading the INI input
+     * @since 2.5
+     */
+    public String getSeparatorUsedInInput() {
+<span class="fc" id="L698">        beginRead(false);</span>
+        try {
+<span class="fc" id="L700">            return separatorUsedInInput;</span>
+        } finally {
+<span class="fc" id="L702">            endRead();</span>
+        }
+    }
+
+    /**
+     * Gets separator used in INI output. see {@code setSeparatorUsedInOutput} for further explanation
+     *
+     * @return the current separator for writing the INI output
+     * @since 2.2
+     */
+    public String getSeparatorUsedInOutput() {
+<span class="fc" id="L713">        beginRead(false);</span>
+        try {
+<span class="fc" id="L715">            return separatorUsedInOutput;</span>
+        } finally {
+<span class="fc" id="L717">            endRead();</span>
+        }
+    }
+
+    /**
+     * Tests whether the specified character is a comment character.
+     *
+     * @param c the character
+     * @return a flag whether this character starts a comment
+     */
+    private boolean isCommentChar(final char c) {
+<span class="fc bfc" id="L728" title="All 2 branches covered.">        return getCommentLeadingCharsUsedInInput().indexOf(c) &gt;= 0;</span>
+    }
+
+    /**
+     * Determine if the given line is a comment line.
+     *
+     * @param line The line to check.
+     * @return true if the line is empty or starts with one of the comment characters
+     */
+    protected boolean isCommentLine(final String line) {
+<span class="fc bfc" id="L738" title="All 2 branches covered.">        if (line == null) {</span>
+<span class="fc" id="L739">            return false;</span>
+        }
+        // blank lines are also treated as comment lines
+<span class="fc bfc" id="L742" title="All 4 branches covered.">        return line.isEmpty() || getCommentLeadingCharsUsedInInput().indexOf(line.charAt(0)) &gt;= 0;</span>
+    }
+
+    /**
+     * Determine if the given line is a section.
+     *
+     * @param line The line to check.
+     * @return true if the line contains a section
+     */
+    protected boolean isSectionLine(final String line) {
+<span class="fc bfc" id="L752" title="All 2 branches covered.">        if (line == null) {</span>
+<span class="fc" id="L753">            return false;</span>
+        }
+<span class="fc bfc" id="L755" title="All 2 branches covered.">        return sectionInLineCommentsAllowed ? isNonStrictSection(line) : isStrictSection(line);</span>
+    }
+
+    /**
+     * Tests whether the specified string contains a line continuation marker after the specified position. This method
+     * parses the string to remove a comment that might be present. Then it checks whether a line continuation marker can be
+     * found at the end.
+     *
+     * @param line the line to check
+     * @param pos the start position
+     * @return a flag whether this line continues
+     */
+    private boolean lineContinues(final String line, final int pos) {
+        final String s;
+
+<span class="fc bfc" id="L770" title="All 2 branches covered.">        if (pos &gt;= line.length()) {</span>
+<span class="fc" id="L771">            s = line;</span>
+        } else {
+<span class="fc" id="L773">            int end = pos;</span>
+<span class="fc bfc" id="L774" title="All 4 branches covered.">            while (end &lt; line.length() &amp;&amp; !isCommentChar(line.charAt(end))) {</span>
+<span class="fc" id="L775">                end++;</span>
+            }
+<span class="fc" id="L777">            s = line.substring(pos, end);</span>
+        }
+
+<span class="fc" id="L780">        return lineContinues(s);</span>
+    }
+
+    /**
+     * Parse the value to remove the quotes and ignoring the comment. Example:
+     *
+     * &lt;pre&gt;
+     * &amp;quot;value&amp;quot; ; comment -&amp;gt; value
+     * &lt;/pre&gt;
+     *
+     * &lt;pre&gt;
+     * 'value' ; comment -&amp;gt; value
+     * &lt;/pre&gt;
+     *
+     * Note that a comment character is only recognized if there is at least one whitespace character before it. So it can
+     * appear in the property value, e.g.:
+     *
+     * &lt;pre&gt;
+     * C:\\Windows;C:\\Windows\\system32
+     * &lt;/pre&gt;
+     *
+     * @param val the value to be parsed
+     * @param reader the reader (needed if multiple lines have to be read)
+     * @throws IOException if an IO error occurs
+     */
+    private String parseValue(final String val, final BufferedReader reader) throws IOException {
+<span class="fc" id="L806">        final StringBuilder propertyValue = new StringBuilder();</span>
+        boolean lineContinues;
+<span class="fc" id="L808">        String value = val.trim();</span>
+
+        do {
+<span class="fc bfc" id="L811" title="All 4 branches covered.">            final boolean quoted = value.startsWith(&quot;\&quot;&quot;) || value.startsWith(&quot;'&quot;);</span>
+<span class="fc" id="L812">            boolean stop = false;</span>
+<span class="fc" id="L813">            boolean escape = false;</span>
+
+<span class="fc bfc" id="L815" title="All 2 branches covered.">            final char quote = quoted ? value.charAt(0) : 0;</span>
+
+<span class="fc bfc" id="L817" title="All 2 branches covered.">            int i = quoted ? 1 : 0;</span>
+
+<span class="fc" id="L819">            final StringBuilder result = new StringBuilder();</span>
+<span class="fc" id="L820">            char lastChar = 0;</span>
+<span class="fc bfc" id="L821" title="All 4 branches covered.">            while (i &lt; value.length() &amp;&amp; !stop) {</span>
+<span class="fc" id="L822">                final char c = value.charAt(i);</span>
+
+<span class="fc bfc" id="L824" title="All 2 branches covered.">                if (quoted) {</span>
+<span class="pc bpc" id="L825" title="1 of 4 branches missed.">                    if ('\\' == c &amp;&amp; !escape) {</span>
+<span class="fc" id="L826">                        escape = true;</span>
+<span class="fc bfc" id="L827" title="All 4 branches covered.">                    } else if (!escape &amp;&amp; quote == c) {</span>
+<span class="fc" id="L828">                        stop = true;</span>
+                    } else {
+<span class="fc bfc" id="L830" title="All 4 branches covered.">                        if (escape &amp;&amp; quote == c) {</span>
+<span class="fc" id="L831">                            escape = false;</span>
+<span class="fc bfc" id="L832" title="All 2 branches covered.">                        } else if (escape) {</span>
+<span class="fc" id="L833">                            escape = false;</span>
+<span class="fc" id="L834">                            result.append('\\');</span>
+                        }
+<span class="fc" id="L836">                        result.append(c);</span>
+                    }
+<span class="fc bfc" id="L838" title="All 4 branches covered.">                } else if (isCommentChar(c) &amp;&amp; Character.isWhitespace(lastChar)) {</span>
+<span class="fc" id="L839">                    stop = true;</span>
+                } else {
+<span class="fc" id="L841">                    result.append(c);</span>
+                }
+
+<span class="fc" id="L844">                i++;</span>
+<span class="fc" id="L845">                lastChar = c;</span>
+<span class="fc" id="L846">            }</span>
+
+<span class="fc" id="L848">            String v = result.toString();</span>
+<span class="fc bfc" id="L849" title="All 2 branches covered.">            if (!quoted) {</span>
+<span class="fc" id="L850">                v = v.trim();</span>
+<span class="fc" id="L851">                lineContinues = lineContinues(v);</span>
+<span class="fc bfc" id="L852" title="All 2 branches covered.">                if (lineContinues) {</span>
+                    // remove trailing &quot;\&quot;
+<span class="fc" id="L854">                    v = v.substring(0, v.length() - 1).trim();</span>
+                }
+            } else {
+<span class="fc" id="L857">                lineContinues = lineContinues(value, i);</span>
+            }
+<span class="fc" id="L859">            propertyValue.append(v);</span>
+
+<span class="fc bfc" id="L861" title="All 2 branches covered.">            if (lineContinues) {</span>
+<span class="fc" id="L862">                propertyValue.append(LINE_SEPARATOR);</span>
+<span class="fc" id="L863">                value = reader.readLine();</span>
+            }
+<span class="fc bfc" id="L865" title="All 4 branches covered.">        } while (lineContinues &amp;&amp; value != null);</span>
+
+<span class="fc" id="L867">        return propertyValue.toString();</span>
+    }
+
+    /**
+     * Load the configuration from the given reader. Note that the {@code clear()} method is not called so the configuration
+     * read in will be merged with the current configuration.
+     *
+     * @param in the reader to read the configuration from.
+     * @throws ConfigurationException If an error occurs while reading the configuration
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public void read(final Reader in) throws ConfigurationException, IOException {
+<span class="fc" id="L880">        final BufferedReader bufferedReader = new BufferedReader(in);</span>
+<span class="fc" id="L881">        final Map&lt;String, ImmutableNode.Builder&gt; sectionBuilders = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L882">        final ImmutableNode.Builder rootBuilder = new ImmutableNode.Builder();</span>
+
+<span class="fc" id="L884">        createNodeBuilders(bufferedReader, rootBuilder, sectionBuilders);</span>
+<span class="fc" id="L885">        final ImmutableNode rootNode = createNewRootNode(rootBuilder, sectionBuilders);</span>
+<span class="fc" id="L886">        addNodes(null, rootNode.getChildren());</span>
+<span class="fc" id="L887">    }</span>
+
+    /**
+     * Allows setting the leading comment separator which is used in reading an INI file
+     *
+     * @param separator String of the new separator for INI reading
+     * @since 2.5
+     */
+    public void setCommentLeadingCharsUsedInInput(final String separator) {
+<span class="fc" id="L896">        beginRead(false);</span>
+        try {
+<span class="fc" id="L898">            this.commentCharsUsedInInput = separator;</span>
+        } finally {
+<span class="fc" id="L900">            endRead();</span>
+        }
+<span class="fc" id="L902">    }</span>
+
+    /**
+     * Allows setting the key and value separator which is used in reading an INI file
+     *
+     * @param separator String of the new separator for INI reading
+     * @since 2.5
+     */
+    public void setSeparatorUsedInInput(final String separator) {
+<span class="fc" id="L911">        beginRead(false);</span>
+        try {
+<span class="fc" id="L913">            this.separatorUsedInInput = separator;</span>
+        } finally {
+<span class="fc" id="L915">            endRead();</span>
+        }
+<span class="fc" id="L917">    }</span>
+
+    /**
+     * Allows setting the key and value separator which is used for the creation of the resulting INI output
+     *
+     * @param separator String of the new separator for INI output
+     * @since 2.2
+     */
+    public void setSeparatorUsedInOutput(final String separator) {
+<span class="fc" id="L926">        beginWrite(false);</span>
+        try {
+<span class="fc" id="L928">            this.separatorUsedInOutput = separator;</span>
+        } finally {
+<span class="fc" id="L930">            endWrite();</span>
+        }
+<span class="fc" id="L932">    }</span>
+
+    /**
+     * Save the configuration to the specified writer.
+     *
+     * @param writer - The writer to save the configuration to.
+     * @throws ConfigurationException If an error occurs while writing the configuration
+     * @throws IOException if an I/O error occurs.
+     */
+    @Override
+    public void write(final Writer writer) throws ConfigurationException, IOException {
+<span class="fc" id="L943">        final PrintWriter out = new PrintWriter(writer);</span>
+<span class="fc" id="L944">        boolean first = true;</span>
+<span class="fc" id="L945">        final String separator = getSeparatorUsedInOutput();</span>
+
+<span class="fc" id="L947">        beginRead(false);</span>
+        try {
+<span class="fc bfc" id="L949" title="All 2 branches covered.">            for (final ImmutableNode node : getModel().getNodeHandler().getRootNode().getChildren()) {</span>
+<span class="fc bfc" id="L950" title="All 2 branches covered.">                if (isSectionNode(node)) {</span>
+<span class="fc bfc" id="L951" title="All 2 branches covered.">                    if (!first) {</span>
+<span class="fc" id="L952">                        out.println();</span>
+                    }
+<span class="fc" id="L954">                    out.print(&quot;[&quot;);</span>
+<span class="fc" id="L955">                    out.print(node.getNodeName());</span>
+<span class="fc" id="L956">                    out.print(&quot;]&quot;);</span>
+<span class="fc" id="L957">                    out.println();</span>
+
+<span class="fc" id="L959">                    node.forEach(child -&gt; writeProperty(out, child.getNodeName(), child.getValue(), separator));</span>
+                } else {
+<span class="fc" id="L961">                    writeProperty(out, node.getNodeName(), node.getValue(), separator);</span>
+                }
+<span class="fc" id="L963">                first = false;</span>
+<span class="fc" id="L964">            }</span>
+<span class="fc" id="L965">            out.println();</span>
+<span class="fc" id="L966">            out.flush();</span>
+        } finally {
+<span class="fc" id="L968">            endRead();</span>
+        }
+<span class="fc" id="L970">    }</span>
+
+    /**
+     * Writes data about a property into the given stream.
+     *
+     * @param out the output stream
+     * @param key the key
+     * @param value the value
+     */
+    private void writeProperty(final PrintWriter out, final String key, final Object value, final String separator) {
+<span class="fc" id="L980">        out.print(key);</span>
+<span class="fc" id="L981">        out.print(separator);</span>
+<span class="fc" id="L982">        out.print(escapeValue(value.toString()));</span>
+<span class="fc" id="L983">        out.println();</span>
+<span class="fc" id="L984">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

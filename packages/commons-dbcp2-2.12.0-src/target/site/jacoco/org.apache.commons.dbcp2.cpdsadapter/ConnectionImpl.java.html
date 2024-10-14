@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConnectionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.cpdsadapter</a> &gt; <span class="el_source">ConnectionImpl.java</span></div><h1>ConnectionImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.cpdsadapter;
+
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+import org.apache.commons.dbcp2.DelegatingCallableStatement;
+import org.apache.commons.dbcp2.DelegatingConnection;
+import org.apache.commons.dbcp2.DelegatingPreparedStatement;
+
+/**
+ * This class is the {@code Connection} that will be returned from
+ * {@code PooledConnectionImpl.getConnection()}. Most methods are wrappers around the JDBC 1.x
+ * {@code Connection}. A few exceptions include preparedStatement and close. In accordance with the JDBC
+ * specification this Connection cannot be used after closed() is called. Any further usage will result in an
+ * SQLException.
+ * &lt;p&gt;
+ * ConnectionImpl extends DelegatingConnection to enable access to the underlying connection.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+final class ConnectionImpl extends DelegatingConnection&lt;Connection&gt; {
+
+    private final boolean accessToUnderlyingConnectionAllowed;
+
+    /** The object that instantiated this object */
+    private final PooledConnectionImpl pooledConnection;
+
+    /**
+     * Creates a {@code ConnectionImpl}.
+     *
+     * @param pooledConnection
+     *            The PooledConnection that is calling the ctor.
+     * @param connection
+     *            The JDBC 1.x Connection to wrap.
+     * @param accessToUnderlyingConnectionAllowed
+     *            if true, then access is allowed to the underlying connection
+     */
+    ConnectionImpl(final PooledConnectionImpl pooledConnection, final Connection connection,
+            final boolean accessToUnderlyingConnectionAllowed) {
+<span class="fc" id="L59">        super(connection);</span>
+<span class="fc" id="L60">        this.pooledConnection = pooledConnection;</span>
+<span class="fc" id="L61">        this.accessToUnderlyingConnectionAllowed = accessToUnderlyingConnectionAllowed;</span>
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Marks the Connection as closed, and notifies the pool that the pooled connection is available.
+     * &lt;p&gt;
+     * In accordance with the JDBC specification this Connection cannot be used after closed() is called. Any further
+     * usage will result in an SQLException.
+     * &lt;/p&gt;
+     *
+     * @throws SQLException
+     *             The database connection couldn't be closed.
+     */
+    @Override
+    public void close() throws SQLException {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (!isClosedInternal()) {</span>
+            try {
+<span class="fc" id="L78">                passivate();</span>
+            } finally {
+<span class="fc" id="L80">                setClosedInternal(true);</span>
+<span class="fc" id="L81">                pooledConnection.notifyListeners();</span>
+            }
+        }
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Gets the delegated connection, if allowed.
+     *
+     * @return the internal connection, or null if access is not allowed.
+     * @see #isAccessToUnderlyingConnectionAllowed()
+     */
+    @Override
+    public Connection getDelegate() {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (isAccessToUnderlyingConnectionAllowed()) {</span>
+<span class="nc" id="L95">            return getDelegateInternal();</span>
+        }
+<span class="nc" id="L97">        return null;</span>
+    }
+
+    /**
+     * Gets the innermost connection, if allowed.
+     *
+     * @return the innermost internal connection, or null if access is not allowed.
+     * @see #isAccessToUnderlyingConnectionAllowed()
+     */
+    @Override
+    public Connection getInnermostDelegate() {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (isAccessToUnderlyingConnectionAllowed()) {</span>
+<span class="fc" id="L109">            return super.getInnermostDelegateInternal();</span>
+        }
+<span class="fc" id="L111">        return null;</span>
+    }
+
+    /**
+     * Package-private for tests.
+     *
+     * @return the PooledConnectionImpl.
+     */
+    PooledConnectionImpl getPooledConnectionImpl() {
+<span class="fc" id="L120">        return pooledConnection;</span>
+    }
+
+    /**
+     * If false, getDelegate() and getInnermostDelegate() will return null.
+     *
+     * @return true if access is allowed to the underlying connection
+     * @see ConnectionImpl
+     */
+    public boolean isAccessToUnderlyingConnectionAllowed() {
+<span class="fc" id="L130">        return accessToUnderlyingConnectionAllowed;</span>
+    }
+
+    /**
+     * If pooling of {@code CallableStatement}s is turned on in the {@link DriverAdapterCPDS}, a pooled object may
+     * be returned, otherwise delegate to the wrapped JDBC 1.x {@link java.sql.Connection}.
+     *
+     * @param sql
+     *            an SQL statement that may contain one or more '?' parameter placeholders. Typically, this statement is
+     *            specified using JDBC call escape syntax.
+     * @return a default {@code CallableStatement} object containing the pre-compiled SQL statement.
+     * @throws SQLException
+     *                Thrown if a database access error occurs or this method is called on a closed connection.
+     * @since 2.4.0
+     */
+    @Override
+    public CallableStatement prepareCall(final String sql) throws SQLException {
+<span class="fc" id="L147">        checkOpen();</span>
+        try {
+<span class="fc" id="L149">            return new DelegatingCallableStatement(this, pooledConnection.prepareCall(sql));</span>
+<span class="nc" id="L150">        } catch (final SQLException e) {</span>
+<span class="nc" id="L151">            handleException(e); // Does not return</span>
+<span class="nc" id="L152">            return null;</span>
+        }
+    }
+
+    /**
+     * If pooling of {@code CallableStatement}s is turned on in the {@link DriverAdapterCPDS}, a pooled object may
+     * be returned, otherwise delegate to the wrapped JDBC 1.x {@link java.sql.Connection}.
+     *
+     * @param sql
+     *            a {@code String} object that is the SQL statement to be sent to the database; may contain on or
+     *            more '?' parameters.
+     * @param resultSetType
+     *            a result set type; one of {@code ResultSet.TYPE_FORWARD_ONLY},
+     *            {@code ResultSet.TYPE_SCROLL_INSENSITIVE}, or {@code ResultSet.TYPE_SCROLL_SENSITIVE}.
+     * @param resultSetConcurrency
+     *            a concurrency type; one of {@code ResultSet.CONCUR_READ_ONLY} or
+     *            {@code ResultSet.CONCUR_UPDATABLE}.
+     * @return a {@code CallableStatement} object containing the pre-compiled SQL statement that will produce
+     *         {@code ResultSet} objects with the given type and concurrency.
+     * @throws SQLException
+     *             Thrown if a database access error occurs, this method is called on a closed connection or the given
+     *             parameters are not {@code ResultSet} constants indicating type and concurrency.
+     * @since 2.4.0
+     */
+    @Override
+    public CallableStatement prepareCall(final String sql, final int resultSetType, final int resultSetConcurrency)
+            throws SQLException {
+<span class="fc" id="L179">        checkOpen();</span>
+        try {
+<span class="fc" id="L181">            return new DelegatingCallableStatement(this,</span>
+<span class="fc" id="L182">                    pooledConnection.prepareCall(sql, resultSetType, resultSetConcurrency));</span>
+<span class="nc" id="L183">        } catch (final SQLException e) {</span>
+<span class="nc" id="L184">            handleException(e); // Does not return</span>
+<span class="nc" id="L185">            return null;</span>
+        }
+    }
+
+    /**
+     * If pooling of {@code CallableStatement}s is turned on in the {@link DriverAdapterCPDS}, a pooled object may
+     * be returned, otherwise delegate to the wrapped JDBC 1.x {@link java.sql.Connection}.
+     *
+     * @param sql
+     *            a {@code String} object that is the SQL statement to be sent to the database; may contain on or
+     *            more '?' parameters.
+     * @param resultSetType
+     *            one of the following {@code ResultSet} constants: {@code ResultSet.TYPE_FORWARD_ONLY},
+     *            {@code ResultSet.TYPE_SCROLL_INSENSITIVE}, or {@code ResultSet.TYPE_SCROLL_SENSITIVE}.
+     * @param resultSetConcurrency
+     *            one of the following {@code ResultSet} constants: {@code ResultSet.CONCUR_READ_ONLY} or
+     *            {@code ResultSet.CONCUR_UPDATABLE}.
+     * @param resultSetHoldability
+     *            one of the following {@code ResultSet} constants: {@code ResultSet.HOLD_CURSORS_OVER_COMMIT}
+     *            or {@code ResultSet.CLOSE_CURSORS_AT_COMMIT}.
+     * @return a new {@code CallableStatement} object, containing the pre-compiled SQL statement, that will
+     *         generate {@code ResultSet} objects with the given type, concurrency, and holdability.
+     * @throws SQLException
+     *             Thrown if a database access error occurs, this method is called on a closed connection or the given
+     *             parameters are not {@code ResultSet} constants indicating type, concurrency, and holdability.
+     * @since 2.4.0
+     */
+    @Override
+    public CallableStatement prepareCall(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final int resultSetHoldability) throws SQLException {
+<span class="fc" id="L215">        checkOpen();</span>
+        try {
+<span class="fc" id="L217">            return new DelegatingCallableStatement(this,</span>
+<span class="fc" id="L218">                    pooledConnection.prepareCall(sql, resultSetType, resultSetConcurrency, resultSetHoldability));</span>
+<span class="nc" id="L219">        } catch (final SQLException e) {</span>
+<span class="nc" id="L220">            handleException(e); // Does not return</span>
+<span class="nc" id="L221">            return null;</span>
+        }
+    }
+
+    /**
+     * If pooling of {@code PreparedStatement}s is turned on in the {@link DriverAdapterCPDS}, a pooled object may
+     * be returned, otherwise delegate to the wrapped JDBC 1.x {@link java.sql.Connection}.
+     *
+     * @param sql
+     *            SQL statement to be prepared
+     * @return the prepared statement
+     * @throws SQLException
+     *             if this connection is closed or an error occurs in the wrapped connection.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql) throws SQLException {
+<span class="fc" id="L237">        checkOpen();</span>
+        try {
+<span class="fc" id="L239">            return new DelegatingPreparedStatement(this, pooledConnection.prepareStatement(sql));</span>
+<span class="nc" id="L240">        } catch (final SQLException e) {</span>
+<span class="nc" id="L241">            handleException(e); // Does not return</span>
+<span class="nc" id="L242">            return null;</span>
+        }
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int autoGeneratedKeys) throws SQLException {
+<span class="fc" id="L248">        checkOpen();</span>
+        try {
+<span class="fc" id="L250">            return new DelegatingPreparedStatement(this, pooledConnection.prepareStatement(sql, autoGeneratedKeys));</span>
+<span class="nc" id="L251">        } catch (final SQLException e) {</span>
+<span class="nc" id="L252">            handleException(e);</span>
+<span class="nc" id="L253">            return null;</span>
+        }
+    }
+
+    //
+    // Methods for accessing the delegate connection
+    //
+
+    /**
+     * If pooling of {@code PreparedStatement}s is turned on in the {@link DriverAdapterCPDS}, a pooled object may
+     * be returned, otherwise delegate to the wrapped JDBC 1.x {@link java.sql.Connection}.
+     *
+     * @throws SQLException
+     *             if this connection is closed or an error occurs in the wrapped connection.
+     */
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int resultSetType, final int resultSetConcurrency)
+            throws SQLException {
+<span class="fc" id="L271">        checkOpen();</span>
+        try {
+<span class="fc" id="L273">            return new DelegatingPreparedStatement(this,</span>
+<span class="fc" id="L274">                    pooledConnection.prepareStatement(sql, resultSetType, resultSetConcurrency));</span>
+<span class="nc" id="L275">        } catch (final SQLException e) {</span>
+<span class="nc" id="L276">            handleException(e);</span>
+<span class="nc" id="L277">            return null;</span>
+        }
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int resultSetType, final int resultSetConcurrency,
+            final int resultSetHoldability) throws SQLException {
+<span class="fc" id="L284">        checkOpen();</span>
+        try {
+<span class="fc" id="L286">            return new DelegatingPreparedStatement(this,</span>
+<span class="fc" id="L287">                    pooledConnection.prepareStatement(sql, resultSetType, resultSetConcurrency, resultSetHoldability));</span>
+<span class="nc" id="L288">        } catch (final SQLException e) {</span>
+<span class="nc" id="L289">            handleException(e);</span>
+<span class="nc" id="L290">            return null;</span>
+        }
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final int[] columnIndexes) throws SQLException {
+<span class="fc" id="L296">        checkOpen();</span>
+        try {
+<span class="fc" id="L298">            return new DelegatingPreparedStatement(this, pooledConnection.prepareStatement(sql, columnIndexes));</span>
+<span class="nc" id="L299">        } catch (final SQLException e) {</span>
+<span class="nc" id="L300">            handleException(e);</span>
+<span class="nc" id="L301">            return null;</span>
+        }
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(final String sql, final String[] columnNames) throws SQLException {
+<span class="fc" id="L307">        checkOpen();</span>
+        try {
+<span class="fc" id="L309">            return new DelegatingPreparedStatement(this, pooledConnection.prepareStatement(sql, columnNames));</span>
+<span class="nc" id="L310">        } catch (final SQLException e) {</span>
+<span class="nc" id="L311">            handleException(e);</span>
+<span class="nc" id="L312">            return null;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

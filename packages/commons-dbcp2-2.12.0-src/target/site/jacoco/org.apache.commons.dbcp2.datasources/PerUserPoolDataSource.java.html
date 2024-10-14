@@ -1,0 +1,1200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PerUserPoolDataSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.datasources</a> &gt; <span class="el_source">PerUserPoolDataSource.java</span></div><h1>PerUserPoolDataSource.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.datasources;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+import javax.naming.NamingException;
+import javax.naming.Reference;
+import javax.naming.StringRefAddr;
+import javax.sql.ConnectionPoolDataSource;
+
+import org.apache.commons.dbcp2.SwallowedExceptionLogger;
+import org.apache.commons.dbcp2.Utils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.pool2.ObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPool;
+
+/**
+ * &lt;p&gt;
+ * A pooling {@code DataSource} appropriate for deployment within J2EE environment. There are many configuration
+ * options, most of which are defined in the parent class. This datasource uses individual pools per user, and some
+ * properties can be set specifically for a given user, if the deployment environment can support initialization of
+ * mapped properties. So for example, a pool of admin or write-access Connections can be guaranteed a certain number of
+ * connections, separate from a maximum set for users with read-only connections.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * User passwords can be changed without re-initializing the datasource. When a
+ * {@code getConnection(userName, password)} request is processed with a password that is different from those used
+ * to create connections in the pool associated with {@code userName}, an attempt is made to create a new
+ * connection using the supplied password and if this succeeds, the existing pool is cleared and a new pool is created
+ * for connections using the new password.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class PerUserPoolDataSource extends InstanceKeyDataSource {
+
+    private static final long serialVersionUID = 7872747993848065028L;
+
+<span class="fc" id="L63">    private static final Log log = LogFactory.getLog(PerUserPoolDataSource.class);</span>
+
+    private static &lt;K, V&gt; HashMap&lt;K, V&gt; createMap() {
+        // Should there be a default size different from what this ctor provides?
+<span class="fc" id="L67">        return new HashMap&lt;&gt;();</span>
+    }
+
+    private Map&lt;String, Boolean&gt; perUserBlockWhenExhausted;
+    private Map&lt;String, String&gt; perUserEvictionPolicyClassName;
+    private Map&lt;String, Boolean&gt; perUserLifo;
+    private Map&lt;String, Integer&gt; perUserMaxIdle;
+    private Map&lt;String, Integer&gt; perUserMaxTotal;
+    private Map&lt;String, Duration&gt; perUserMaxWaitDuration;
+    private Map&lt;String, Duration&gt; perUserMinEvictableIdleDuration;
+    private Map&lt;String, Integer&gt; perUserMinIdle;
+    private Map&lt;String, Integer&gt; perUserNumTestsPerEvictionRun;
+    private Map&lt;String, Duration&gt; perUserSoftMinEvictableIdleDuration;
+    private Map&lt;String, Boolean&gt; perUserTestOnCreate;
+    private Map&lt;String, Boolean&gt; perUserTestOnBorrow;
+    private Map&lt;String, Boolean&gt; perUserTestOnReturn;
+    private Map&lt;String, Boolean&gt; perUserTestWhileIdle;
+    private Map&lt;String, Duration&gt; perUserDurationBetweenEvictionRuns;
+    private Map&lt;String, Boolean&gt; perUserDefaultAutoCommit;
+    private Map&lt;String, Integer&gt; perUserDefaultTransactionIsolation;
+    private Map&lt;String, Boolean&gt; perUserDefaultReadOnly;
+
+    /**
+     * Map to keep track of Pools for a given user.
+     */
+<span class="fc" id="L92">    private transient Map&lt;PoolKey, PooledConnectionManager&gt; managers = createMap();</span>
+
+    /**
+     * Default no-arg constructor for Serialization.
+     */
+<span class="fc" id="L97">    public PerUserPoolDataSource() {</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Clears pool(s) maintained by this data source.
+     *
+     * @see org.apache.commons.pool2.ObjectPool#clear()
+     * @since 2.3.0
+     */
+    public void clear() {
+<span class="nc" id="L107">        managers.values().forEach(manager -&gt; {</span>
+            try {
+<span class="nc" id="L109">                getCPDSConnectionFactoryPool(manager).clear();</span>
+<span class="nc" id="L110">            } catch (final Exception ignored) {</span>
+                // ignore and try to close others.
+<span class="nc" id="L112">            }</span>
+<span class="nc" id="L113">        });</span>
+<span class="nc" id="L114">        InstanceKeyDataSourceFactory.removeInstance(getInstanceKey());</span>
+<span class="nc" id="L115">    }</span>
+
+    /**
+     * Closes pool(s) maintained by this data source.
+     *
+     * @see org.apache.commons.pool2.ObjectPool#close()
+     */
+    @Override
+    public void close() {
+<span class="fc" id="L124">        managers.values().forEach(manager -&gt; Utils.closeQuietly(getCPDSConnectionFactoryPool(manager)));</span>
+<span class="fc" id="L125">        InstanceKeyDataSourceFactory.removeInstance(getInstanceKey());</span>
+<span class="fc" id="L126">    }</span>
+
+    /**
+     * Converts a map with Long milliseconds values to another map with Duration values.
+     */
+    private Map&lt;String, Duration&gt; convertMap(final Map&lt;String, Duration&gt; currentMap, final Map&lt;String, Long&gt; longMap) {
+<span class="nc" id="L132">        final Map&lt;String, Duration&gt; durationMap = createMap();</span>
+<span class="nc" id="L133">        longMap.forEach((k, v) -&gt; durationMap.put(k, toDurationOrNull(v)));</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (currentMap == null) {</span>
+<span class="nc" id="L135">            return durationMap;</span>
+        }
+<span class="nc" id="L137">        currentMap.clear();</span>
+<span class="nc" id="L138">        currentMap.putAll(durationMap);</span>
+<span class="nc" id="L139">        return currentMap;</span>
+
+    }
+
+    @Override
+    protected PooledConnectionManager getConnectionManager(final UserPassKey upKey) {
+<span class="fc" id="L145">        return managers.get(getPoolKey(upKey.getUserName()));</span>
+    }
+
+    /**
+     * Gets the underlying pool but does NOT allocate it.
+     *
+     * @param manager A CPDSConnectionFactory.
+     * @return the underlying pool.
+     */
+    private ObjectPool&lt;PooledConnectionAndInfo&gt; getCPDSConnectionFactoryPool(final PooledConnectionManager manager) {
+<span class="fc" id="L155">        return ((CPDSConnectionFactory) manager).getPool();</span>
+    }
+
+    /**
+     * Gets the number of active connections in the default pool.
+     *
+     * @return The number of active connections in the default pool.
+     */
+    public int getNumActive() {
+<span class="fc" id="L164">        return getNumActive(null);</span>
+    }
+
+    /**
+     * Gets the number of active connections in the pool for a given user.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    public int getNumActive(final String userName) {
+<span class="fc" id="L176">        final ObjectPool&lt;PooledConnectionAndInfo&gt; pool = getPool(getPoolKey(userName));</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        return pool == null ? 0 : pool.getNumActive();</span>
+    }
+
+    /**
+     * Gets the number of idle connections in the default pool.
+     *
+     * @return The number of idle connections in the default pool.
+     */
+    public int getNumIdle() {
+<span class="fc" id="L186">        return getNumIdle(null);</span>
+    }
+
+    /**
+     * Gets the number of idle connections in the pool for a given user.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    public int getNumIdle(final String userName) {
+<span class="fc" id="L198">        final ObjectPool&lt;PooledConnectionAndInfo&gt; pool = getPool(getPoolKey(userName));</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        return pool == null ? 0 : pool.getNumIdle();</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getBlockWhenExhausted()} for the specified user's pool
+     * or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public boolean getPerUserBlockWhenExhausted(final String userName) {
+<span class="fc" id="L211">        Boolean value = null;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (perUserBlockWhenExhausted != null) {</span>
+<span class="fc" id="L213">            value = perUserBlockWhenExhausted.get(userName);</span>
+        }
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L216">            return getDefaultBlockWhenExhausted();</span>
+        }
+<span class="fc" id="L218">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific default value for {@link Connection#setAutoCommit(boolean)} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public Boolean getPerUserDefaultAutoCommit(final String userName) {
+<span class="fc" id="L229">        Boolean value = null;</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (perUserDefaultAutoCommit != null) {</span>
+<span class="fc" id="L231">            value = perUserDefaultAutoCommit.get(userName);</span>
+        }
+<span class="fc" id="L233">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific default value for {@link Connection#setReadOnly(boolean)} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public Boolean getPerUserDefaultReadOnly(final String userName) {
+<span class="fc" id="L244">        Boolean value = null;</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (perUserDefaultReadOnly != null) {</span>
+<span class="fc" id="L246">            value = perUserDefaultReadOnly.get(userName);</span>
+        }
+<span class="fc" id="L248">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific default value for {@link Connection#setTransactionIsolation(int)} for the specified user's
+     * pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public Integer getPerUserDefaultTransactionIsolation(final String userName) {
+<span class="fc" id="L260">        Integer value = null;</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (perUserDefaultTransactionIsolation != null) {</span>
+<span class="fc" id="L262">            value = perUserDefaultTransactionIsolation.get(userName);</span>
+        }
+<span class="fc" id="L264">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for the specified
+     * user's pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @since 2.10.0
+     */
+    public Duration getPerUserDurationBetweenEvictionRuns(final String userName) {
+<span class="fc" id="L277">        Duration value = null;</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (perUserDurationBetweenEvictionRuns != null) {</span>
+<span class="fc" id="L279">            value = perUserDurationBetweenEvictionRuns.get(userName);</span>
+        }
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L282">            return getDefaultDurationBetweenEvictionRuns();</span>
+        }
+<span class="fc" id="L284">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getEvictionPolicyClassName()} for the specified user's
+     * pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public String getPerUserEvictionPolicyClassName(final String userName) {
+<span class="fc" id="L296">        String value = null;</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (perUserEvictionPolicyClassName != null) {</span>
+<span class="fc" id="L298">            value = perUserEvictionPolicyClassName.get(userName);</span>
+        }
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L301">            return getDefaultEvictionPolicyClassName();</span>
+        }
+<span class="fc" id="L303">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getLifo()} for the specified user's pool or the default
+     * if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public boolean getPerUserLifo(final String userName) {
+<span class="fc" id="L315">        Boolean value = null;</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (perUserLifo != null) {</span>
+<span class="fc" id="L317">            value = perUserLifo.get(userName);</span>
+        }
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L320">            return getDefaultLifo();</span>
+        }
+<span class="fc" id="L322">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMaxIdle()} for the specified user's pool or the
+     * default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public int getPerUserMaxIdle(final String userName) {
+<span class="fc" id="L334">        Integer value = null;</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (perUserMaxIdle != null) {</span>
+<span class="fc" id="L336">            value = perUserMaxIdle.get(userName);</span>
+        }
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L339">            return getDefaultMaxIdle();</span>
+        }
+<span class="fc" id="L341">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMaxTotal()} for the specified user's pool or the
+     * default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public int getPerUserMaxTotal(final String userName) {
+<span class="fc" id="L353">        Integer value = null;</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        if (perUserMaxTotal != null) {</span>
+<span class="fc" id="L355">            value = perUserMaxTotal.get(userName);</span>
+        }
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L358">            return getDefaultMaxTotal();</span>
+        }
+<span class="fc" id="L360">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMaxWaitDuration()} for the specified user's pool or
+     * the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @since 2.10.0
+     */
+    public Duration getPerUserMaxWaitDuration(final String userName) {
+<span class="fc" id="L373">        Duration value = null;</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">        if (perUserMaxWaitDuration != null) {</span>
+<span class="fc" id="L375">            value = perUserMaxWaitDuration.get(userName);</span>
+        }
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L378">            return getDefaultMaxWait();</span>
+        }
+<span class="fc" id="L380">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMaxWaitDuration()} for the specified user's pool or
+     * the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @deprecated Use {@link #getPerUserMaxWaitDuration}.
+     */
+    @Deprecated
+    public long getPerUserMaxWaitMillis(final String userName) {
+<span class="fc" id="L394">        return getPerUserMaxWaitDuration(userName).toMillis();</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMinEvictableIdleDuration()} for the specified
+     * user's pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value, never null.
+     * @since 2.10.0
+     */
+    public Duration getPerUserMinEvictableIdleDuration(final String userName) {
+<span class="fc" id="L407">        Duration value = null;</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        if (perUserMinEvictableIdleDuration != null) {</span>
+<span class="fc" id="L409">            value = perUserMinEvictableIdleDuration.get(userName);</span>
+        }
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L412">            return getDefaultMinEvictableIdleDuration();</span>
+        }
+<span class="fc" id="L414">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMinEvictableIdleDuration()} for the specified
+     * user's pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @deprecated Use {@link #getPerUserMinEvictableIdleDuration(String)}.
+     */
+    @Deprecated
+    public long getPerUserMinEvictableIdleTimeMillis(final String userName) {
+<span class="fc" id="L428">        return getPerUserMinEvictableIdleDuration(userName).toMillis();</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getMinIdle()} for the specified user's pool or the
+     * default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public int getPerUserMinIdle(final String userName) {
+<span class="fc" id="L440">        Integer value = null;</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">        if (perUserMinIdle != null) {</span>
+<span class="fc" id="L442">            value = perUserMinIdle.get(userName);</span>
+        }
+<span class="fc bfc" id="L444" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L445">            return getDefaultMinIdle();</span>
+        }
+<span class="fc" id="L447">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getNumTestsPerEvictionRun()} for the specified user's
+     * pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public int getPerUserNumTestsPerEvictionRun(final String userName) {
+<span class="fc" id="L459">        Integer value = null;</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">        if (perUserNumTestsPerEvictionRun != null) {</span>
+<span class="fc" id="L461">            value = perUserNumTestsPerEvictionRun.get(userName);</span>
+        }
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L464">            return getDefaultNumTestsPerEvictionRun();</span>
+        }
+<span class="fc" id="L466">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getSoftMinEvictableIdleDuration()} for the specified
+     * user's pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @since 2.10.0
+     */
+    public Duration getPerUserSoftMinEvictableIdleDuration(final String userName) {
+<span class="fc" id="L479">        Duration value = null;</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        if (perUserSoftMinEvictableIdleDuration != null) {</span>
+<span class="fc" id="L481">            value = perUserSoftMinEvictableIdleDuration.get(userName);</span>
+        }
+<span class="fc bfc" id="L483" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L484">            return getDefaultSoftMinEvictableIdleDuration();</span>
+        }
+<span class="fc" id="L486">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getSoftMinEvictableIdleDuration()} for the specified
+     * user's pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @deprecated Use {@link #getPerUserSoftMinEvictableIdleDuration(String)}.
+     */
+    @Deprecated
+    public long getPerUserSoftMinEvictableIdleTimeMillis(final String userName) {
+<span class="fc" id="L500">        return getPerUserSoftMinEvictableIdleDuration(userName).toMillis();</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getTestOnBorrow()} for the specified user's pool or the
+     * default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public boolean getPerUserTestOnBorrow(final String userName) {
+<span class="fc" id="L512">        Boolean value = null;</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        if (perUserTestOnBorrow != null) {</span>
+<span class="fc" id="L514">            value = perUserTestOnBorrow.get(userName);</span>
+        }
+<span class="fc bfc" id="L516" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L517">            return getDefaultTestOnBorrow();</span>
+        }
+<span class="fc" id="L519">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getTestOnCreate()} for the specified user's pool or the
+     * default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public boolean getPerUserTestOnCreate(final String userName) {
+<span class="fc" id="L531">        Boolean value = null;</span>
+<span class="fc bfc" id="L532" title="All 2 branches covered.">        if (perUserTestOnCreate != null) {</span>
+<span class="fc" id="L533">            value = perUserTestOnCreate.get(userName);</span>
+        }
+<span class="fc bfc" id="L535" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L536">            return getDefaultTestOnCreate();</span>
+        }
+<span class="fc" id="L538">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getTestOnReturn()} for the specified user's pool or the
+     * default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public boolean getPerUserTestOnReturn(final String userName) {
+<span class="fc" id="L550">        Boolean value = null;</span>
+<span class="fc bfc" id="L551" title="All 2 branches covered.">        if (perUserTestOnReturn != null) {</span>
+<span class="fc" id="L552">            value = perUserTestOnReturn.get(userName);</span>
+        }
+<span class="fc bfc" id="L554" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L555">            return getDefaultTestOnReturn();</span>
+        }
+<span class="fc" id="L557">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getTestWhileIdle()} for the specified user's pool or
+     * the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     */
+    public boolean getPerUserTestWhileIdle(final String userName) {
+<span class="fc" id="L569">        Boolean value = null;</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        if (perUserTestWhileIdle != null) {</span>
+<span class="fc" id="L571">            value = perUserTestWhileIdle.get(userName);</span>
+        }
+<span class="fc bfc" id="L573" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L574">            return getDefaultTestWhileIdle();</span>
+        }
+<span class="fc" id="L576">        return value;</span>
+    }
+
+    /**
+     * Gets the user specific value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for the specified
+     * user's pool or the default if no user specific value is defined.
+     *
+     * @param userName
+     *            The user name key.
+     * @return The user specific value.
+     * @deprecated Use {@link #getPerUserDurationBetweenEvictionRuns(String)}.
+     */
+    @Deprecated
+    public long getPerUserTimeBetweenEvictionRunsMillis(final String userName) {
+<span class="fc" id="L590">        return getPerUserDurationBetweenEvictionRuns(userName).toMillis();</span>
+    }
+
+    /**
+     * Returns the object pool associated with the given PoolKey.
+     *
+     * @param poolKey
+     *            PoolKey identifying the pool
+     * @return the GenericObjectPool pooling connections for the userName and datasource specified by the PoolKey
+     */
+    private ObjectPool&lt;PooledConnectionAndInfo&gt; getPool(final PoolKey poolKey) {
+<span class="fc" id="L601">        final CPDSConnectionFactory mgr = (CPDSConnectionFactory) managers.get(poolKey);</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">        return mgr == null ? null : mgr.getPool();</span>
+    }
+
+    @Override
+    protected PooledConnectionAndInfo getPooledConnectionAndInfo(final String userName, final String password)
+            throws SQLException {
+
+<span class="fc" id="L609">        final PoolKey key = getPoolKey(userName);</span>
+        ObjectPool&lt;PooledConnectionAndInfo&gt; pool;
+        PooledConnectionManager manager;
+<span class="fc" id="L612">        synchronized (this) {</span>
+<span class="fc" id="L613">            manager = managers.get(key);</span>
+<span class="fc bfc" id="L614" title="All 2 branches covered.">            if (manager == null) {</span>
+                try {
+<span class="fc" id="L616">                    registerPool(userName, password);</span>
+<span class="fc" id="L617">                    manager = managers.get(key);</span>
+<span class="nc" id="L618">                } catch (final NamingException e) {</span>
+<span class="nc" id="L619">                    throw new SQLException(&quot;RegisterPool failed&quot;, e);</span>
+<span class="fc" id="L620">                }</span>
+            }
+<span class="fc" id="L622">            pool = getCPDSConnectionFactoryPool(manager);</span>
+<span class="fc" id="L623">        }</span>
+
+<span class="fc" id="L625">        PooledConnectionAndInfo info = null;</span>
+        try {
+<span class="fc" id="L627">            info = pool.borrowObject();</span>
+<span class="fc" id="L628">        } catch (final NoSuchElementException ex) {</span>
+<span class="fc" id="L629">            throw new SQLException(&quot;Could not retrieve connection info from pool&quot;, ex);</span>
+<span class="fc" id="L630">        } catch (final Exception e) {</span>
+            // See if failure is due to CPDSConnectionFactory authentication failure
+            try {
+<span class="fc" id="L633">                testCPDS(userName, password);</span>
+<span class="nc" id="L634">            } catch (final Exception ex) {</span>
+<span class="nc" id="L635">                throw new SQLException(&quot;Could not retrieve connection info from pool&quot;, ex);</span>
+<span class="fc" id="L636">            }</span>
+            // New password works, so kill the old pool, create a new one, and borrow
+<span class="fc" id="L638">            manager.closePool(userName);</span>
+<span class="fc" id="L639">            synchronized (this) {</span>
+<span class="fc" id="L640">                managers.remove(key);</span>
+<span class="fc" id="L641">            }</span>
+            try {
+<span class="fc" id="L643">                registerPool(userName, password);</span>
+<span class="fc" id="L644">                pool = getPool(key);</span>
+<span class="nc" id="L645">            } catch (final NamingException ne) {</span>
+<span class="nc" id="L646">                throw new SQLException(&quot;RegisterPool failed&quot;, ne);</span>
+<span class="fc" id="L647">            }</span>
+            try {
+<span class="fc" id="L649">                info = pool.borrowObject();</span>
+<span class="nc" id="L650">            } catch (final Exception ex) {</span>
+<span class="nc" id="L651">                throw new SQLException(&quot;Could not retrieve connection info from pool&quot;, ex);</span>
+<span class="fc" id="L652">            }</span>
+<span class="fc" id="L653">        }</span>
+<span class="fc" id="L654">        return info;</span>
+    }
+
+    /**
+     * Creates a pool key from the provided parameters.
+     *
+     * @param userName
+     *            User name
+     * @return The pool key
+     */
+    private PoolKey getPoolKey(final String userName) {
+<span class="fc" id="L665">        return new PoolKey(getDataSourceName(), userName);</span>
+    }
+
+    /**
+     * Returns a {@code PerUserPoolDataSource} {@link Reference}.
+     */
+    @Override
+    public Reference getReference() throws NamingException {
+<span class="fc" id="L673">        final Reference ref = new Reference(getClass().getName(), PerUserPoolDataSourceFactory.class.getName(), null);</span>
+<span class="fc" id="L674">        ref.add(new StringRefAddr(&quot;instanceKey&quot;, getInstanceKey()));</span>
+<span class="fc" id="L675">        return ref;</span>
+    }
+
+    &lt;K, V&gt; Map&lt;K, V&gt; put(Map&lt;K, V&gt; map, final K key, final V value) {
+<span class="fc bfc" id="L679" title="All 2 branches covered.">        if (map == null) {</span>
+<span class="fc" id="L680">            map = createMap();</span>
+        }
+<span class="fc" id="L682">        map.put(key, value);</span>
+<span class="fc" id="L683">        return map;</span>
+    }
+
+    /**
+     * Supports Serialization interface.
+     *
+     * @param in
+     *            a {@link java.io.ObjectInputStream} value
+     * @throws IOException
+     *             if an error occurs
+     * @throws ClassNotFoundException
+     *             if an error occurs
+     */
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+        try {
+<span class="fc" id="L698">            in.defaultReadObject();</span>
+<span class="fc" id="L699">            final PerUserPoolDataSource oldDS = (PerUserPoolDataSource) new PerUserPoolDataSourceFactory()</span>
+<span class="fc" id="L700">                    .getObjectInstance(getReference(), null, null, null);</span>
+<span class="fc" id="L701">            this.managers = oldDS.managers;</span>
+<span class="nc" id="L702">        } catch (final NamingException e) {</span>
+<span class="nc" id="L703">            throw new IOException(&quot;NamingException: &quot; + e);</span>
+<span class="fc" id="L704">        }</span>
+<span class="fc" id="L705">    }</span>
+
+    private synchronized void registerPool(final String userName, final String password)
+        throws NamingException, SQLException {
+
+<span class="fc" id="L710">        final ConnectionPoolDataSource cpds = testCPDS(userName, password);</span>
+
+        // Set up the factory we will use (passing the pool associates
+        // the factory with the pool, so we do not have to do so
+        // explicitly)
+<span class="fc" id="L715">        final CPDSConnectionFactory factory = new CPDSConnectionFactory(cpds, getValidationQuery(), getValidationQueryTimeoutDuration(),</span>
+<span class="fc" id="L716">            isRollbackAfterValidation(), userName, password);</span>
+<span class="fc" id="L717">        factory.setMaxConn(getMaxConnDuration());</span>
+
+        // Create an object pool to contain our PooledConnections
+<span class="fc" id="L720">        final GenericObjectPool&lt;PooledConnectionAndInfo&gt; pool = new GenericObjectPool&lt;&gt;(factory);</span>
+<span class="fc" id="L721">        factory.setPool(pool);</span>
+<span class="fc" id="L722">        pool.setBlockWhenExhausted(getPerUserBlockWhenExhausted(userName));</span>
+<span class="fc" id="L723">        pool.setEvictionPolicyClassName(getPerUserEvictionPolicyClassName(userName));</span>
+<span class="fc" id="L724">        pool.setLifo(getPerUserLifo(userName));</span>
+<span class="fc" id="L725">        pool.setMaxIdle(getPerUserMaxIdle(userName));</span>
+<span class="fc" id="L726">        pool.setMaxTotal(getPerUserMaxTotal(userName));</span>
+<span class="fc" id="L727">        pool.setMaxWait(getPerUserMaxWaitDuration(userName));</span>
+<span class="fc" id="L728">        pool.setMinEvictableIdleDuration(getPerUserMinEvictableIdleDuration(userName));</span>
+<span class="fc" id="L729">        pool.setMinIdle(getPerUserMinIdle(userName));</span>
+<span class="fc" id="L730">        pool.setNumTestsPerEvictionRun(getPerUserNumTestsPerEvictionRun(userName));</span>
+<span class="fc" id="L731">        pool.setSoftMinEvictableIdleDuration(getPerUserSoftMinEvictableIdleDuration(userName));</span>
+<span class="fc" id="L732">        pool.setTestOnCreate(getPerUserTestOnCreate(userName));</span>
+<span class="fc" id="L733">        pool.setTestOnBorrow(getPerUserTestOnBorrow(userName));</span>
+<span class="fc" id="L734">        pool.setTestOnReturn(getPerUserTestOnReturn(userName));</span>
+<span class="fc" id="L735">        pool.setTestWhileIdle(getPerUserTestWhileIdle(userName));</span>
+<span class="fc" id="L736">        pool.setDurationBetweenEvictionRuns(getPerUserDurationBetweenEvictionRuns(userName));</span>
+
+<span class="fc" id="L738">        pool.setSwallowedExceptionListener(new SwallowedExceptionLogger(log));</span>
+
+<span class="fc" id="L740">        final PooledConnectionManager old = managers.put(getPoolKey(userName), factory);</span>
+<span class="pc bpc" id="L741" title="1 of 2 branches missed.">        if (old != null) {</span>
+<span class="nc" id="L742">            throw new IllegalStateException(&quot;Pool already contains an entry for this user/password: &quot; + userName);</span>
+        }
+<span class="fc" id="L744">    }</span>
+
+    private &lt;K, V&gt; Map&lt;K, V&gt; replaceAll(final Map&lt;K, V&gt; currentMap, final Map&lt;K, V&gt; newMap) {
+<span class="fc bfc" id="L747" title="All 2 branches covered.">        if (currentMap == null) {</span>
+<span class="fc" id="L748">            return new HashMap&lt;&gt;(newMap);</span>
+        }
+<span class="fc" id="L750">        currentMap.clear();</span>
+<span class="fc" id="L751">        currentMap.putAll(newMap);</span>
+<span class="fc" id="L752">        return currentMap;</span>
+    }
+
+    void setPerUserBlockWhenExhausted(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L756">        assertInitializationAllowed();</span>
+<span class="fc" id="L757">        perUserBlockWhenExhausted = replaceAll(perUserBlockWhenExhausted, newMap);</span>
+<span class="fc" id="L758">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getBlockWhenExhausted()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserBlockWhenExhausted(final String userName, final Boolean value) {
+<span class="fc" id="L769">        assertInitializationAllowed();</span>
+<span class="fc" id="L770">        perUserBlockWhenExhausted = put(perUserBlockWhenExhausted, userName, value);</span>
+<span class="fc" id="L771">    }</span>
+
+    void setPerUserDefaultAutoCommit(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L774">        assertInitializationAllowed();</span>
+<span class="fc" id="L775">        perUserDefaultAutoCommit = replaceAll(perUserDefaultAutoCommit, newMap);</span>
+<span class="fc" id="L776">    }</span>
+
+    /**
+     * Sets a user specific default value for {@link Connection#setAutoCommit(boolean)} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserDefaultAutoCommit(final String userName, final Boolean value) {
+<span class="fc" id="L787">        assertInitializationAllowed();</span>
+<span class="fc" id="L788">        perUserDefaultAutoCommit = put(perUserDefaultAutoCommit, userName, value);</span>
+
+<span class="fc" id="L790">    }</span>
+
+    void setPerUserDefaultReadOnly(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L793">        assertInitializationAllowed();</span>
+<span class="fc" id="L794">        perUserDefaultReadOnly = replaceAll(perUserDefaultReadOnly, newMap);</span>
+<span class="fc" id="L795">    }</span>
+
+    /**
+     * Sets a user specific default value for {@link Connection#setReadOnly(boolean)} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserDefaultReadOnly(final String userName, final Boolean value) {
+<span class="fc" id="L806">        assertInitializationAllowed();</span>
+<span class="fc" id="L807">        perUserDefaultReadOnly = put(perUserDefaultReadOnly, userName, value);</span>
+
+<span class="fc" id="L809">    }</span>
+
+    void setPerUserDefaultTransactionIsolation(final Map&lt;String, Integer&gt; newMap) {
+<span class="fc" id="L812">        assertInitializationAllowed();</span>
+<span class="fc" id="L813">        perUserDefaultTransactionIsolation = replaceAll(perUserDefaultTransactionIsolation, newMap);</span>
+<span class="fc" id="L814">    }</span>
+
+    /**
+     * Sets a user specific default value for {@link Connection#setTransactionIsolation(int)} for the specified user's
+     * pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserDefaultTransactionIsolation(final String userName, final Integer value) {
+<span class="fc" id="L826">        assertInitializationAllowed();</span>
+<span class="fc" id="L827">        perUserDefaultTransactionIsolation = put(perUserDefaultTransactionIsolation, userName, value);</span>
+
+<span class="fc" id="L829">    }</span>
+
+    void setPerUserDurationBetweenEvictionRuns(final Map&lt;String, Duration&gt; newMap) {
+<span class="fc" id="L832">        assertInitializationAllowed();</span>
+<span class="fc" id="L833">        perUserDurationBetweenEvictionRuns = replaceAll(perUserDurationBetweenEvictionRuns, newMap);</span>
+<span class="fc" id="L834">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for the specified
+     * user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @since 2.10.0
+     */
+    public void setPerUserDurationBetweenEvictionRuns(final String userName, final Duration value) {
+<span class="fc" id="L847">        assertInitializationAllowed();</span>
+<span class="fc" id="L848">        perUserDurationBetweenEvictionRuns = put(perUserDurationBetweenEvictionRuns, userName, value);</span>
+
+<span class="fc" id="L850">    }</span>
+
+    void setPerUserEvictionPolicyClassName(final Map&lt;String, String&gt; newMap) {
+<span class="fc" id="L853">        assertInitializationAllowed();</span>
+<span class="fc" id="L854">        perUserEvictionPolicyClassName = replaceAll(perUserEvictionPolicyClassName, newMap);</span>
+<span class="fc" id="L855">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getEvictionPolicyClassName()} for the specified user's
+     * pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserEvictionPolicyClassName(final String userName, final String value) {
+<span class="fc" id="L867">        assertInitializationAllowed();</span>
+<span class="fc" id="L868">        perUserEvictionPolicyClassName = put(perUserEvictionPolicyClassName, userName, value);</span>
+<span class="fc" id="L869">    }</span>
+
+    void setPerUserLifo(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L872">        assertInitializationAllowed();</span>
+<span class="fc" id="L873">        perUserLifo = replaceAll(perUserLifo, newMap);</span>
+<span class="fc" id="L874">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getLifo()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserLifo(final String userName, final Boolean value) {
+<span class="fc" id="L885">        assertInitializationAllowed();</span>
+<span class="fc" id="L886">        perUserLifo = put(perUserLifo, userName, value);</span>
+<span class="fc" id="L887">    }</span>
+
+    void setPerUserMaxIdle(final Map&lt;String, Integer&gt; newMap) {
+<span class="fc" id="L890">        assertInitializationAllowed();</span>
+<span class="fc" id="L891">        perUserMaxIdle = replaceAll(perUserMaxIdle, newMap);</span>
+<span class="fc" id="L892">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMaxIdle()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserMaxIdle(final String userName, final Integer value) {
+<span class="fc" id="L903">        assertInitializationAllowed();</span>
+<span class="fc" id="L904">        perUserMaxIdle = put(perUserMaxIdle, userName, value);</span>
+<span class="fc" id="L905">    }</span>
+
+    void setPerUserMaxTotal(final Map&lt;String, Integer&gt; newMap) {
+<span class="fc" id="L908">        assertInitializationAllowed();</span>
+<span class="fc" id="L909">        perUserMaxTotal = replaceAll(perUserMaxTotal, newMap);</span>
+<span class="fc" id="L910">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMaxTotal()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserMaxTotal(final String userName, final Integer value) {
+<span class="fc" id="L921">        assertInitializationAllowed();</span>
+<span class="fc" id="L922">        perUserMaxTotal = put(perUserMaxTotal, userName, value);</span>
+<span class="fc" id="L923">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMaxWaitDuration()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @since 2.10.0
+     */
+    public void setPerUserMaxWait(final String userName, final Duration value) {
+<span class="fc" id="L935">        assertInitializationAllowed();</span>
+<span class="fc" id="L936">        perUserMaxWaitDuration = put(perUserMaxWaitDuration, userName, value);</span>
+<span class="fc" id="L937">    }</span>
+
+    void setPerUserMaxWaitDuration(final Map&lt;String, Duration&gt; newMap) {
+<span class="fc" id="L940">        assertInitializationAllowed();</span>
+<span class="fc" id="L941">        perUserMaxWaitDuration = replaceAll(perUserMaxWaitDuration, newMap);</span>
+<span class="fc" id="L942">    }</span>
+
+    void setPerUserMaxWaitMillis(final Map&lt;String, Long&gt; newMap) {
+<span class="nc" id="L945">        assertInitializationAllowed();</span>
+<span class="nc" id="L946">        perUserMaxWaitDuration = convertMap(perUserMaxWaitDuration, newMap);</span>
+<span class="nc" id="L947">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMaxWaitDuration()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @deprecated Use {@link #setPerUserMaxWait(String, Duration)}.
+     */
+    @Deprecated
+    public void setPerUserMaxWaitMillis(final String userName, final Long value) {
+<span class="fc" id="L960">        setPerUserMaxWait(userName, toDurationOrNull(value));</span>
+<span class="fc" id="L961">    }</span>
+
+    void setPerUserMinEvictableIdle(final Map&lt;String, Duration&gt; newMap) {
+<span class="fc" id="L964">        assertInitializationAllowed();</span>
+<span class="fc" id="L965">        perUserMinEvictableIdleDuration = replaceAll(perUserMinEvictableIdleDuration, newMap);</span>
+<span class="fc" id="L966">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMinEvictableIdleDuration()} for the specified user's
+     * pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @since 2.10.0
+     */
+    public void setPerUserMinEvictableIdle(final String userName, final Duration value) {
+<span class="fc" id="L979">        assertInitializationAllowed();</span>
+<span class="fc" id="L980">        perUserMinEvictableIdleDuration = put(perUserMinEvictableIdleDuration, userName, value);</span>
+<span class="fc" id="L981">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMinEvictableIdleDuration()} for the specified user's
+     * pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @deprecated Use {@link #setPerUserMinEvictableIdle(String, Duration)}.
+     */
+    @Deprecated
+    public void setPerUserMinEvictableIdleTimeMillis(final String userName, final Long value) {
+<span class="fc" id="L995">        setPerUserMinEvictableIdle(userName, toDurationOrNull(value));</span>
+<span class="fc" id="L996">    }</span>
+
+    void setPerUserMinIdle(final Map&lt;String, Integer&gt; newMap) {
+<span class="fc" id="L999">        assertInitializationAllowed();</span>
+<span class="fc" id="L1000">        perUserMinIdle = replaceAll(perUserMinIdle, newMap);</span>
+<span class="fc" id="L1001">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getMinIdle()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserMinIdle(final String userName, final Integer value) {
+<span class="fc" id="L1012">        assertInitializationAllowed();</span>
+<span class="fc" id="L1013">        perUserMinIdle = put(perUserMinIdle, userName, value);</span>
+<span class="fc" id="L1014">    }</span>
+
+    void setPerUserNumTestsPerEvictionRun(final Map&lt;String, Integer&gt; newMap) {
+<span class="fc" id="L1017">        assertInitializationAllowed();</span>
+<span class="fc" id="L1018">        perUserNumTestsPerEvictionRun = replaceAll(perUserNumTestsPerEvictionRun, newMap);</span>
+<span class="fc" id="L1019">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getNumTestsPerEvictionRun()} for the specified user's
+     * pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserNumTestsPerEvictionRun(final String userName, final Integer value) {
+<span class="fc" id="L1031">        assertInitializationAllowed();</span>
+<span class="fc" id="L1032">        perUserNumTestsPerEvictionRun = put(perUserNumTestsPerEvictionRun, userName, value);</span>
+<span class="fc" id="L1033">    }</span>
+
+    void setPerUserSoftMinEvictableIdle(final Map&lt;String, Duration&gt; newMap) {
+<span class="fc" id="L1036">        assertInitializationAllowed();</span>
+<span class="fc" id="L1037">        perUserSoftMinEvictableIdleDuration = replaceAll(perUserSoftMinEvictableIdleDuration, newMap);</span>
+<span class="fc" id="L1038">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getSoftMinEvictableIdleDuration()} for the specified
+     * user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @since 2.10.0
+     */
+    public void setPerUserSoftMinEvictableIdle(final String userName, final Duration value) {
+<span class="fc" id="L1051">        assertInitializationAllowed();</span>
+<span class="fc" id="L1052">        perUserSoftMinEvictableIdleDuration = put(perUserSoftMinEvictableIdleDuration, userName, value);</span>
+<span class="fc" id="L1053">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getSoftMinEvictableIdleDuration()} for the specified
+     * user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @deprecated Use {@link #setPerUserSoftMinEvictableIdle(String, Duration)}.
+     */
+    @Deprecated
+    public void setPerUserSoftMinEvictableIdleTimeMillis(final String userName, final Long value) {
+<span class="fc" id="L1067">        setPerUserSoftMinEvictableIdle(userName, toDurationOrNull(value));</span>
+<span class="fc" id="L1068">    }</span>
+
+    void setPerUserTestOnBorrow(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L1071">        assertInitializationAllowed();</span>
+<span class="fc" id="L1072">        perUserTestOnBorrow = replaceAll(perUserTestOnBorrow, newMap);</span>
+<span class="fc" id="L1073">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getTestOnBorrow()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserTestOnBorrow(final String userName, final Boolean value) {
+<span class="fc" id="L1084">        assertInitializationAllowed();</span>
+<span class="fc" id="L1085">        perUserTestOnBorrow = put(perUserTestOnBorrow, userName, value);</span>
+<span class="fc" id="L1086">    }</span>
+
+    void setPerUserTestOnCreate(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L1089">        assertInitializationAllowed();</span>
+<span class="fc" id="L1090">        perUserTestOnCreate = replaceAll(perUserTestOnCreate, newMap);</span>
+<span class="fc" id="L1091">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getTestOnCreate()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserTestOnCreate(final String userName, final Boolean value) {
+<span class="fc" id="L1102">        assertInitializationAllowed();</span>
+<span class="fc" id="L1103">        perUserTestOnCreate = put(perUserTestOnCreate, userName, value);</span>
+<span class="fc" id="L1104">    }</span>
+
+    void setPerUserTestOnReturn(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L1107">        assertInitializationAllowed();</span>
+<span class="fc" id="L1108">        perUserTestOnReturn = replaceAll(perUserTestOnReturn, newMap);</span>
+<span class="fc" id="L1109">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getTestOnReturn()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserTestOnReturn(final String userName, final Boolean value) {
+<span class="fc" id="L1120">        assertInitializationAllowed();</span>
+<span class="fc" id="L1121">        perUserTestOnReturn = put(perUserTestOnReturn, userName, value);</span>
+<span class="fc" id="L1122">    }</span>
+
+    void setPerUserTestWhileIdle(final Map&lt;String, Boolean&gt; newMap) {
+<span class="fc" id="L1125">        assertInitializationAllowed();</span>
+<span class="fc" id="L1126">        perUserTestWhileIdle = replaceAll(perUserTestWhileIdle, newMap);</span>
+<span class="fc" id="L1127">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getTestWhileIdle()} for the specified user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     */
+    public void setPerUserTestWhileIdle(final String userName, final Boolean value) {
+<span class="fc" id="L1138">        assertInitializationAllowed();</span>
+<span class="fc" id="L1139">        perUserTestWhileIdle = put(perUserTestWhileIdle, userName, value);</span>
+<span class="fc" id="L1140">    }</span>
+
+    /**
+     * Sets a user specific value for {@link GenericObjectPool#getDurationBetweenEvictionRuns()} for the specified
+     * user's pool.
+     *
+     * @param userName
+     *            The user name key.
+     * @param value
+     *            The user specific value.
+     * @deprecated Use {@link #setPerUserDurationBetweenEvictionRuns(String, Duration)}.
+     */
+    @Deprecated
+    public void setPerUserTimeBetweenEvictionRunsMillis(final String userName, final Long value) {
+<span class="fc" id="L1154">        setPerUserDurationBetweenEvictionRuns(userName, toDurationOrNull(value));</span>
+<span class="fc" id="L1155">    }</span>
+
+    @Override
+    protected void setupDefaults(final Connection con, final String userName) throws SQLException {
+<span class="fc" id="L1159">        Boolean defaultAutoCommit = isDefaultAutoCommit();</span>
+<span class="fc bfc" id="L1160" title="All 2 branches covered.">        if (userName != null) {</span>
+<span class="fc" id="L1161">            final Boolean userMax = getPerUserDefaultAutoCommit(userName);</span>
+<span class="pc bpc" id="L1162" title="1 of 2 branches missed.">            if (userMax != null) {</span>
+<span class="nc" id="L1163">                defaultAutoCommit = userMax;</span>
+            }
+        }
+
+<span class="fc" id="L1167">        Boolean defaultReadOnly = isDefaultReadOnly();</span>
+<span class="fc bfc" id="L1168" title="All 2 branches covered.">        if (userName != null) {</span>
+<span class="fc" id="L1169">            final Boolean userMax = getPerUserDefaultReadOnly(userName);</span>
+<span class="pc bpc" id="L1170" title="1 of 2 branches missed.">            if (userMax != null) {</span>
+<span class="nc" id="L1171">                defaultReadOnly = userMax;</span>
+            }
+        }
+
+<span class="fc" id="L1175">        int defaultTransactionIsolation = getDefaultTransactionIsolation();</span>
+<span class="fc bfc" id="L1176" title="All 2 branches covered.">        if (userName != null) {</span>
+<span class="fc" id="L1177">            final Integer userMax = getPerUserDefaultTransactionIsolation(userName);</span>
+<span class="pc bpc" id="L1178" title="1 of 2 branches missed.">            if (userMax != null) {</span>
+<span class="nc" id="L1179">                defaultTransactionIsolation = userMax;</span>
+            }
+        }
+
+<span class="fc bfc" id="L1183" title="All 4 branches covered.">        if (defaultAutoCommit != null &amp;&amp; con.getAutoCommit() != defaultAutoCommit) {</span>
+<span class="fc" id="L1184">            con.setAutoCommit(defaultAutoCommit);</span>
+        }
+
+<span class="fc bfc" id="L1187" title="All 2 branches covered.">        if (defaultTransactionIsolation != UNKNOWN_TRANSACTIONISOLATION) {</span>
+<span class="fc" id="L1188">            con.setTransactionIsolation(defaultTransactionIsolation);</span>
+        }
+
+<span class="pc bpc" id="L1191" title="3 of 4 branches missed.">        if (defaultReadOnly != null &amp;&amp; con.isReadOnly() != defaultReadOnly) {</span>
+<span class="nc" id="L1192">            con.setReadOnly(defaultReadOnly);</span>
+        }
+<span class="fc" id="L1194">    }</span>
+
+    private Duration toDurationOrNull(final Long millis) {
+<span class="pc bpc" id="L1197" title="1 of 2 branches missed.">        return millis == null ? null : Duration.ofMillis(millis);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

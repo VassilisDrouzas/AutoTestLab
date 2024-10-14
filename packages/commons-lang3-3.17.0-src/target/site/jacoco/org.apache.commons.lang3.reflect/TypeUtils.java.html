@@ -1,0 +1,1859 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TypeUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.reflect</a> &gt; <span class="el_source">TypeUtils.java</span></div><h1>TypeUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.reflect;
+
+import java.lang.reflect.AnnotatedType;
+import java.lang.reflect.Array;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.GenericDeclaration;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.commons.lang3.AppendableJoiner;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.Validate;
+import org.apache.commons.lang3.builder.Builder;
+
+/**
+ * Utility methods focusing on type inspection, particularly with regard to generics.
+ *
+ * @since 3.0
+ */
+public class TypeUtils {
+
+    /**
+     * GenericArrayType implementation class.
+     */
+    private static final class GenericArrayTypeImpl implements GenericArrayType {
+        private final Type componentType;
+
+        /**
+         * Constructor
+         *
+         * @param componentType of this array type
+         */
+<span class="fc" id="L63">        private GenericArrayTypeImpl(final Type componentType) {</span>
+<span class="fc" id="L64">            this.componentType = componentType;</span>
+<span class="fc" id="L65">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean equals(final Object obj) {
+<span class="pc bpc" id="L72" title="4 of 6 branches missed.">            return obj == this || obj instanceof GenericArrayType &amp;&amp; TypeUtils.equals(this, (GenericArrayType) obj);</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Type getGenericComponentType() {
+<span class="fc" id="L80">            return componentType;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int hashCode() {
+<span class="nc" id="L88">            int result = 67 &lt;&lt; 4;</span>
+<span class="nc" id="L89">            result |= componentType.hashCode();</span>
+<span class="nc" id="L90">            return result;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="fc" id="L98">            return TypeUtils.toString(this);</span>
+        }
+    }
+
+    /**
+     * ParameterizedType implementation class.
+     */
+    private static final class ParameterizedTypeImpl implements ParameterizedType {
+        private final Class&lt;?&gt; raw;
+        private final Type useOwner;
+        private final Type[] typeArguments;
+
+        /**
+         * Constructor
+         *
+         * @param rawClass      type
+         * @param useOwner      owner type to use, if any
+         * @param typeArguments formal type arguments
+         */
+<span class="fc" id="L117">        private ParameterizedTypeImpl(final Class&lt;?&gt; rawClass, final Type useOwner, final Type[] typeArguments) {</span>
+<span class="fc" id="L118">            this.raw = rawClass;</span>
+<span class="fc" id="L119">            this.useOwner = useOwner;</span>
+<span class="fc" id="L120">            this.typeArguments = Arrays.copyOf(typeArguments, typeArguments.length, Type[].class);</span>
+<span class="fc" id="L121">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean equals(final Object obj) {
+<span class="pc bpc" id="L128" title="2 of 6 branches missed.">            return obj == this || obj instanceof ParameterizedType &amp;&amp; TypeUtils.equals(this, (ParameterizedType) obj);</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Type[] getActualTypeArguments() {
+<span class="fc" id="L136">            return typeArguments.clone();</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Type getOwnerType() {
+<span class="fc" id="L144">            return useOwner;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Type getRawType() {
+<span class="fc" id="L152">            return raw;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int hashCode() {
+<span class="nc" id="L160">            int result = 71 &lt;&lt; 4;</span>
+<span class="nc" id="L161">            result |= raw.hashCode();</span>
+<span class="nc" id="L162">            result &lt;&lt;= 4;</span>
+<span class="nc" id="L163">            result |= Objects.hashCode(useOwner);</span>
+<span class="nc" id="L164">            result &lt;&lt;= 8;</span>
+<span class="nc" id="L165">            result |= Arrays.hashCode(typeArguments);</span>
+<span class="nc" id="L166">            return result;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="fc" id="L174">            return TypeUtils.toString(this);</span>
+        }
+    }
+
+    /**
+     * {@link WildcardType} builder.
+     *
+     * @since 3.2
+     */
+    public static class WildcardTypeBuilder implements Builder&lt;WildcardType&gt; {
+        private Type[] upperBounds;
+
+        private Type[] lowerBounds;
+
+        /**
+         * Constructor
+         */
+        private WildcardTypeBuilder() {
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public WildcardType build() {
+<span class="fc" id="L199">            return new WildcardTypeImpl(upperBounds, lowerBounds);</span>
+        }
+
+        /**
+         * Specify lower bounds of the wildcard type to build.
+         *
+         * @param bounds to set
+         * @return {@code this}
+         */
+        public WildcardTypeBuilder withLowerBounds(final Type... bounds) {
+<span class="fc" id="L209">            this.lowerBounds = bounds;</span>
+<span class="fc" id="L210">            return this;</span>
+        }
+
+        /**
+         * Specify upper bounds of the wildcard type to build.
+         *
+         * @param bounds to set
+         * @return {@code this}
+         */
+        public WildcardTypeBuilder withUpperBounds(final Type... bounds) {
+<span class="fc" id="L220">            this.upperBounds = bounds;</span>
+<span class="fc" id="L221">            return this;</span>
+        }
+    }
+
+    /**
+     * WildcardType implementation class.
+     */
+    private static final class WildcardTypeImpl implements WildcardType {
+        private final Type[] upperBounds;
+        private final Type[] lowerBounds;
+
+        /**
+         * Constructor
+         *
+         * @param upperBounds of this type
+         * @param lowerBounds of this type
+         */
+<span class="fc" id="L238">        private WildcardTypeImpl(final Type[] upperBounds, final Type[] lowerBounds) {</span>
+<span class="fc" id="L239">            this.upperBounds = ObjectUtils.defaultIfNull(upperBounds, ArrayUtils.EMPTY_TYPE_ARRAY);</span>
+<span class="fc" id="L240">            this.lowerBounds = ObjectUtils.defaultIfNull(lowerBounds, ArrayUtils.EMPTY_TYPE_ARRAY);</span>
+<span class="fc" id="L241">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean equals(final Object obj) {
+<span class="pc bpc" id="L248" title="2 of 6 branches missed.">            return obj == this || obj instanceof WildcardType &amp;&amp; TypeUtils.equals(this, (WildcardType) obj);</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Type[] getLowerBounds() {
+<span class="fc" id="L256">            return lowerBounds.clone();</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Type[] getUpperBounds() {
+<span class="fc" id="L264">            return upperBounds.clone();</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int hashCode() {
+<span class="nc" id="L272">            int result = 73 &lt;&lt; 8;</span>
+<span class="nc" id="L273">            result |= Arrays.hashCode(upperBounds);</span>
+<span class="nc" id="L274">            result &lt;&lt;= 8;</span>
+<span class="nc" id="L275">            result |= Arrays.hashCode(lowerBounds);</span>
+<span class="nc" id="L276">            return result;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="fc" id="L284">            return TypeUtils.toString(this);</span>
+        }
+    }
+
+    /**
+     * Ampersand sign joiner.
+     */
+    // @formatter:off
+<span class="fc" id="L292">    private static final AppendableJoiner&lt;Type&gt; AMP_JOINER = AppendableJoiner.&lt;Type&gt;builder()</span>
+<span class="fc" id="L293">            .setDelimiter(&quot; &amp; &quot;)</span>
+<span class="fc" id="L294">            .setElementAppender((a, e) -&gt; a.append(TypeUtils.toString(e)))</span>
+<span class="fc" id="L295">            .get();</span>
+    // @formatter:on
+
+    /**
+     * Method classToString joiner.
+     */
+    // @formatter:off
+<span class="fc" id="L302">    private static final AppendableJoiner&lt;TypeVariable&lt;Class&lt;?&gt;&gt;&gt; CTJ_JOINER = AppendableJoiner.&lt;TypeVariable&lt;Class&lt;?&gt;&gt;&gt;builder()</span>
+<span class="fc" id="L303">        .setDelimiter(&quot;, &quot;)</span>
+<span class="pc" id="L304">        .setElementAppender((a, e) -&gt; a.append(TypeUtils.anyToString(e)))</span>
+<span class="fc" id="L305">        .get();</span>
+    // @formatter:on
+
+    /**
+     * Greater than and lesser than sign joiner.
+     */
+    // @formatter:off
+<span class="fc" id="L312">    private static final AppendableJoiner&lt;Object&gt; GT_JOINER = AppendableJoiner.builder()</span>
+<span class="fc" id="L313">            .setPrefix(&quot;&lt;&quot;)</span>
+<span class="fc" id="L314">            .setSuffix(&quot;&gt;&quot;)</span>
+<span class="fc" id="L315">            .setDelimiter(&quot;, &quot;)</span>
+<span class="fc" id="L316">            .setElementAppender((a, e) -&gt; a.append(TypeUtils.anyToString(e)))</span>
+<span class="fc" id="L317">            .get();</span>
+    // @formatter:on
+
+    /**
+     * A wildcard instance matching {@code ?}.
+     *
+     * @since 3.2
+     */
+<span class="fc" id="L325">    public static final WildcardType WILDCARD_ALL = wildcardType().withUpperBounds(Object.class).build();</span>
+
+    private static &lt;T&gt; String anyToString(final T object) {
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        return object instanceof Type ? toString((Type) object) : object.toString();</span>
+    }
+
+    private static void appendRecursiveTypes(final StringBuilder builder, final int[] recursiveTypeIndexes, final Type[] argumentTypes) {
+<span class="fc bfc" id="L332" title="All 2 branches covered.">        for (int i = 0; i &lt; recursiveTypeIndexes.length; i++) {</span>
+            // toString() or SO
+<span class="fc" id="L334">            GT_JOINER.join(builder, argumentTypes[i].toString());</span>
+        }
+<span class="fc" id="L336">        final Type[] argumentsFiltered = ArrayUtils.removeAll(argumentTypes, recursiveTypeIndexes);</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        if (argumentsFiltered.length &gt; 0) {</span>
+<span class="nc" id="L338">            GT_JOINER.join(builder, (Object[]) argumentsFiltered);</span>
+        }
+<span class="fc" id="L340">    }</span>
+
+    /**
+     * Formats a {@link Class} as a {@link String}.
+     *
+     * @param cls {@link Class} to format
+     * @return String
+     */
+    private static &lt;T&gt; String classToString(final Class&lt;T&gt; cls) {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (cls.isArray()) {</span>
+<span class="fc" id="L350">            return toString(cls.getComponentType()) + &quot;[]&quot;;</span>
+        }
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (isCyclical(cls)) {</span>
+<span class="fc" id="L353">            return cls.getSimpleName() + &quot;(cycle)&quot;;</span>
+        }
+<span class="fc" id="L355">        final StringBuilder buf = new StringBuilder();</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        if (cls.getEnclosingClass() != null) {</span>
+<span class="fc" id="L357">            buf.append(classToString(cls.getEnclosingClass())).append('.').append(cls.getSimpleName());</span>
+        } else {
+<span class="fc" id="L359">            buf.append(cls.getName());</span>
+        }
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">        if (cls.getTypeParameters().length &gt; 0) {</span>
+            // AppendableJoiner.joinSB(buf, null, null, &quot;, &quot;, TypeUtils::anyToString, cls.getTypeParameters());
+<span class="nc" id="L363">            CTJ_JOINER.join(buf, (TypeVariable[]) cls.getTypeParameters());</span>
+        }
+<span class="fc" id="L365">        return buf.toString();</span>
+    }
+
+    /**
+     * Tests, recursively, whether any of the type parameters associated with {@code type} are bound to variables.
+     *
+     * @param type the type to check for type variables
+     * @return boolean
+     * @since 3.2
+     */
+    public static boolean containsTypeVariables(final Type type) {
+<span class="fc bfc" id="L376" title="All 2 branches covered.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+<span class="fc" id="L377">            return true;</span>
+        }
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">            return ((Class&lt;?&gt;) type).getTypeParameters().length &gt; 0;</span>
+        }
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (type instanceof ParameterizedType) {</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">            for (final Type arg : ((ParameterizedType) type).getActualTypeArguments()) {</span>
+<span class="fc bfc" id="L384" title="All 2 branches covered.">                if (containsTypeVariables(arg)) {</span>
+<span class="fc" id="L385">                    return true;</span>
+                }
+            }
+<span class="fc" id="L388">            return false;</span>
+        }
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        if (type instanceof WildcardType) {</span>
+<span class="fc" id="L391">            final WildcardType wild = (WildcardType) type;</span>
+<span class="pc bpc" id="L392" title="1 of 4 branches missed.">            return containsTypeVariables(getImplicitLowerBounds(wild)[0]) || containsTypeVariables(getImplicitUpperBounds(wild)[0]);</span>
+        }
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        if (type instanceof GenericArrayType) {</span>
+<span class="fc" id="L395">            return containsTypeVariables(((GenericArrayType) type).getGenericComponentType());</span>
+        }
+<span class="fc" id="L397">        return false;</span>
+    }
+
+    private static boolean containsVariableTypeSameParametrizedTypeBound(final TypeVariable&lt;?&gt; typeVariable, final ParameterizedType parameterizedType) {
+<span class="fc" id="L401">        return ArrayUtils.contains(typeVariable.getBounds(), parameterizedType);</span>
+    }
+
+    /**
+     * Tries to determine the type arguments of a class/interface based on a super parameterized type's type arguments. This method is the inverse of
+     * {@link #getTypeArguments(Type, Class)} which gets a class/interface's type arguments based on a subtype. It is far more limited in determining the type
+     * arguments for the subject class's type variables in that it can only determine those parameters that map from the subject {@link Class} object to the
+     * supertype.
+     *
+     * &lt;p&gt;
+     * Example: {@link java.util.TreeSet TreeSet} sets its parameter as the parameter for {@link java.util.NavigableSet NavigableSet}, which in turn sets the
+     * parameter of {@link java.util.SortedSet}, which in turn sets the parameter of {@link Set}, which in turn sets the parameter of
+     * {@link java.util.Collection}, which in turn sets the parameter of {@link Iterable}. Since {@link TreeSet}'s parameter maps (indirectly) to
+     * {@link Iterable}'s parameter, it will be able to determine that based on the super type {@code Iterable&lt;? extends
+     * Map&lt;Integer, ? extends Collection&lt;?&gt;&gt;&gt;}, the parameter of {@link TreeSet} is {@code ? extends Map&lt;Integer, ? extends
+     * Collection&lt;?&gt;&gt;}.
+     * &lt;/p&gt;
+     *
+     * @param cls                    the class whose type parameters are to be determined, not {@code null}
+     * @param superParameterizedType the super type from which {@code cls}'s type arguments are to be determined, not {@code null}
+     * @return a {@link Map} of the type assignments that could be determined for the type variables in each type in the inheritance hierarchy from {@code type}
+     *         to {@code toClass} inclusive.
+     * @throws NullPointerException if either {@code cls} or {@code superParameterizedType} is {@code null}
+     */
+    public static Map&lt;TypeVariable&lt;?&gt;, Type&gt; determineTypeArguments(final Class&lt;?&gt; cls, final ParameterizedType superParameterizedType) {
+<span class="fc" id="L426">        Objects.requireNonNull(cls, &quot;cls&quot;);</span>
+<span class="fc" id="L427">        Objects.requireNonNull(superParameterizedType, &quot;superParameterizedType&quot;);</span>
+
+<span class="fc" id="L429">        final Class&lt;?&gt; superClass = getRawType(superParameterizedType);</span>
+
+        // compatibility check
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (!isAssignable(cls, superClass)) {</span>
+<span class="nc" id="L433">            return null;</span>
+        }
+
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        if (cls.equals(superClass)) {</span>
+<span class="fc" id="L437">            return getTypeArguments(superParameterizedType, superClass, null);</span>
+        }
+
+        // get the next class in the inheritance hierarchy
+<span class="fc" id="L441">        final Type midType = getClosestParentType(cls, superClass);</span>
+
+        // can only be a class or a parameterized type
+<span class="pc bpc" id="L444" title="1 of 2 branches missed.">        if (midType instanceof Class&lt;?&gt;) {</span>
+<span class="nc" id="L445">            return determineTypeArguments((Class&lt;?&gt;) midType, superParameterizedType);</span>
+        }
+
+<span class="fc" id="L448">        final ParameterizedType midParameterizedType = (ParameterizedType) midType;</span>
+<span class="fc" id="L449">        final Class&lt;?&gt; midClass = getRawType(midParameterizedType);</span>
+        // get the type variables of the mid class that map to the type
+        // arguments of the super class
+<span class="fc" id="L452">        final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns = determineTypeArguments(midClass, superParameterizedType);</span>
+        // map the arguments of the mid type to the class type variables
+<span class="fc" id="L454">        mapTypeVariablesToArguments(cls, midParameterizedType, typeVarAssigns);</span>
+
+<span class="fc" id="L456">        return typeVarAssigns;</span>
+    }
+
+    /**
+     * Tests whether {@code t} equals {@code a}.
+     *
+     * @param genericArrayType LHS
+     * @param type             RHS
+     * @return boolean
+     */
+    private static boolean equals(final GenericArrayType genericArrayType, final Type type) {
+<span class="nc bnc" id="L467" title="All 4 branches missed.">        return type instanceof GenericArrayType &amp;&amp; equals(genericArrayType.getGenericComponentType(), ((GenericArrayType) type).getGenericComponentType());</span>
+    }
+
+    /**
+     * Tests whether {@code t} equals {@code p}.
+     *
+     * @param parameterizedType LHS
+     * @param type              RHS
+     * @return boolean
+     */
+    private static boolean equals(final ParameterizedType parameterizedType, final Type type) {
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L479">            final ParameterizedType other = (ParameterizedType) type;</span>
+<span class="pc bpc" id="L480" title="2 of 4 branches missed.">            if (equals(parameterizedType.getRawType(), other.getRawType()) &amp;&amp; equals(parameterizedType.getOwnerType(), other.getOwnerType())) {</span>
+<span class="fc" id="L481">                return equals(parameterizedType.getActualTypeArguments(), other.getActualTypeArguments());</span>
+            }
+        }
+<span class="fc" id="L484">        return false;</span>
+    }
+
+    /**
+     * Tests equality of types.
+     *
+     * @param type1 the first type
+     * @param type2 the second type
+     * @return boolean
+     * @since 3.2
+     */
+    public static boolean equals(final Type type1, final Type type2) {
+<span class="fc bfc" id="L496" title="All 2 branches covered.">        if (Objects.equals(type1, type2)) {</span>
+<span class="fc" id="L497">            return true;</span>
+        }
+<span class="fc bfc" id="L499" title="All 2 branches covered.">        if (type1 instanceof ParameterizedType) {</span>
+<span class="fc" id="L500">            return equals((ParameterizedType) type1, type2);</span>
+        }
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">        if (type1 instanceof GenericArrayType) {</span>
+<span class="nc" id="L503">            return equals((GenericArrayType) type1, type2);</span>
+        }
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        if (type1 instanceof WildcardType) {</span>
+<span class="fc" id="L506">            return equals((WildcardType) type1, type2);</span>
+        }
+<span class="fc" id="L508">        return false;</span>
+    }
+
+    /**
+     * Tests whether {@code t1} equals {@code t2}.
+     *
+     * @param type1 LHS
+     * @param type2 RHS
+     * @return boolean
+     */
+    private static boolean equals(final Type[] type1, final Type[] type2) {
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">        if (type1.length == type2.length) {</span>
+<span class="fc bfc" id="L520" title="All 2 branches covered.">            for (int i = 0; i &lt; type1.length; i++) {</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">                if (!equals(type1[i], type2[i])) {</span>
+<span class="nc" id="L522">                    return false;</span>
+                }
+            }
+<span class="fc" id="L525">            return true;</span>
+        }
+<span class="nc" id="L527">        return false;</span>
+    }
+
+    /**
+     * Tests whether {@code t} equals {@code w}.
+     *
+     * @param wildcardType LHS
+     * @param type         RHS
+     * @return boolean
+     */
+    private static boolean equals(final WildcardType wildcardType, final Type type) {
+<span class="fc bfc" id="L538" title="All 2 branches covered.">        if (type instanceof WildcardType) {</span>
+<span class="fc" id="L539">            final WildcardType other = (WildcardType) type;</span>
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">            return equals(getImplicitLowerBounds(wildcardType), getImplicitLowerBounds(other))</span>
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">                    &amp;&amp; equals(getImplicitUpperBounds(wildcardType), getImplicitUpperBounds(other));</span>
+        }
+<span class="fc" id="L543">        return false;</span>
+    }
+
+    /**
+     * Helper method to establish the formal parameters for a parameterized type.
+     *
+     * @param mappings  map containing the assignments
+     * @param variables expected map keys
+     * @return array of map values corresponding to specified keys
+     */
+    private static Type[] extractTypeArgumentsFrom(final Map&lt;TypeVariable&lt;?&gt;, Type&gt; mappings, final TypeVariable&lt;?&gt;[] variables) {
+<span class="nc" id="L554">        final Type[] result = new Type[variables.length];</span>
+<span class="nc" id="L555">        int index = 0;</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">        for (final TypeVariable&lt;?&gt; var : variables) {</span>
+<span class="nc" id="L557">            Validate.isTrue(mappings.containsKey(var), &quot;missing argument mapping for %s&quot;, toString(var));</span>
+<span class="nc" id="L558">            result[index++] = mappings.get(var);</span>
+        }
+<span class="nc" id="L560">        return result;</span>
+    }
+
+    private static int[] findRecursiveTypes(final ParameterizedType parameterizedType) {
+<span class="fc" id="L564">        final Type[] filteredArgumentTypes = Arrays.copyOf(parameterizedType.getActualTypeArguments(), parameterizedType.getActualTypeArguments().length);</span>
+<span class="fc" id="L565">        int[] indexesToRemove = {};</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">        for (int i = 0; i &lt; filteredArgumentTypes.length; i++) {</span>
+<span class="fc bfc" id="L567" title="All 2 branches covered.">            if (filteredArgumentTypes[i] instanceof TypeVariable&lt;?&gt;</span>
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">                    &amp;&amp; containsVariableTypeSameParametrizedTypeBound((TypeVariable&lt;?&gt;) filteredArgumentTypes[i], parameterizedType)) {</span>
+<span class="fc" id="L569">                indexesToRemove = ArrayUtils.add(indexesToRemove, i);</span>
+            }
+        }
+<span class="fc" id="L572">        return indexesToRemove;</span>
+    }
+
+    /**
+     * Creates a generic array type instance.
+     *
+     * @param componentType the type of the elements of the array. For example the component type of {@code boolean[]} is {@code boolean}
+     * @return {@link GenericArrayType}
+     * @since 3.2
+     */
+    public static GenericArrayType genericArrayType(final Type componentType) {
+<span class="fc" id="L583">        return new GenericArrayTypeImpl(Objects.requireNonNull(componentType, &quot;componentType&quot;));</span>
+    }
+
+    /**
+     * Formats a {@link GenericArrayType} as a {@link String}.
+     *
+     * @param genericArrayType {@link GenericArrayType} to format
+     * @return String
+     */
+    private static String genericArrayTypeToString(final GenericArrayType genericArrayType) {
+<span class="fc" id="L593">        return String.format(&quot;%s[]&quot;, toString(genericArrayType.getGenericComponentType()));</span>
+    }
+
+    /**
+     * Gets the array component type of {@code type}.
+     *
+     * @param type the type to be checked
+     * @return component type or null if type is not an array type
+     */
+    public static Type getArrayComponentType(final Type type) {
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L604">            final Class&lt;?&gt; cls = (Class&lt;?&gt;) type;</span>
+<span class="fc bfc" id="L605" title="All 2 branches covered.">            return cls.isArray() ? cls.getComponentType() : null;</span>
+        }
+<span class="fc bfc" id="L607" title="All 2 branches covered.">        if (type instanceof GenericArrayType) {</span>
+<span class="fc" id="L608">            return ((GenericArrayType) type).getGenericComponentType();</span>
+        }
+<span class="fc" id="L610">        return null;</span>
+    }
+
+    /**
+     * Gets the closest parent type to the super class specified by {@code superClass}.
+     *
+     * @param cls        the class in question
+     * @param superClass the super class
+     * @return the closes parent type
+     */
+    private static Type getClosestParentType(final Class&lt;?&gt; cls, final Class&lt;?&gt; superClass) {
+        // only look at the interfaces if the super class is also an interface
+<span class="fc bfc" id="L622" title="All 2 branches covered.">        if (superClass.isInterface()) {</span>
+            // get the generic interfaces of the subject class
+<span class="fc" id="L624">            final Type[] interfaceTypes = cls.getGenericInterfaces();</span>
+            // will hold the best generic interface match found
+<span class="fc" id="L626">            Type genericInterface = null;</span>
+
+            // find the interface closest to the super class
+<span class="fc bfc" id="L629" title="All 2 branches covered.">            for (final Type midType : interfaceTypes) {</span>
+                final Class&lt;?&gt; midClass;
+
+<span class="fc bfc" id="L632" title="All 2 branches covered.">                if (midType instanceof ParameterizedType) {</span>
+<span class="fc" id="L633">                    midClass = getRawType((ParameterizedType) midType);</span>
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">                } else if (midType instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L635">                    midClass = (Class&lt;?&gt;) midType;</span>
+                } else {
+<span class="nc" id="L637">                    throw new IllegalStateException(&quot;Unexpected generic&quot; + &quot; interface type found: &quot; + midType);</span>
+                }
+
+                // check if this interface is further up the inheritance chain
+                // than the previously found match
+<span class="fc bfc" id="L642" title="All 4 branches covered.">                if (isAssignable(midClass, superClass) &amp;&amp; isAssignable(genericInterface, (Type) midClass)) {</span>
+<span class="fc" id="L643">                    genericInterface = midType;</span>
+                }
+            }
+
+            // found a match?
+<span class="fc bfc" id="L648" title="All 2 branches covered.">            if (genericInterface != null) {</span>
+<span class="fc" id="L649">                return genericInterface;</span>
+            }
+        }
+
+        // none of the interfaces were descendants of the target class, so the
+        // super class has to be one, instead
+<span class="fc" id="L655">        return cls.getGenericSuperclass();</span>
+    }
+
+    /**
+     * Gets an array containing the sole type of {@link Object} if {@link TypeVariable#getBounds()} returns an empty array. Otherwise, it returns the result of
+     * {@link TypeVariable#getBounds()} passed into {@link #normalizeUpperBounds}.
+     *
+     * @param typeVariable the subject type variable, not {@code null}
+     * @return a non-empty array containing the bounds of the type variable.
+     * @throws NullPointerException if {@code typeVariable} is {@code null}
+     */
+    public static Type[] getImplicitBounds(final TypeVariable&lt;?&gt; typeVariable) {
+<span class="fc" id="L667">        Objects.requireNonNull(typeVariable, &quot;typeVariable&quot;);</span>
+<span class="fc" id="L668">        final Type[] bounds = typeVariable.getBounds();</span>
+
+<span class="pc bpc" id="L670" title="1 of 2 branches missed.">        return bounds.length == 0 ? new Type[] { Object.class } : normalizeUpperBounds(bounds);</span>
+    }
+
+    /**
+     * Gets an array containing a single value of {@code null} if {@link WildcardType#getLowerBounds()} returns an empty array. Otherwise, it returns the result
+     * of {@link WildcardType#getLowerBounds()}.
+     *
+     * @param wildcardType the subject wildcard type, not {@code null}
+     * @return a non-empty array containing the lower bounds of the wildcard type.
+     * @throws NullPointerException if {@code wildcardType} is {@code null}
+     */
+    public static Type[] getImplicitLowerBounds(final WildcardType wildcardType) {
+<span class="fc" id="L682">        Objects.requireNonNull(wildcardType, &quot;wildcardType&quot;);</span>
+<span class="fc" id="L683">        final Type[] bounds = wildcardType.getLowerBounds();</span>
+
+<span class="fc bfc" id="L685" title="All 2 branches covered.">        return bounds.length == 0 ? new Type[] { null } : bounds;</span>
+    }
+
+    /**
+     * Gets an array containing the sole value of {@link Object} if {@link WildcardType#getUpperBounds()} returns an empty array. Otherwise, it returns the
+     * result of {@link WildcardType#getUpperBounds()} passed into {@link #normalizeUpperBounds}.
+     *
+     * @param wildcardType the subject wildcard type, not {@code null}
+     * @return a non-empty array containing the upper bounds of the wildcard type.
+     * @throws NullPointerException if {@code wildcardType} is {@code null}
+     */
+    public static Type[] getImplicitUpperBounds(final WildcardType wildcardType) {
+<span class="fc" id="L697">        Objects.requireNonNull(wildcardType, &quot;wildcardType&quot;);</span>
+<span class="fc" id="L698">        final Type[] bounds = wildcardType.getUpperBounds();</span>
+
+<span class="fc bfc" id="L700" title="All 2 branches covered.">        return bounds.length == 0 ? new Type[] { Object.class } : normalizeUpperBounds(bounds);</span>
+    }
+
+    /**
+     * Transforms the passed in type to a {@link Class} object. Type-checking method of convenience.
+     *
+     * @param parameterizedType the type to be converted
+     * @return the corresponding {@link Class} object
+     * @throws IllegalStateException if the conversion fails
+     */
+    private static Class&lt;?&gt; getRawType(final ParameterizedType parameterizedType) {
+<span class="fc" id="L711">        final Type rawType = parameterizedType.getRawType();</span>
+
+        // check if raw type is a Class object
+        // not currently necessary, but since the return type is Type instead of
+        // Class, there's enough reason to believe that future versions of Java
+        // may return other Type implementations. And type-safety checking is
+        // rarely a bad idea.
+<span class="pc bpc" id="L718" title="1 of 2 branches missed.">        if (!(rawType instanceof Class&lt;?&gt;)) {</span>
+<span class="nc" id="L719">            throw new IllegalStateException(&quot;Wait... What!? Type of rawType: &quot; + rawType);</span>
+        }
+
+<span class="fc" id="L722">        return (Class&lt;?&gt;) rawType;</span>
+    }
+
+    /**
+     * Gets the raw type of a Java type, given its context. Primarily for use with {@link TypeVariable}s and {@link GenericArrayType}s, or when you do not know
+     * the runtime type of {@code type}: if you know you have a {@link Class} instance, it is already raw; if you know you have a {@link ParameterizedType}, its
+     * raw type is only a method call away.
+     *
+     * @param type          to resolve
+     * @param assigningType type to be resolved against
+     * @return the resolved {@link Class} object or {@code null} if the type could not be resolved
+     */
+    public static Class&lt;?&gt; getRawType(final Type type, final Type assigningType) {
+<span class="fc bfc" id="L735" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+            // it is raw, no problem
+<span class="fc" id="L737">            return (Class&lt;?&gt;) type;</span>
+        }
+
+<span class="fc bfc" id="L740" title="All 2 branches covered.">        if (type instanceof ParameterizedType) {</span>
+            // simple enough to get the raw type of a ParameterizedType
+<span class="fc" id="L742">            return getRawType((ParameterizedType) type);</span>
+        }
+
+<span class="fc bfc" id="L745" title="All 2 branches covered.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+<span class="pc bpc" id="L746" title="1 of 2 branches missed.">            if (assigningType == null) {</span>
+<span class="nc" id="L747">                return null;</span>
+            }
+
+            // get the entity declaring this type variable
+<span class="fc" id="L751">            final Object genericDeclaration = ((TypeVariable&lt;?&gt;) type).getGenericDeclaration();</span>
+
+            // can't get the raw type of a method- or constructor-declared type
+            // variable
+<span class="pc bpc" id="L755" title="1 of 2 branches missed.">            if (!(genericDeclaration instanceof Class&lt;?&gt;)) {</span>
+<span class="nc" id="L756">                return null;</span>
+            }
+
+            // get the type arguments for the declaring class/interface based
+            // on the enclosing type
+<span class="fc" id="L761">            final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns = getTypeArguments(assigningType, (Class&lt;?&gt;) genericDeclaration);</span>
+
+            // enclosingType has to be a subclass (or subinterface) of the
+            // declaring type
+<span class="pc bpc" id="L765" title="1 of 2 branches missed.">            if (typeVarAssigns == null) {</span>
+<span class="nc" id="L766">                return null;</span>
+            }
+
+            // get the argument assigned to this type variable
+<span class="fc" id="L770">            final Type typeArgument = typeVarAssigns.get(type);</span>
+
+<span class="fc bfc" id="L772" title="All 2 branches covered.">            if (typeArgument == null) {</span>
+<span class="fc" id="L773">                return null;</span>
+            }
+
+            // get the argument for this type variable
+<span class="fc" id="L777">            return getRawType(typeArgument, assigningType);</span>
+        }
+
+<span class="fc bfc" id="L780" title="All 2 branches covered.">        if (type instanceof GenericArrayType) {</span>
+            // get raw component type
+<span class="fc" id="L782">            final Class&lt;?&gt; rawComponentType = getRawType(((GenericArrayType) type).getGenericComponentType(), assigningType);</span>
+
+            // create array type from raw component type and return its class
+<span class="fc bfc" id="L785" title="All 2 branches covered.">            return rawComponentType != null ? Array.newInstance(rawComponentType, 0).getClass() : null;</span>
+        }
+
+        // (hand-waving) this is not the method you're looking for
+<span class="pc bpc" id="L789" title="1 of 2 branches missed.">        if (type instanceof WildcardType) {</span>
+<span class="fc" id="L790">            return null;</span>
+        }
+
+<span class="nc" id="L793">        throw new IllegalArgumentException(&quot;unknown type: &quot; + type);</span>
+    }
+
+    /**
+     * Gets a map of the type arguments of a class in the context of {@code toClass}.
+     *
+     * @param cls               the class in question
+     * @param toClass           the context class
+     * @param subtypeVarAssigns a map with type variables
+     * @return the {@link Map} with type arguments
+     */
+    private static Map&lt;TypeVariable&lt;?&gt;, Type&gt; getTypeArguments(Class&lt;?&gt; cls, final Class&lt;?&gt; toClass, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; subtypeVarAssigns) {
+        // make sure they're assignable
+<span class="fc bfc" id="L806" title="All 2 branches covered.">        if (!isAssignable(cls, toClass)) {</span>
+<span class="fc" id="L807">            return null;</span>
+        }
+
+        // can't work with primitives
+<span class="fc bfc" id="L811" title="All 2 branches covered.">        if (cls.isPrimitive()) {</span>
+            // both classes are primitives?
+<span class="pc bpc" id="L813" title="1 of 2 branches missed.">            if (toClass.isPrimitive()) {</span>
+                // dealing with widening here. No type arguments to be
+                // harvested with these two types.
+<span class="nc" id="L816">                return new HashMap&lt;&gt;();</span>
+            }
+
+            // work with wrapper the wrapper class instead of the primitive
+<span class="fc" id="L820">            cls = ClassUtils.primitiveToWrapper(cls);</span>
+        }
+
+        // create a copy of the incoming map, or an empty one if it's null
+<span class="fc bfc" id="L824" title="All 2 branches covered.">        final HashMap&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns = subtypeVarAssigns == null ? new HashMap&lt;&gt;() : new HashMap&lt;&gt;(subtypeVarAssigns);</span>
+
+        // has target class been reached?
+<span class="fc bfc" id="L827" title="All 2 branches covered.">        if (toClass.equals(cls)) {</span>
+<span class="fc" id="L828">            return typeVarAssigns;</span>
+        }
+
+        // walk the inheritance hierarchy until the target class is reached
+<span class="fc" id="L832">        return getTypeArguments(getClosestParentType(cls, toClass), toClass, typeVarAssigns);</span>
+    }
+
+    /**
+     * Gets all the type arguments for this parameterized type including owner hierarchy arguments such as {@code Outer&lt;K, V&gt;.Inner&lt;T&gt;.DeepInner&lt;E&gt;} . The
+     * arguments are returned in a {@link Map} specifying the argument type for each {@link TypeVariable}.
+     *
+     * @param type specifies the subject parameterized type from which to harvest the parameters.
+     * @return a {@link Map} of the type arguments to their respective type variables.
+     */
+    public static Map&lt;TypeVariable&lt;?&gt;, Type&gt; getTypeArguments(final ParameterizedType type) {
+<span class="fc" id="L843">        return getTypeArguments(type, getRawType(type), null);</span>
+    }
+
+    /**
+     * Gets a map of the type arguments of a parameterized type in the context of {@code toClass}.
+     *
+     * @param parameterizedType the parameterized type
+     * @param toClass           the class
+     * @param subtypeVarAssigns a map with type variables
+     * @return the {@link Map} with type arguments
+     */
+    private static Map&lt;TypeVariable&lt;?&gt;, Type&gt; getTypeArguments(final ParameterizedType parameterizedType, final Class&lt;?&gt; toClass,
+            final Map&lt;TypeVariable&lt;?&gt;, Type&gt; subtypeVarAssigns) {
+<span class="fc" id="L856">        final Class&lt;?&gt; cls = getRawType(parameterizedType);</span>
+
+        // make sure they're assignable
+<span class="pc bpc" id="L859" title="1 of 2 branches missed.">        if (!isAssignable(cls, toClass)) {</span>
+<span class="nc" id="L860">            return null;</span>
+        }
+
+<span class="fc" id="L863">        final Type ownerType = parameterizedType.getOwnerType();</span>
+        final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns;
+
+<span class="fc bfc" id="L866" title="All 2 branches covered.">        if (ownerType instanceof ParameterizedType) {</span>
+            // get the owner type arguments first
+<span class="fc" id="L868">            final ParameterizedType parameterizedOwnerType = (ParameterizedType) ownerType;</span>
+<span class="fc" id="L869">            typeVarAssigns = getTypeArguments(parameterizedOwnerType, getRawType(parameterizedOwnerType), subtypeVarAssigns);</span>
+<span class="fc" id="L870">        } else {</span>
+            // no owner, prep the type variable assignments map
+<span class="fc bfc" id="L872" title="All 2 branches covered.">            typeVarAssigns = subtypeVarAssigns == null ? new HashMap&lt;&gt;() : new HashMap&lt;&gt;(subtypeVarAssigns);</span>
+        }
+
+        // get the subject parameterized type's arguments
+<span class="fc" id="L876">        final Type[] typeArgs = parameterizedType.getActualTypeArguments();</span>
+        // and get the corresponding type variables from the raw class
+<span class="fc" id="L878">        final TypeVariable&lt;?&gt;[] typeParams = cls.getTypeParameters();</span>
+
+        // map the arguments to their respective type variables
+<span class="fc bfc" id="L881" title="All 2 branches covered.">        for (int i = 0; i &lt; typeParams.length; i++) {</span>
+<span class="fc" id="L882">            final Type typeArg = typeArgs[i];</span>
+<span class="fc" id="L883">            typeVarAssigns.put(typeParams[i], typeVarAssigns.getOrDefault(typeArg, typeArg));</span>
+        }
+
+<span class="fc bfc" id="L886" title="All 2 branches covered.">        if (toClass.equals(cls)) {</span>
+            // target class has been reached. Done.
+<span class="fc" id="L888">            return typeVarAssigns;</span>
+        }
+
+        // walk the inheritance hierarchy until the target class is reached
+<span class="fc" id="L892">        return getTypeArguments(getClosestParentType(cls, toClass), toClass, typeVarAssigns);</span>
+    }
+
+    /**
+     * Gets the type arguments of a class/interface based on a subtype. For instance, this method will determine that both of the parameters for the interface
+     * {@link Map} are {@link Object} for the subtype {@link java.util.Properties Properties} even though the subtype does not directly implement the
+     * {@link Map} interface.
+     *
+     * &lt;p&gt;
+     * This method returns {@code null} if {@code type} is not assignable to {@code toClass}. It returns an empty map if none of the classes or interfaces in
+     * its inheritance hierarchy specify any type arguments.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * A side effect of this method is that it also retrieves the type arguments for the classes and interfaces that are part of the hierarchy between
+     * {@code type} and {@code toClass}. So with the above example, this method will also determine that the type arguments for {@link java.util.Hashtable
+     * Hashtable} are also both {@link Object}. In cases where the interface specified by {@code toClass} is (indirectly) implemented more than once (e.g. where
+     * {@code toClass} specifies the interface {@link Iterable Iterable} and {@code type} specifies a parameterized type that implements both
+     * {@link java.util.Set Set} and {@link java.util.Collection Collection}), this method will look at the inheritance hierarchy of only one of the
+     * implementations/subclasses; the first interface encountered that isn't a subinterface to one of the others in the {@code type} to {@code toClass}
+     * hierarchy.
+     * &lt;/p&gt;
+     *
+     * @param type    the type from which to determine the type parameters of {@code toClass}
+     * @param toClass the class whose type parameters are to be determined based on the subtype {@code type}
+     * @return a {@link Map} of the type assignments for the type variables in each type in the inheritance hierarchy from {@code type} to {@code toClass}
+     *         inclusive.
+     */
+    public static Map&lt;TypeVariable&lt;?&gt;, Type&gt; getTypeArguments(final Type type, final Class&lt;?&gt; toClass) {
+<span class="fc" id="L921">        return getTypeArguments(type, toClass, null);</span>
+    }
+
+    /**
+     * Gets a map of the type arguments of {@code type} in the context of {@code toClass}.
+     *
+     * @param type              the type in question
+     * @param toClass           the class
+     * @param subtypeVarAssigns a map with type variables
+     * @return the {@link Map} with type arguments
+     */
+    private static Map&lt;TypeVariable&lt;?&gt;, Type&gt; getTypeArguments(final Type type, final Class&lt;?&gt; toClass, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; subtypeVarAssigns) {
+<span class="fc bfc" id="L933" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L934">            return getTypeArguments((Class&lt;?&gt;) type, toClass, subtypeVarAssigns);</span>
+        }
+
+<span class="pc bpc" id="L937" title="1 of 2 branches missed.">        if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L938">            return getTypeArguments((ParameterizedType) type, toClass, subtypeVarAssigns);</span>
+        }
+
+<span class="nc bnc" id="L941" title="All 2 branches missed.">        if (type instanceof GenericArrayType) {</span>
+<span class="nc bnc" id="L942" title="All 2 branches missed.">            return getTypeArguments(((GenericArrayType) type).getGenericComponentType(), toClass.isArray() ? toClass.getComponentType() : toClass,</span>
+                    subtypeVarAssigns);
+        }
+
+        // since wildcard types are not assignable to classes, should this just
+        // return null?
+<span class="nc bnc" id="L948" title="All 2 branches missed.">        if (type instanceof WildcardType) {</span>
+<span class="nc bnc" id="L949" title="All 2 branches missed.">            for (final Type bound : getImplicitUpperBounds((WildcardType) type)) {</span>
+                // find the first bound that is assignable to the target class
+<span class="nc bnc" id="L951" title="All 2 branches missed.">                if (isAssignable(bound, toClass)) {</span>
+<span class="nc" id="L952">                    return getTypeArguments(bound, toClass, subtypeVarAssigns);</span>
+                }
+            }
+
+<span class="nc" id="L956">            return null;</span>
+        }
+
+<span class="nc bnc" id="L959" title="All 2 branches missed.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+<span class="nc bnc" id="L960" title="All 2 branches missed.">            for (final Type bound : getImplicitBounds((TypeVariable&lt;?&gt;) type)) {</span>
+                // find the first bound that is assignable to the target class
+<span class="nc bnc" id="L962" title="All 2 branches missed.">                if (isAssignable(bound, toClass)) {</span>
+<span class="nc" id="L963">                    return getTypeArguments(bound, toClass, subtypeVarAssigns);</span>
+                }
+            }
+
+<span class="nc" id="L967">            return null;</span>
+        }
+<span class="nc" id="L969">        throw new IllegalStateException(&quot;found an unhandled type: &quot; + type);</span>
+    }
+
+    /**
+     * Tests whether the specified type denotes an array type.
+     *
+     * @param type the type to be checked
+     * @return {@code true} if {@code type} is an array class or a {@link GenericArrayType}.
+     */
+    public static boolean isArrayType(final Type type) {
+<span class="fc bfc" id="L979" title="All 6 branches covered.">        return type instanceof GenericArrayType || type instanceof Class&lt;?&gt; &amp;&amp; ((Class&lt;?&gt;) type).isArray();</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target class following the Java generics rules.
+     *
+     * @param type    the subject type to be assigned to the target type
+     * @param toClass the target class
+     * @return {@code true} if {@code type} is assignable to {@code toClass}.
+     */
+    private static boolean isAssignable(final Type type, final Class&lt;?&gt; toClass) {
+<span class="fc bfc" id="L990" title="All 2 branches covered.">        if (type == null) {</span>
+            // consistency with ClassUtils.isAssignable() behavior
+<span class="pc bpc" id="L992" title="1 of 4 branches missed.">            return toClass == null || !toClass.isPrimitive();</span>
+        }
+
+        // only a null type can be assigned to null type which
+        // would have cause the previous to return true
+<span class="fc bfc" id="L997" title="All 2 branches covered.">        if (toClass == null) {</span>
+<span class="fc" id="L998">            return false;</span>
+        }
+
+        // all types are assignable to themselves
+<span class="fc bfc" id="L1002" title="All 2 branches covered.">        if (toClass.equals(type)) {</span>
+<span class="fc" id="L1003">            return true;</span>
+        }
+
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+            // just comparing two classes
+<span class="fc" id="L1008">            return ClassUtils.isAssignable((Class&lt;?&gt;) type, toClass);</span>
+        }
+
+<span class="fc bfc" id="L1011" title="All 2 branches covered.">        if (type instanceof ParameterizedType) {</span>
+            // only have to compare the raw type to the class
+<span class="fc" id="L1013">            return isAssignable(getRawType((ParameterizedType) type), toClass);</span>
+        }
+
+        // *
+<span class="pc bpc" id="L1017" title="1 of 2 branches missed.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+            // if any of the bounds are assignable to the class, then the
+            // type is assignable to the class.
+<span class="nc bnc" id="L1020" title="All 2 branches missed.">            for (final Type bound : ((TypeVariable&lt;?&gt;) type).getBounds()) {</span>
+<span class="nc bnc" id="L1021" title="All 2 branches missed.">                if (isAssignable(bound, toClass)) {</span>
+<span class="nc" id="L1022">                    return true;</span>
+                }
+            }
+
+<span class="nc" id="L1026">            return false;</span>
+        }
+
+        // the only classes to which a generic array type can be assigned
+        // are class Object and array classes
+<span class="pc bpc" id="L1031" title="1 of 2 branches missed.">        if (type instanceof GenericArrayType) {</span>
+<span class="pc bpc" id="L1032" title="1 of 2 branches missed.">            return toClass.equals(Object.class)</span>
+<span class="pc bpc" id="L1033" title="2 of 4 branches missed.">                    || toClass.isArray() &amp;&amp; isAssignable(((GenericArrayType) type).getGenericComponentType(), toClass.getComponentType());</span>
+        }
+
+        // wildcard types are not assignable to a class (though one would think
+        // &quot;? super Object&quot; would be assignable to Object)
+<span class="nc bnc" id="L1038" title="All 2 branches missed.">        if (type instanceof WildcardType) {</span>
+<span class="nc" id="L1039">            return false;</span>
+        }
+
+<span class="nc" id="L1042">        throw new IllegalStateException(&quot;found an unhandled type: &quot; + type);</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target generic array type following the Java generics rules.
+     *
+     * @param type               the subject type to be assigned to the target type
+     * @param toGenericArrayType the target generic array type
+     * @param typeVarAssigns     a map with type variables
+     * @return {@code true} if {@code type} is assignable to {@code toGenericArrayType}.
+     */
+    private static boolean isAssignable(final Type type, final GenericArrayType toGenericArrayType, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+<span class="pc bpc" id="L1054" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L1055">            return true;</span>
+        }
+
+        // only a null type can be assigned to null type which
+        // would have cause the previous to return true
+<span class="pc bpc" id="L1060" title="1 of 2 branches missed.">        if (toGenericArrayType == null) {</span>
+<span class="nc" id="L1061">            return false;</span>
+        }
+
+        // all types are assignable to themselves
+<span class="fc bfc" id="L1065" title="All 2 branches covered.">        if (toGenericArrayType.equals(type)) {</span>
+<span class="fc" id="L1066">            return true;</span>
+        }
+
+<span class="fc" id="L1069">        final Type toComponentType = toGenericArrayType.getGenericComponentType();</span>
+
+<span class="fc bfc" id="L1071" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L1072">            final Class&lt;?&gt; cls = (Class&lt;?&gt;) type;</span>
+
+            // compare the component types
+<span class="pc bpc" id="L1075" title="2 of 4 branches missed.">            return cls.isArray() &amp;&amp; isAssignable(cls.getComponentType(), toComponentType, typeVarAssigns);</span>
+        }
+
+<span class="fc bfc" id="L1078" title="All 2 branches covered.">        if (type instanceof GenericArrayType) {</span>
+            // compare the component types
+<span class="fc" id="L1080">            return isAssignable(((GenericArrayType) type).getGenericComponentType(), toComponentType, typeVarAssigns);</span>
+        }
+
+<span class="pc bpc" id="L1083" title="1 of 2 branches missed.">        if (type instanceof WildcardType) {</span>
+            // so long as one of the upper bounds is assignable, it's good
+<span class="nc bnc" id="L1085" title="All 2 branches missed.">            for (final Type bound : getImplicitUpperBounds((WildcardType) type)) {</span>
+<span class="nc bnc" id="L1086" title="All 2 branches missed.">                if (isAssignable(bound, toGenericArrayType)) {</span>
+<span class="nc" id="L1087">                    return true;</span>
+                }
+            }
+
+<span class="nc" id="L1091">            return false;</span>
+        }
+
+<span class="pc bpc" id="L1094" title="1 of 2 branches missed.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+            // probably should remove the following logic and just return false.
+            // type variables cannot specify arrays as bounds.
+<span class="nc bnc" id="L1097" title="All 2 branches missed.">            for (final Type bound : getImplicitBounds((TypeVariable&lt;?&gt;) type)) {</span>
+<span class="nc bnc" id="L1098" title="All 2 branches missed.">                if (isAssignable(bound, toGenericArrayType)) {</span>
+<span class="nc" id="L1099">                    return true;</span>
+                }
+            }
+
+<span class="nc" id="L1103">            return false;</span>
+        }
+
+<span class="pc bpc" id="L1106" title="1 of 2 branches missed.">        if (type instanceof ParameterizedType) {</span>
+            // the raw type of a parameterized type is never an array or
+            // generic array, otherwise the declaration would look like this:
+            // Collection[]&lt; ? extends String &gt; collection;
+<span class="fc" id="L1110">            return false;</span>
+        }
+
+<span class="nc" id="L1113">        throw new IllegalStateException(&quot;found an unhandled type: &quot; + type);</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target parameterized type following the Java generics rules.
+     *
+     * @param type                the subject type to be assigned to the target type
+     * @param toParameterizedType the target parameterized type
+     * @param typeVarAssigns      a map with type variables
+     * @return {@code true} if {@code type} is assignable to {@code toType}.
+     */
+    private static boolean isAssignable(final Type type, final ParameterizedType toParameterizedType, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+<span class="pc bpc" id="L1125" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L1126">            return true;</span>
+        }
+
+        // only a null type can be assigned to null type which
+        // would have cause the previous to return true
+<span class="pc bpc" id="L1131" title="1 of 2 branches missed.">        if (toParameterizedType == null) {</span>
+<span class="nc" id="L1132">            return false;</span>
+        }
+
+        // cannot cast an array type to a parameterized type.
+<span class="fc bfc" id="L1136" title="All 2 branches covered.">        if (type instanceof GenericArrayType) {</span>
+<span class="fc" id="L1137">            return false;</span>
+        }
+
+        // all types are assignable to themselves
+<span class="fc bfc" id="L1141" title="All 2 branches covered.">        if (toParameterizedType.equals(type)) {</span>
+<span class="fc" id="L1142">            return true;</span>
+        }
+
+        // get the target type's raw type
+<span class="fc" id="L1146">        final Class&lt;?&gt; toClass = getRawType(toParameterizedType);</span>
+        // get the subject type's type arguments including owner type arguments
+        // and supertype arguments up to and including the target class.
+<span class="fc" id="L1149">        final Map&lt;TypeVariable&lt;?&gt;, Type&gt; fromTypeVarAssigns = getTypeArguments(type, toClass, null);</span>
+
+        // null means the two types are not compatible
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">        if (fromTypeVarAssigns == null) {</span>
+<span class="fc" id="L1153">            return false;</span>
+        }
+
+        // compatible types, but there's no type arguments. this is equivalent
+        // to comparing Map&lt; ?, ? &gt; to Map, and raw types are always assignable
+        // to parameterized types.
+<span class="fc bfc" id="L1159" title="All 2 branches covered.">        if (fromTypeVarAssigns.isEmpty()) {</span>
+<span class="fc" id="L1160">            return true;</span>
+        }
+
+        // get the target type's type arguments including owner type arguments
+<span class="fc" id="L1164">        final Map&lt;TypeVariable&lt;?&gt;, Type&gt; toTypeVarAssigns = getTypeArguments(toParameterizedType, toClass, typeVarAssigns);</span>
+
+        // now to check each type argument
+<span class="fc bfc" id="L1167" title="All 2 branches covered.">        for (final TypeVariable&lt;?&gt; var : toTypeVarAssigns.keySet()) {</span>
+<span class="fc" id="L1168">            final Type toTypeArg = unrollVariableAssignments(var, toTypeVarAssigns);</span>
+<span class="fc" id="L1169">            final Type fromTypeArg = unrollVariableAssignments(var, fromTypeVarAssigns);</span>
+
+<span class="pc bpc" id="L1171" title="1 of 4 branches missed.">            if (toTypeArg == null &amp;&amp; fromTypeArg instanceof Class) {</span>
+<span class="fc" id="L1172">                continue;</span>
+            }
+
+            // parameters must either be absent from the subject type, within
+            // the bounds of the wildcard type, or be an exact match to the
+            // parameters of the target type.
+<span class="pc bpc" id="L1178" title="1 of 8 branches missed.">            if (fromTypeArg != null &amp;&amp; toTypeArg != null &amp;&amp; !toTypeArg.equals(fromTypeArg)</span>
+<span class="fc bfc" id="L1179" title="All 2 branches covered.">                    &amp;&amp; !(toTypeArg instanceof WildcardType &amp;&amp; isAssignable(fromTypeArg, toTypeArg, typeVarAssigns))) {</span>
+<span class="fc" id="L1180">                return false;</span>
+            }
+<span class="fc" id="L1182">        }</span>
+<span class="fc" id="L1183">        return true;</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target type following the Java generics rules. If both types are {@link Class} objects, the
+     * method returns the result of {@link ClassUtils#isAssignable(Class, Class)}.
+     *
+     * @param type   the subject type to be assigned to the target type
+     * @param toType the target type
+     * @return {@code true} if {@code type} is assignable to {@code toType}.
+     */
+    public static boolean isAssignable(final Type type, final Type toType) {
+<span class="fc" id="L1195">        return isAssignable(type, toType, null);</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target type following the Java generics rules.
+     *
+     * @param type           the subject type to be assigned to the target type
+     * @param toType         the target type
+     * @param typeVarAssigns optional map of type variable assignments
+     * @return {@code true} if {@code type} is assignable to {@code toType}.
+     */
+    private static boolean isAssignable(final Type type, final Type toType, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+<span class="fc bfc" id="L1207" title="All 4 branches covered.">        if (toType == null || toType instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L1208">            return isAssignable(type, (Class&lt;?&gt;) toType);</span>
+        }
+
+<span class="fc bfc" id="L1211" title="All 2 branches covered.">        if (toType instanceof ParameterizedType) {</span>
+<span class="fc" id="L1212">            return isAssignable(type, (ParameterizedType) toType, typeVarAssigns);</span>
+        }
+
+<span class="fc bfc" id="L1215" title="All 2 branches covered.">        if (toType instanceof GenericArrayType) {</span>
+<span class="fc" id="L1216">            return isAssignable(type, (GenericArrayType) toType, typeVarAssigns);</span>
+        }
+
+<span class="pc bpc" id="L1219" title="1 of 2 branches missed.">        if (toType instanceof WildcardType) {</span>
+<span class="fc" id="L1220">            return isAssignable(type, (WildcardType) toType, typeVarAssigns);</span>
+        }
+
+<span class="nc bnc" id="L1223" title="All 2 branches missed.">        if (toType instanceof TypeVariable&lt;?&gt;) {</span>
+<span class="nc" id="L1224">            return isAssignable(type, (TypeVariable&lt;?&gt;) toType, typeVarAssigns);</span>
+        }
+
+<span class="nc" id="L1227">        throw new IllegalStateException(&quot;found an unhandled type: &quot; + toType);</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target type variable following the Java generics rules.
+     *
+     * @param type           the subject type to be assigned to the target type
+     * @param toTypeVariable the target type variable
+     * @param typeVarAssigns a map with type variables
+     * @return {@code true} if {@code type} is assignable to {@code toTypeVariable}.
+     */
+    private static boolean isAssignable(final Type type, final TypeVariable&lt;?&gt; toTypeVariable, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+<span class="nc bnc" id="L1239" title="All 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L1240">            return true;</span>
+        }
+
+        // only a null type can be assigned to null type which
+        // would have cause the previous to return true
+<span class="nc bnc" id="L1245" title="All 2 branches missed.">        if (toTypeVariable == null) {</span>
+<span class="nc" id="L1246">            return false;</span>
+        }
+
+        // all types are assignable to themselves
+<span class="nc bnc" id="L1250" title="All 2 branches missed.">        if (toTypeVariable.equals(type)) {</span>
+<span class="nc" id="L1251">            return true;</span>
+        }
+
+<span class="nc bnc" id="L1254" title="All 2 branches missed.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+            // a type variable is assignable to another type variable, if
+            // and only if the former is the latter, extends the latter, or
+            // is otherwise a descendant of the latter.
+<span class="nc" id="L1258">            final Type[] bounds = getImplicitBounds((TypeVariable&lt;?&gt;) type);</span>
+
+<span class="nc bnc" id="L1260" title="All 2 branches missed.">            for (final Type bound : bounds) {</span>
+<span class="nc bnc" id="L1261" title="All 2 branches missed.">                if (isAssignable(bound, toTypeVariable, typeVarAssigns)) {</span>
+<span class="nc" id="L1262">                    return true;</span>
+                }
+            }
+        }
+
+<span class="nc bnc" id="L1267" title="All 8 branches missed.">        if (type instanceof Class&lt;?&gt; || type instanceof ParameterizedType || type instanceof GenericArrayType || type instanceof WildcardType) {</span>
+<span class="nc" id="L1268">            return false;</span>
+        }
+
+<span class="nc" id="L1271">        throw new IllegalStateException(&quot;found an unhandled type: &quot; + type);</span>
+    }
+
+    /**
+     * Tests if the subject type may be implicitly cast to the target wildcard type following the Java generics rules.
+     *
+     * @param type           the subject type to be assigned to the target type
+     * @param toWildcardType the target wildcard type
+     * @param typeVarAssigns a map with type variables
+     * @return {@code true} if {@code type} is assignable to {@code toWildcardType}.
+     */
+    private static boolean isAssignable(final Type type, final WildcardType toWildcardType, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+<span class="pc bpc" id="L1283" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L1284">            return true;</span>
+        }
+
+        // only a null type can be assigned to null type which
+        // would have cause the previous to return true
+<span class="pc bpc" id="L1289" title="1 of 2 branches missed.">        if (toWildcardType == null) {</span>
+<span class="nc" id="L1290">            return false;</span>
+        }
+
+        // all types are assignable to themselves
+<span class="pc bpc" id="L1294" title="1 of 2 branches missed.">        if (toWildcardType.equals(type)) {</span>
+<span class="nc" id="L1295">            return true;</span>
+        }
+
+<span class="fc" id="L1298">        final Type[] toUpperBounds = getImplicitUpperBounds(toWildcardType);</span>
+<span class="fc" id="L1299">        final Type[] toLowerBounds = getImplicitLowerBounds(toWildcardType);</span>
+
+<span class="fc bfc" id="L1301" title="All 2 branches covered.">        if (type instanceof WildcardType) {</span>
+<span class="fc" id="L1302">            final WildcardType wildcardType = (WildcardType) type;</span>
+<span class="fc" id="L1303">            final Type[] upperBounds = getImplicitUpperBounds(wildcardType);</span>
+<span class="fc" id="L1304">            final Type[] lowerBounds = getImplicitLowerBounds(wildcardType);</span>
+
+<span class="fc bfc" id="L1306" title="All 2 branches covered.">            for (Type toBound : toUpperBounds) {</span>
+                // if there are assignments for unresolved type variables,
+                // now's the time to substitute them.
+<span class="fc" id="L1309">                toBound = substituteTypeVariables(toBound, typeVarAssigns);</span>
+
+                // each upper bound of the subject type has to be assignable to
+                // each
+                // upper bound of the target type
+<span class="fc bfc" id="L1314" title="All 2 branches covered.">                for (final Type bound : upperBounds) {</span>
+<span class="fc bfc" id="L1315" title="All 2 branches covered.">                    if (!isAssignable(bound, toBound, typeVarAssigns)) {</span>
+<span class="fc" id="L1316">                        return false;</span>
+                    }
+                }
+            }
+
+<span class="fc bfc" id="L1321" title="All 2 branches covered.">            for (Type toBound : toLowerBounds) {</span>
+                // if there are assignments for unresolved type variables,
+                // now's the time to substitute them.
+<span class="fc" id="L1324">                toBound = substituteTypeVariables(toBound, typeVarAssigns);</span>
+
+                // each lower bound of the target type has to be assignable to
+                // each
+                // lower bound of the subject type
+<span class="fc bfc" id="L1329" title="All 2 branches covered.">                for (final Type bound : lowerBounds) {</span>
+<span class="fc bfc" id="L1330" title="All 2 branches covered.">                    if (!isAssignable(toBound, bound, typeVarAssigns)) {</span>
+<span class="fc" id="L1331">                        return false;</span>
+                    }
+                }
+            }
+<span class="fc" id="L1335">            return true;</span>
+        }
+
+<span class="fc bfc" id="L1338" title="All 2 branches covered.">        for (final Type toBound : toUpperBounds) {</span>
+            // if there are assignments for unresolved type variables,
+            // now's the time to substitute them.
+<span class="fc bfc" id="L1341" title="All 2 branches covered.">            if (!isAssignable(type, substituteTypeVariables(toBound, typeVarAssigns), typeVarAssigns)) {</span>
+<span class="fc" id="L1342">                return false;</span>
+            }
+        }
+
+<span class="fc bfc" id="L1346" title="All 2 branches covered.">        for (final Type toBound : toLowerBounds) {</span>
+            // if there are assignments for unresolved type variables,
+            // now's the time to substitute them.
+<span class="fc bfc" id="L1349" title="All 2 branches covered.">            if (!isAssignable(substituteTypeVariables(toBound, typeVarAssigns), type, typeVarAssigns)) {</span>
+<span class="fc" id="L1350">                return false;</span>
+            }
+        }
+<span class="fc" id="L1353">        return true;</span>
+    }
+
+    /**
+     * Tests whether the class contains a cyclical reference in the qualified name of a class. If any of the type parameters of A class is extending X class
+     * which is in scope of A class, then it forms cycle.
+     *
+     * @param cls the class to test.
+     * @return whether the class contains a cyclical reference.
+     */
+    private static boolean isCyclical(final Class&lt;?&gt; cls) {
+<span class="pc bfc" id="L1364" title="All 2 branches covered.">        for (final TypeVariable&lt;?&gt; typeParameter : cls.getTypeParameters()) {</span>
+<span class="pc bpc" id="L1365" title="1 of 2 branches missed.">            for (final AnnotatedType annotatedBound : typeParameter.getAnnotatedBounds()) {</span>
+<span class="pc bpc" id="L1366" title="1 of 2 branches missed.">                if (annotatedBound.getType().getTypeName().contains(cls.getName())) {</span>
+<span class="fc" id="L1367">                    return true;</span>
+                }
+            }
+        }
+<span class="fc" id="L1371">        return false;</span>
+    }
+
+    /**
+     * Tests if the given value can be assigned to the target type following the Java generics rules.
+     *
+     * @param value the value to be checked
+     * @param type  the target type
+     * @return {@code true} if {@code value} is an instance of {@code type}.
+     */
+    public static boolean isInstance(final Object value, final Type type) {
+<span class="pc bpc" id="L1382" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L1383">            return false;</span>
+        }
+
+<span class="pc bpc" id="L1386" title="5 of 6 branches missed.">        return value == null ? !(type instanceof Class&lt;?&gt;) || !((Class&lt;?&gt;) type).isPrimitive() : isAssignable(value.getClass(), type, null);</span>
+    }
+
+    /**
+     * Maps type variables.
+     *
+     * @param &lt;T&gt;               the generic type of the class in question
+     * @param cls               the class in question
+     * @param parameterizedType the parameterized type
+     * @param typeVarAssigns    the map to be filled
+     */
+    private static &lt;T&gt; void mapTypeVariablesToArguments(final Class&lt;T&gt; cls, final ParameterizedType parameterizedType,
+            final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+        // capture the type variables from the owner type that have assignments
+<span class="fc" id="L1400">        final Type ownerType = parameterizedType.getOwnerType();</span>
+
+<span class="pc bpc" id="L1402" title="1 of 2 branches missed.">        if (ownerType instanceof ParameterizedType) {</span>
+            // recursion to make sure the owner's owner type gets processed
+<span class="nc" id="L1404">            mapTypeVariablesToArguments(cls, (ParameterizedType) ownerType, typeVarAssigns);</span>
+        }
+
+        // parameterizedType is a generic interface/class (or it's in the owner
+        // hierarchy of said interface/class) implemented/extended by the class
+        // cls. Find out which type variables of cls are type arguments of
+        // parameterizedType:
+<span class="fc" id="L1411">        final Type[] typeArgs = parameterizedType.getActualTypeArguments();</span>
+
+        // of the cls's type variables that are arguments of parameterizedType,
+        // find out which ones can be determined from the super type's arguments
+<span class="fc" id="L1415">        final TypeVariable&lt;?&gt;[] typeVars = getRawType(parameterizedType).getTypeParameters();</span>
+
+        // use List view of type parameters of cls so the contains() method can be used:
+<span class="fc" id="L1418">        final List&lt;TypeVariable&lt;Class&lt;T&gt;&gt;&gt; typeVarList = Arrays.asList(cls.getTypeParameters());</span>
+
+<span class="fc bfc" id="L1420" title="All 2 branches covered.">        for (int i = 0; i &lt; typeArgs.length; i++) {</span>
+<span class="fc" id="L1421">            final TypeVariable&lt;?&gt; typeVar = typeVars[i];</span>
+<span class="fc" id="L1422">            final Type typeArg = typeArgs[i];</span>
+
+            // argument of parameterizedType is a type variable of cls
+<span class="pc bpc" id="L1425" title="1 of 2 branches missed.">            if (typeVarList.contains(typeArg)</span>
+                    // type variable of parameterizedType has an assignment in
+                    // the super type.
+<span class="pc bpc" id="L1428" title="1 of 2 branches missed.">                    &amp;&amp; typeVarAssigns.containsKey(typeVar)) {</span>
+                // map the assignment to the cls's type variable
+<span class="fc" id="L1430">                typeVarAssigns.put((TypeVariable&lt;?&gt;) typeArg, typeVarAssigns.get(typeVar));</span>
+            }
+        }
+<span class="fc" id="L1433">    }</span>
+
+    /**
+     * Strips out the redundant upper bound types in type variable types and wildcard types (or it would with wildcard types if multiple upper bounds were
+     * allowed).
+     *
+     * &lt;p&gt;
+     * Example, with the variable type declaration:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;{@code
+     * &lt;K extends java.util.Collection&lt;String&gt; &amp; java.util.List&lt;String&gt;&gt;
+     * }&lt;/pre&gt;
+     *
+     * &lt;p&gt;
+     * since {@link List} is a subinterface of {@link Collection}, this method will return the bounds as if the declaration had been:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;{@code
+     * &lt;K extends java.util.List&lt;String&gt;&gt;
+     * }&lt;/pre&gt;
+     *
+     * @param bounds an array of types representing the upper bounds of either {@link WildcardType} or {@link TypeVariable}, not {@code null}.
+     * @return an array containing the values from {@code bounds} minus the redundant types.
+     * @throws NullPointerException if {@code bounds} is {@code null}
+     */
+    public static Type[] normalizeUpperBounds(final Type[] bounds) {
+<span class="fc" id="L1460">        Objects.requireNonNull(bounds, &quot;bounds&quot;);</span>
+        // don't bother if there's only one (or none) type
+<span class="fc bfc" id="L1462" title="All 2 branches covered.">        if (bounds.length &lt; 2) {</span>
+<span class="fc" id="L1463">            return bounds;</span>
+        }
+
+<span class="fc" id="L1466">        final Set&lt;Type&gt; types = new HashSet&lt;&gt;(bounds.length);</span>
+
+<span class="fc bfc" id="L1468" title="All 2 branches covered.">        for (final Type type1 : bounds) {</span>
+<span class="fc" id="L1469">            boolean subtypeFound = false;</span>
+
+<span class="fc bfc" id="L1471" title="All 2 branches covered.">            for (final Type type2 : bounds) {</span>
+<span class="pc bpc" id="L1472" title="3 of 4 branches missed.">                if (type1 != type2 &amp;&amp; isAssignable(type2, type1, null)) {</span>
+<span class="nc" id="L1473">                    subtypeFound = true;</span>
+<span class="nc" id="L1474">                    break;</span>
+                }
+            }
+
+<span class="pc bpc" id="L1478" title="1 of 2 branches missed.">            if (!subtypeFound) {</span>
+<span class="fc" id="L1479">                types.add(type1);</span>
+            }
+        }
+
+<span class="fc" id="L1483">        return types.toArray(ArrayUtils.EMPTY_TYPE_ARRAY);</span>
+    }
+
+    /**
+     * Creates a parameterized type instance.
+     *
+     * @param rawClass        the raw class to create a parameterized type instance for
+     * @param typeVariableMap the map used for parameterization
+     * @return {@link ParameterizedType}
+     * @throws NullPointerException if either {@code rawClass} or {@code typeVariableMap} is {@code null}
+     * @since 3.2
+     */
+    public static final ParameterizedType parameterize(final Class&lt;?&gt; rawClass, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVariableMap) {
+<span class="fc" id="L1496">        Objects.requireNonNull(rawClass, &quot;rawClass&quot;);</span>
+<span class="nc" id="L1497">        Objects.requireNonNull(typeVariableMap, &quot;typeVariableMap&quot;);</span>
+<span class="nc" id="L1498">        return parameterizeWithOwner(null, rawClass, extractTypeArgumentsFrom(typeVariableMap, rawClass.getTypeParameters()));</span>
+    }
+
+    /**
+     * Creates a parameterized type instance.
+     *
+     * @param rawClass      the raw class to create a parameterized type instance for
+     * @param typeArguments the types used for parameterization
+     * @return {@link ParameterizedType}
+     * @throws NullPointerException if {@code rawClass} is {@code null}
+     * @since 3.2
+     */
+    public static final ParameterizedType parameterize(final Class&lt;?&gt; rawClass, final Type... typeArguments) {
+<span class="fc" id="L1511">        return parameterizeWithOwner(null, rawClass, typeArguments);</span>
+    }
+
+    /**
+     * Formats a {@link ParameterizedType} as a {@link String}.
+     *
+     * @param parameterizedType {@link ParameterizedType} to format
+     * @return String
+     */
+    private static String parameterizedTypeToString(final ParameterizedType parameterizedType) {
+<span class="fc" id="L1521">        final StringBuilder builder = new StringBuilder();</span>
+<span class="fc" id="L1522">        final Type useOwner = parameterizedType.getOwnerType();</span>
+<span class="fc" id="L1523">        final Class&lt;?&gt; raw = (Class&lt;?&gt;) parameterizedType.getRawType();</span>
+<span class="pc bpc" id="L1524" title="1 of 2 branches missed.">        if (useOwner == null) {</span>
+<span class="fc" id="L1525">            builder.append(raw.getName());</span>
+        } else {
+<span class="nc bnc" id="L1527" title="All 2 branches missed.">            if (useOwner instanceof Class&lt;?&gt;) {</span>
+<span class="nc" id="L1528">                builder.append(((Class&lt;?&gt;) useOwner).getName());</span>
+            } else {
+<span class="nc" id="L1530">                builder.append(useOwner);</span>
+            }
+<span class="nc" id="L1532">            builder.append('.').append(raw.getSimpleName());</span>
+        }
+<span class="fc" id="L1534">        final int[] recursiveTypeIndexes = findRecursiveTypes(parameterizedType);</span>
+<span class="fc bfc" id="L1535" title="All 2 branches covered.">        if (recursiveTypeIndexes.length &gt; 0) {</span>
+<span class="fc" id="L1536">            appendRecursiveTypes(builder, recursiveTypeIndexes, parameterizedType.getActualTypeArguments());</span>
+        } else {
+<span class="fc" id="L1538">            GT_JOINER.join(builder, parameterizedType.getActualTypeArguments());</span>
+        }
+<span class="fc" id="L1540">        return builder.toString();</span>
+    }
+
+    /**
+     * Creates a parameterized type instance.
+     *
+     * @param owner           the owning type
+     * @param rawClass        the raw class to create a parameterized type instance for
+     * @param typeVariableMap the map used for parameterization
+     * @return {@link ParameterizedType}
+     * @throws NullPointerException if either {@code rawClass} or {@code typeVariableMap} is {@code null}
+     * @since 3.2
+     */
+    public static final ParameterizedType parameterizeWithOwner(final Type owner, final Class&lt;?&gt; rawClass, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVariableMap) {
+<span class="fc" id="L1554">        Objects.requireNonNull(rawClass, &quot;rawClass&quot;);</span>
+<span class="nc" id="L1555">        Objects.requireNonNull(typeVariableMap, &quot;typeVariableMap&quot;);</span>
+<span class="nc" id="L1556">        return parameterizeWithOwner(owner, rawClass, extractTypeArgumentsFrom(typeVariableMap, rawClass.getTypeParameters()));</span>
+    }
+
+    /**
+     * Creates a parameterized type instance.
+     *
+     * @param owner         the owning type
+     * @param rawClass      the raw class to create a parameterized type instance for
+     * @param typeArguments the types used for parameterization
+     *
+     * @return {@link ParameterizedType}
+     * @throws NullPointerException if {@code rawClass} is {@code null}
+     * @since 3.2
+     */
+    public static final ParameterizedType parameterizeWithOwner(final Type owner, final Class&lt;?&gt; rawClass, final Type... typeArguments) {
+<span class="fc" id="L1571">        Objects.requireNonNull(rawClass, &quot;rawClass&quot;);</span>
+        final Type useOwner;
+<span class="fc bfc" id="L1573" title="All 2 branches covered.">        if (rawClass.getEnclosingClass() == null) {</span>
+<span class="pc bpc" id="L1574" title="1 of 2 branches missed.">            Validate.isTrue(owner == null, &quot;no owner allowed for top-level %s&quot;, rawClass);</span>
+<span class="fc" id="L1575">            useOwner = null;</span>
+<span class="pc bpc" id="L1576" title="1 of 2 branches missed.">        } else if (owner == null) {</span>
+<span class="nc" id="L1577">            useOwner = rawClass.getEnclosingClass();</span>
+        } else {
+<span class="fc" id="L1579">            Validate.isTrue(isAssignable(owner, rawClass.getEnclosingClass()), &quot;%s is invalid owner type for parameterized %s&quot;, owner, rawClass);</span>
+<span class="fc" id="L1580">            useOwner = owner;</span>
+        }
+<span class="fc" id="L1582">        Validate.noNullElements(typeArguments, &quot;null type argument at index %s&quot;);</span>
+<span class="pc bpc" id="L1583" title="1 of 2 branches missed.">        Validate.isTrue(rawClass.getTypeParameters().length == typeArguments.length, &quot;invalid number of type parameters specified: expected %d, got %d&quot;,</span>
+<span class="fc" id="L1584">                rawClass.getTypeParameters().length, typeArguments.length);</span>
+
+<span class="fc" id="L1586">        return new ParameterizedTypeImpl(rawClass, useOwner, typeArguments);</span>
+    }
+
+    /**
+     * Finds the mapping for {@code type} in {@code typeVarAssigns}.
+     *
+     * @param type           the type to be replaced
+     * @param typeVarAssigns the map with type variables
+     * @return the replaced type
+     * @throws IllegalArgumentException if the type cannot be substituted
+     */
+    private static Type substituteTypeVariables(final Type type, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+<span class="pc bpc" id="L1598" title="1 of 4 branches missed.">        if (type instanceof TypeVariable&lt;?&gt; &amp;&amp; typeVarAssigns != null) {</span>
+<span class="fc" id="L1599">            final Type replacementType = typeVarAssigns.get(type);</span>
+
+<span class="pc bpc" id="L1601" title="1 of 2 branches missed.">            if (replacementType == null) {</span>
+<span class="nc" id="L1602">                throw new IllegalArgumentException(&quot;missing assignment type for type variable &quot; + type);</span>
+            }
+<span class="fc" id="L1604">            return replacementType;</span>
+        }
+<span class="fc" id="L1606">        return type;</span>
+    }
+
+    /**
+     * Formats a {@link TypeVariable} including its {@link GenericDeclaration}.
+     *
+     * @param typeVariable the type variable to create a String representation for, not {@code null}
+     * @return String
+     * @throws NullPointerException if {@code typeVariable} is {@code null}
+     * @since 3.2
+     */
+    public static String toLongString(final TypeVariable&lt;?&gt; typeVariable) {
+<span class="fc" id="L1618">        Objects.requireNonNull(typeVariable, &quot;typeVariable&quot;);</span>
+<span class="fc" id="L1619">        final StringBuilder buf = new StringBuilder();</span>
+<span class="fc" id="L1620">        final GenericDeclaration d = typeVariable.getGenericDeclaration();</span>
+<span class="pc bpc" id="L1621" title="1 of 2 branches missed.">        if (d instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L1622">            Class&lt;?&gt; c = (Class&lt;?&gt;) d;</span>
+            while (true) {
+<span class="pc bpc" id="L1624" title="1 of 2 branches missed.">                if (c.getEnclosingClass() == null) {</span>
+<span class="fc" id="L1625">                    buf.insert(0, c.getName());</span>
+<span class="fc" id="L1626">                    break;</span>
+                }
+<span class="nc" id="L1628">                buf.insert(0, c.getSimpleName()).insert(0, '.');</span>
+<span class="nc" id="L1629">                c = c.getEnclosingClass();</span>
+            }
+<span class="pc bnc" id="L1631" title="All 2 branches missed.">        } else if (d instanceof Type) { // not possible as of now</span>
+<span class="nc" id="L1632">            buf.append(toString((Type) d));</span>
+        } else {
+<span class="nc" id="L1634">            buf.append(d);</span>
+        }
+<span class="fc" id="L1636">        return buf.append(':').append(typeVariableToString(typeVariable)).toString();</span>
+    }
+
+    /**
+     * Formats a given type as a Java-esque String.
+     *
+     * @param type the type to create a String representation for, not {@code null}
+     * @return String
+     * @throws NullPointerException if {@code type} is {@code null}
+     * @since 3.2
+     */
+    public static String toString(final Type type) {
+<span class="fc" id="L1648">        Objects.requireNonNull(type, &quot;type&quot;);</span>
+<span class="fc bfc" id="L1649" title="All 2 branches covered.">        if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L1650">            return classToString((Class&lt;?&gt;) type);</span>
+        }
+<span class="fc bfc" id="L1652" title="All 2 branches covered.">        if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L1653">            return parameterizedTypeToString((ParameterizedType) type);</span>
+        }
+<span class="fc bfc" id="L1655" title="All 2 branches covered.">        if (type instanceof WildcardType) {</span>
+<span class="fc" id="L1656">            return wildcardTypeToString((WildcardType) type);</span>
+        }
+<span class="fc bfc" id="L1658" title="All 2 branches covered.">        if (type instanceof TypeVariable&lt;?&gt;) {</span>
+<span class="fc" id="L1659">            return typeVariableToString((TypeVariable&lt;?&gt;) type);</span>
+        }
+<span class="pc bpc" id="L1661" title="1 of 2 branches missed.">        if (type instanceof GenericArrayType) {</span>
+<span class="fc" id="L1662">            return genericArrayTypeToString((GenericArrayType) type);</span>
+        }
+<span class="nc" id="L1664">        throw new IllegalArgumentException(ObjectUtils.identityToString(type));</span>
+    }
+
+    /**
+     * Determines whether or not specified types satisfy the bounds of their mapped type variables. When a type parameter extends another (such as
+     * {@code &lt;T, S extends T&gt;}), uses another as a type parameter (such as {@code &lt;T, S extends Comparable&gt;&gt;}), or otherwise depends on another type variable
+     * to be specified, the dependencies must be included in {@code typeVarAssigns}.
+     *
+     * @param typeVariableMap specifies the potential types to be assigned to the type variables, not {@code null}.
+     * @return whether or not the types can be assigned to their respective type variables.
+     * @throws NullPointerException if {@code typeVariableMap} is {@code null}
+     */
+    public static boolean typesSatisfyVariables(final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVariableMap) {
+<span class="fc" id="L1677">        Objects.requireNonNull(typeVariableMap, &quot;typeVariableMap&quot;);</span>
+        // all types must be assignable to all the bounds of their mapped
+        // type variable.
+<span class="fc bfc" id="L1680" title="All 2 branches covered.">        for (final Map.Entry&lt;TypeVariable&lt;?&gt;, Type&gt; entry : typeVariableMap.entrySet()) {</span>
+<span class="fc" id="L1681">            final TypeVariable&lt;?&gt; typeVar = entry.getKey();</span>
+<span class="fc" id="L1682">            final Type type = entry.getValue();</span>
+
+<span class="fc bfc" id="L1684" title="All 2 branches covered.">            for (final Type bound : getImplicitBounds(typeVar)) {</span>
+<span class="pc bpc" id="L1685" title="1 of 2 branches missed.">                if (!isAssignable(type, substituteTypeVariables(bound, typeVariableMap), typeVariableMap)) {</span>
+<span class="nc" id="L1686">                    return false;</span>
+                }
+            }
+<span class="fc" id="L1689">        }</span>
+<span class="fc" id="L1690">        return true;</span>
+    }
+
+    /**
+     * Formats a {@link TypeVariable} as a {@link String}.
+     *
+     * @param typeVariable {@link TypeVariable} to format
+     * @return String
+     */
+    private static String typeVariableToString(final TypeVariable&lt;?&gt; typeVariable) {
+<span class="fc" id="L1700">        final StringBuilder builder = new StringBuilder(typeVariable.getName());</span>
+<span class="fc" id="L1701">        final Type[] bounds = typeVariable.getBounds();</span>
+<span class="pc bpc" id="L1702" title="2 of 6 branches missed.">        if (bounds.length &gt; 0 &amp;&amp; !(bounds.length == 1 &amp;&amp; Object.class.equals(bounds[0]))) {</span>
+<span class="fc" id="L1703">            builder.append(&quot; extends &quot;);</span>
+<span class="fc" id="L1704">            AMP_JOINER.join(builder, typeVariable.getBounds());</span>
+        }
+<span class="fc" id="L1706">        return builder.toString();</span>
+    }
+
+    /**
+     * Unrolls variables in a type bounds array.
+     *
+     * @param typeArguments assignments {@link Map}
+     * @param bounds        in which to expand variables
+     * @return {@code bounds} with any variables reassigned
+     */
+    private static Type[] unrollBounds(final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeArguments, final Type[] bounds) {
+<span class="nc" id="L1717">        Type[] result = bounds;</span>
+<span class="nc" id="L1718">        int i = 0;</span>
+<span class="nc bnc" id="L1719" title="All 2 branches missed.">        for (; i &lt; result.length; i++) {</span>
+<span class="nc" id="L1720">            final Type unrolled = unrollVariables(typeArguments, result[i]);</span>
+<span class="nc bnc" id="L1721" title="All 2 branches missed.">            if (unrolled == null) {</span>
+<span class="nc" id="L1722">                result = ArrayUtils.remove(result, i--);</span>
+            } else {
+<span class="nc" id="L1724">                result[i] = unrolled;</span>
+            }
+        }
+<span class="nc" id="L1727">        return result;</span>
+    }
+
+    /**
+     * Looks up {@code typeVariable} in {@code typeVarAssigns} &lt;em&gt;transitively&lt;/em&gt;, i.e. keep looking until the value found is &lt;em&gt;not&lt;/em&gt; a type variable.
+     *
+     * @param typeVariable   the type variable to look up
+     * @param typeVarAssigns the map used for the look-up
+     * @return Type or {@code null} if some variable was not in the map
+     */
+    private static Type unrollVariableAssignments(TypeVariable&lt;?&gt; typeVariable, final Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeVarAssigns) {
+        Type result;
+        do {
+<span class="fc" id="L1740">            result = typeVarAssigns.get(typeVariable);</span>
+<span class="fc bfc" id="L1741" title="All 4 branches covered.">            if (!(result instanceof TypeVariable&lt;?&gt;) || result.equals(typeVariable)) {</span>
+<span class="fc" id="L1742">                break;</span>
+            }
+<span class="fc" id="L1744">            typeVariable = (TypeVariable&lt;?&gt;) result;</span>
+<span class="fc" id="L1745">        } while (true);</span>
+<span class="fc" id="L1746">        return result;</span>
+    }
+
+    /**
+     * Gets a type representing {@code type} with variable assignments &quot;unrolled.&quot;
+     *
+     * @param typeArguments as from {@link TypeUtils#getTypeArguments(Type, Class)}
+     * @param type          the type to unroll variable assignments for
+     * @return Type
+     * @since 3.2
+     */
+    public static Type unrollVariables(Map&lt;TypeVariable&lt;?&gt;, Type&gt; typeArguments, final Type type) {
+<span class="pc bpc" id="L1758" title="1 of 2 branches missed.">        if (typeArguments == null) {</span>
+<span class="nc" id="L1759">            typeArguments = Collections.emptyMap();</span>
+        }
+<span class="fc bfc" id="L1761" title="All 2 branches covered.">        if (containsTypeVariables(type)) {</span>
+<span class="fc bfc" id="L1762" title="All 2 branches covered.">            if (type instanceof TypeVariable&lt;?&gt;) {</span>
+<span class="fc" id="L1763">                return unrollVariables(typeArguments, typeArguments.get(type));</span>
+            }
+<span class="pc bpc" id="L1765" title="1 of 2 branches missed.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L1766">                final ParameterizedType p = (ParameterizedType) type;</span>
+                final Map&lt;TypeVariable&lt;?&gt;, Type&gt; parameterizedTypeArguments;
+<span class="fc bfc" id="L1768" title="All 2 branches covered.">                if (p.getOwnerType() == null) {</span>
+<span class="fc" id="L1769">                    parameterizedTypeArguments = typeArguments;</span>
+                } else {
+<span class="fc" id="L1771">                    parameterizedTypeArguments = new HashMap&lt;&gt;(typeArguments);</span>
+<span class="fc" id="L1772">                    parameterizedTypeArguments.putAll(getTypeArguments(p));</span>
+                }
+<span class="fc" id="L1774">                final Type[] args = p.getActualTypeArguments();</span>
+<span class="fc bfc" id="L1775" title="All 2 branches covered.">                for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="fc" id="L1776">                    final Type unrolled = unrollVariables(parameterizedTypeArguments, args[i]);</span>
+<span class="fc bfc" id="L1777" title="All 2 branches covered.">                    if (unrolled != null) {</span>
+<span class="fc" id="L1778">                        args[i] = unrolled;</span>
+                    }
+                }
+<span class="fc" id="L1781">                return parameterizeWithOwner(p.getOwnerType(), (Class&lt;?&gt;) p.getRawType(), args);</span>
+            }
+<span class="nc bnc" id="L1783" title="All 2 branches missed.">            if (type instanceof WildcardType) {</span>
+<span class="nc" id="L1784">                final WildcardType wild = (WildcardType) type;</span>
+<span class="nc" id="L1785">                return wildcardType().withUpperBounds(unrollBounds(typeArguments, wild.getUpperBounds()))</span>
+<span class="nc" id="L1786">                        .withLowerBounds(unrollBounds(typeArguments, wild.getLowerBounds())).build();</span>
+            }
+        }
+<span class="fc" id="L1789">        return type;</span>
+    }
+
+    /**
+     * Gets a {@link WildcardTypeBuilder}.
+     *
+     * @return {@link WildcardTypeBuilder}
+     * @since 3.2
+     */
+    public static WildcardTypeBuilder wildcardType() {
+<span class="fc" id="L1799">        return new WildcardTypeBuilder();</span>
+    }
+
+    /**
+     * Formats a {@link WildcardType} as a {@link String}.
+     *
+     * @param wildcardType {@link WildcardType} to format
+     * @return String
+     */
+    private static String wildcardTypeToString(final WildcardType wildcardType) {
+<span class="fc" id="L1809">        final StringBuilder builder = new StringBuilder().append('?');</span>
+<span class="fc" id="L1810">        final Type[] lowerBounds = wildcardType.getLowerBounds();</span>
+<span class="fc" id="L1811">        final Type[] upperBounds = wildcardType.getUpperBounds();</span>
+<span class="pc bpc" id="L1812" title="1 of 6 branches missed.">        if (lowerBounds.length &gt; 1 || lowerBounds.length == 1 &amp;&amp; lowerBounds[0] != null) {</span>
+<span class="fc" id="L1813">            AMP_JOINER.join(builder.append(&quot; super &quot;), lowerBounds);</span>
+<span class="pc bpc" id="L1814" title="2 of 6 branches missed.">        } else if (upperBounds.length &gt; 1 || upperBounds.length == 1 &amp;&amp; !Object.class.equals(upperBounds[0])) {</span>
+<span class="fc" id="L1815">            AMP_JOINER.join(builder.append(&quot; extends &quot;), upperBounds);</span>
+        }
+<span class="fc" id="L1817">        return builder.toString();</span>
+    }
+
+    /**
+     * Wraps the specified {@link Class} in a {@link Typed} wrapper.
+     *
+     * @param &lt;T&gt;  generic type
+     * @param type to wrap
+     * @return {@code Typed&lt;T&gt;}
+     * @since 3.2
+     */
+    public static &lt;T&gt; Typed&lt;T&gt; wrap(final Class&lt;T&gt; type) {
+<span class="fc" id="L1829">        return wrap((Type) type);</span>
+    }
+
+    /**
+     * Wraps the specified {@link Type} in a {@link Typed} wrapper.
+     *
+     * @param &lt;T&gt;  inferred generic type
+     * @param type to wrap
+     * @return {@code Typed&lt;T&gt;}
+     * @since 3.2
+     */
+    public static &lt;T&gt; Typed&lt;T&gt; wrap(final Type type) {
+<span class="fc" id="L1841">        return () -&gt; type;</span>
+    }
+
+    /**
+     * {@link TypeUtils} instances should NOT be constructed in standard programming. Instead, the class should be used as
+     * {@code TypeUtils.isAssignable(cls, toClass)}.
+     * &lt;p&gt;
+     * This constructor is public to permit tools that require a JavaBean instance to operate.
+     * &lt;/p&gt;
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="nc" id="L1854">    public TypeUtils() {</span>
+        // empty
+<span class="nc" id="L1856">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

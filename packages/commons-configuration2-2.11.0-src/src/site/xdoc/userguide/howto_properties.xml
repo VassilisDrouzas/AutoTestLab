@@ -1,0 +1,554 @@
+<?xml version="1.0"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+
+<document>
+  <properties>
+    <title>Properties files</title>
+    <author email="smanux@lfjr.net">Emmanuel Bourg</author>
+    <author email="oheger@apache.org">Oliver Heger</author>
+  </properties>
+
+  <body>
+
+    <section name="Properties files">
+      <p>
+        Properties files are a popular means of configuring applications. Of course, <em>Commons Configuration</em>
+        supports this format and enhances significantly the basic <code>java.util.Properties</code> class.
+        This section introduces the features of the
+        <code><a href="../apidocs/org/apache/commons/configuration2/PropertiesConfiguration.html">PropertiesConfiguration</a></code> class.
+        Note that <code>PropertiesConfiguration</code> is a very typical example
+        for an implementation of the <code>Configuration</code> interface; it
+        extends
+        <code><a href="../apidocs/org/apache/commons/configuration2/AbstractConfiguration.html">AbstractConfiguration</a></code>,
+        thus all the features provided by this base class are available here as
+        well. More information about functionality common to all standard
+        <code>Configuration</code> implementations can be found in the section
+        <a href="howto_basicfeatures.html">Basic features and AbstractConfiguration</a>.
+      </p>
+
+      <subsection name="Using PropertiesConfiguration">
+        <p>
+          Let's start with a simple properties file named
+          <code>usergui.properties</code> with the following content:
+        </p>
+        <source><![CDATA[
+# Properties definining the GUI
+colors.background = #FFFFFF
+colors.foreground = #000080
+
+window.width = 500
+window.height = 300
+]]></source>
+
+        <p>
+          To load this file, you'll write something like:
+        </p>
+        <source><![CDATA[
+Parameters params = new Parameters();
+FileBasedConfigurationBuilder<FileBasedConfiguration> builder =
+    new FileBasedConfigurationBuilder<FileBasedConfiguration>(PropertiesConfiguration.class)
+    .configure(params.properties()
+        .setFileName("usergui.properties"));
+try
+{
+    Configuration config = builder.getConfiguration();
+    ...
+}
+catch(ConfigurationException cex)
+{
+    // loading of the configuration file failed
+}]]></source>
+        <p>
+          As is demonstrated by this example, a configuration object for a
+          properties file is obtained via a
+          <code><a href="../apidocs/org/apache/commons/configuration2/builder/FileBasedConfigurationBuilder.html">
+          FileBasedConfigurationBuilder</a></code> as described in the section
+          <a href="howto_filebased.html">File-based Configurations</a>.
+        </p>
+        <p>
+          After the properties file was loaded you can access its content through
+          the methods of the <code>Configuration</code> interface, e.g.
+        </p>
+<source>
+String backColor = config.getString("colors.background");
+Dimension size = new Dimension(config.getInt("window.width"),
+  config.getInt("window.height"));
+</source>
+      </subsection>
+
+      <subsection name="Includes">
+        <p>
+          If a property is named "<code>include</code>", and the value of that property is the
+          name of a file on the disk, that file will be included into the configuration. 
+        </p>
+        <p>
+          The difference between "<code>include</code>" and "<code>includeOptional</code>" (below) is that if the file value 
+          is absent, processing continues with "<code>includeOptional</code>" but stops with "<code>include</code>".
+        </p>
+        <p>
+          For example:
+        </p>
+<source>
+# usergui.properties
+
+include = colors.properties
+include = sizes.properties
+</source>
+
+<source>
+# colors.properties
+
+colors.background = #FFFFFF
+</source>
+
+      </subsection>
+
+      <subsection name="Oprional Includes">
+        <p>
+          If a property is named "<code>includeOptional</code>", and the value of that property is the
+          name of a file on the disk, that file will be included into the configuration.
+        </p>
+        <p>
+          The difference between "<code>include</code>" (above) and "<code>includeOptional</code>" is that if the file value 
+          is absent, processing continues with "<code>includeOptional</code>" but stops with "<code>include</code>".
+        </p>
+        <p>
+          For example:
+        </p>
+<source>
+# usergui.properties
+
+includeOptional = colors.properties
+includeOptional = sizes.properties
+</source>
+
+<source>
+# colors.properties
+
+colors.background = #FFFFFF
+</source>
+
+      </subsection>
+
+      <subsection name="Lists and arrays">
+        <p>
+          As was already pointed out in the section
+          <a href="howto_basicfeatures.html#List_handling">List handling</a>
+          of <em>Basic features</em>, <em>Commons Configuration</em> has the ability to
+          return easily a list of values. For example, a properties file can
+          contain a list of comma separated values:
+        </p>
+<source>
+# chart colors
+colors.pie = #FF0000, #00FF00, #0000FF
+</source>
+        <p>
+          Provided that an appropriate
+          <code><a href="../apidocs/org/apache/commons/configuration2/convert/ListDelimiterHandler.html">
+          ListDelimiterHandler</a></code> object was set for the
+          configuration instance, the value is split automatically, and
+          you can retrieve an array or a <code>java.util.List</code> directly with:
+        </p>
+<source>
+String[] colors = config.getStringArray("colors.pie");
+List&lt;Object&gt; colorList = config.getList("colors.pie");
+</source>
+        <p>
+          Splitting of string values at list delimiter characters is disabled
+          by default. It can be enabled by specifying an instance of
+          <code><a href="../apidocs/org/apache/commons/configuration2/convert/DefaultListDelimiterHandler.html">
+          DefaultListDelimiterHandler</a></code>. This can be done when loading
+          the configuration via the builder:
+        </p>
+        <source><![CDATA[
+Parameters params = new Parameters();
+FileBasedConfigurationBuilder<Configuration> builder =
+    new FileBasedConfigurationBuilder<Configuration>(PropertiesConfiguration.class)
+    .configure(params.properties()
+        .setFileName("usergui.properties")
+        .setListDelimiterHandler(new DefaultListDelimiterHandler(','));
+Configuration config = builder.getConfiguration();
+]]></source>
+        <p>
+          Alternatively, you can specify a list of values in your properties file by using
+          the same key on several lines as shown in the following example. This is an
+          example of a feature not provided by <code>java.util.Properties</code>:
+        </p>
+<source>
+# chart colors
+colors.pie = #FF0000;
+colors.pie = #00FF00;
+colors.pie = #0000FF;
+</source>
+        <p>
+          All of the features related to list handling described for
+          <code>AbstractConfiguration</code> also apply to properties files,
+          including changing the list delimiter or disabling list handling at
+          all.
+        </p>
+      </subsection>
+
+      <subsection name="Saving">
+        <p>
+          To save your configuration, just call the <code>save()</code> method
+          on the associated configuration builder.
+        </p>
+        <source><![CDATA[
+Parameters params = new Parameters();
+FileBasedConfigurationBuilder<FileBasedConfiguration> builder =
+    new FileBasedConfigurationBuilder<FileBasedConfiguration>(PropertiesConfiguration.class)
+    .configure(params.properties()
+        .setFileName("usergui.properties")
+        .setListDelimiterHandler(new DefaultListDelimiterHandler(',')));
+Configuration config = builder.getConfiguration();
+config.setProperty("colors.background", "#000000");
+builder.save();
+]]></source>
+        <p>
+          More information about saving properties files (and file-based
+          configurations in general) can be found in the section about
+          <a href="howto_filebased.html">File-based Configurations</a>.
+        </p>
+      </subsection>
+
+      <subsection name="Special Characters and Escaping">
+        <p>
+          If you need a special character in a property like a line feed, a tabulation or
+          an unicode character, you can specify it with the same escaped notation used for
+          Java Strings. The list separator ("," by default), can also be escaped:
+        </p>
+        <source><![CDATA[
+key = This \n string \t contains \, escaped \\ characters \u0020
+]]></source>
+      <p>
+        When dealing with lists of elements that contain backslash characters
+        (e.g. file paths on Windows systems) escaping rules can become pretty
+        complex. The first thing to keep in mind is that in order to get a
+        single backslash, you have to write two:
+      </p>
+      <source><![CDATA[
+config.dir = C:\\Temp\\
+      ]]></source>
+      <p>
+        This issue is not specific to <em>Commons Configuration</em>, but is related to
+        the standard format for properties files. Refer to the Javadocs of the
+        <code>load()</code> method of <code>java.util.Properties</code> for more
+        information. Now if you want to define a list with file paths, you may
+        be tempted to write the following:
+      </p>
+      <source><![CDATA[
+# Wrong way to define a list of directories
+config.dirs = C:\\Temp\\,D:\\data\\
+      ]]></source>
+      <p>
+        As the comment indicates, this will not work. The trailing backslash of
+        the first directory is interpreted as escape character for the list
+        delimiter. So instead of a list with two elements only a single value
+        of the property is defined - clearly not what was desired. To get a
+        correct list the trailing backslash has to be escaped. This is achieved
+        by duplicating it (yes, in a properties file that means that we now need
+        4 backslashes):
+      </p>
+      <source><![CDATA[
+# Correct way to define a list of directories
+config.dirs = C:\\Temp\\\\,D:\\data\\
+      ]]></source>
+      <p>
+        So a sequence of 4 backslashes in the value of a property is interpreted
+        as an escaped backslash and eventually results in a single backslash.
+        This creates another problem when a properties file should refer to the
+        names of network shares. Typically these names start with two
+        backslashes, so the obvious way to define such a property is as follows:
+      </p>
+      <source><![CDATA[
+# Wrong way to define a list of network shares
+config.dirs = \\\\share1,\\\\share2
+      ]]></source>
+      <p>
+        Unfortunately, this will not work because the shares contain the reserved
+        sequence of 4 backslashes. So when reading the value of the
+        <em>config.dirs</em> property a list with two elements is returned
+        starting only with a single backslash. To fix the problem the sequence
+        for escaping a backslash has to be duplicated - we are now at 8
+        backslashes:
+      </p>
+      <source><![CDATA[
+# Correct way to define a list of network shares
+config.dirs = \\\\\\\\share1,\\\\\\\\share2
+      ]]></source>
+      <p>
+        As becomes obvious, escape sequences can become pretty complex and
+        unreadable. In such situations it is recommended to use the alternative
+        way of defining a list: just use the same key multiple times. In this
+        case no additional escaping of backslashes (beyond the usual duplicating
+        required by properties files) is needed because there is no list
+        delimiter character involved. Using this syntax the list of network
+        shares looks like the following:
+      </p>
+      <source><![CDATA[
+# Straightforward way to define a list of network shares
+config.dirs = \\\\share1
+config.dirs = \\\\share2
+      ]]></source>
+      <p>
+        Please also refer to the Javadocs of the
+        <code><a href="../apidocs/org/apache/commons/configuration2/convert/DefaultListDelimiterHandler.html">
+        DefaultListDelimiterHandler</a></code> class; it describes the
+        escaping rules to be applied in detail.
+      </p>
+      </subsection>
+
+      <subsection name="Layout Objects">
+      <p>
+        Each <code>PropertiesConfiguration</code> object is associated with a
+        <em>Layout object</em>, an instance of the class
+        <code><a href="../apidocs/org/apache/commons/configuration2/PropertiesConfigurationLayout.html">
+        PropertiesConfigurationLayout</a></code>. This layout object is
+        responsible for preserving most of the structure of loaded configuration
+        files. This means that things like comments or blank lines in a saved
+        properties file will closely resemble the original properties file
+        (the algorithm is not 100 percent perfect, but for most use cases it
+        should be sufficient).
+      </p>
+      <p>
+        Normally a developer does not have to deal with these layout objects.
+        However, there are some methods that might be of interest if enhanced
+        control over the output of properties files is needed. The following
+        list describes these methods (note that corresponding get methods are
+        of course also provided):
+        <ul>
+        <li><code>setComment()</code><br/>
+        With this method a comment can be set for a specified property. When
+        storing the configuration the comment is output before the property,
+        followed by a line break. The comment can span multiple lines; in this
+        case the newline character &quot;\n&quot; must be used as line
+        separator.</li>
+        <li><code>setHeaderComment()</code><br/>
+        With <code>setHeaderComment()</code> a global comment can be set for the
+        properties file. This comment is written at the very start of the file,
+        followed by an empty line.</li>
+        <li><code>setFooterComment()</code><br/>
+        Analogous to <code>setHeaderComment()</code>, but the comment defined by
+        this method is written at the very end of the properties file.</li>
+        <li><code>setBlancLinesBefore()</code><br/>
+        This methods allows defining the number of empty lines to be written
+        before the specified property. It can be used, for instance, to
+        divide the properties file into multiple logical sections.</li>
+        <li><code>setSingleLine()</code><br/>
+        If a property has multiple values, with <code>setSingleLine()</code> it
+        can be specified that all these values should be written into a single
+        line separated by the default list separator. It is also possible to
+        write multiple definitions for this property (i.e. multiple lines of the
+        form <code>property = value1</code>, <code>property = value2</code> etc.).
+        This is supported by <code>PropertiesConfiguration</code>, but will
+        probably not work when processing the properties file with other tools.
+        </li>
+        <li><code>setForceSingleLine()</code><br/>
+        This is similar to <code>setSingleLine()</code>, but sets a global
+        single line flag. If set to <b>true</b>, all properties with multiple
+        values are always written on a single line.</li>
+        <li><code>setGlobalSeparator()</code><br/>
+        Sometimes it may be necessary to define the properties separator, i.e.
+        the string that separates the property key from the value. This can be
+        done using <code>setGlobalSeparator()</code>. Here an arbitrary string
+        can be specified that will be used as separator. (Note: In order to
+        produce valid properties files only the characters <code>=</code> and
+        <code>:</code> should be used as separators (with or without leading or
+        trailing whitespace), but the method does not enforce this.</li>
+        <li><code>setSeparator()</code><br/>
+        This method is similar to <code>setGlobalSeparator()</code>, but
+        allows setting the property separator for a specific property.</li>
+        <li><code>setLineSeparator()</code><br/>
+        Using this method the line separator can be specified. Per default the
+        platform-specific line separator is used (e.g. <code>\n</code> on Unix).
+        </li>
+        </ul>
+        The default settings of <code>PropertiesConfigurationLayout</code> are
+        chosen in a way that most of the original layout of a properties file
+        is retained. With the methods listed above specific layout restrictions
+        can be enforced.
+      </p>
+      </subsection>
+
+      <subsection name="Custom properties readers and writers">
+      <p>
+        There are situations when more control over the process of reading and
+        writing properties files is needed. For instance, an application might
+        have to deal with some legacy properties file in a specific format,
+        which is not supported out of the box by
+        <code>PropertiesConfiguration</code>, but must not be modified. In these
+        cases it is possible to inject a custom reader and writer for
+        properties files.
+      </p>
+      <p>
+        Per default properties files are read and written by the nested classes
+        <code>PropertiesReader</code> and <code>PropertiesWriter</code>
+        (defined within <code>PropertiesConfiguration</code>). These classes are
+        regular reader and writer classes (both are derived from typical base
+        classes of the <code>java.io</code> package) that provide some
+        additional methods making dealing with properties files more
+        convenient. Custom implementations of properties readers and writers
+        must extend these base classes.
+      </p>
+      <p>
+        For installing a custom properties reader or writer
+        <code>PropertiesConfiguration</code> provides the <code>IOFactory</code>
+        interface (which is also defined as a nested class). An object
+        implementing this interface is stored in each
+        <code>PropertiesConfiguration</code> instance. Whenever a properties
+        file is to be read or written (i.e. when one of the <code>load()</code>
+        or <code>save()</code> methods is called), the <code>IOFactory</code>
+        object is asked for creating the properties reader or writer to be
+        used.
+      </p>
+      <p>
+        The <code>IOFactory</code> interface is pretty simple; it defines one
+        method for creating a properties reader and another one for creating a
+        properties writer. A default implementation called
+        <code>DefaultIOFactory</code> is also available and is used by
+        <code>PropertiesConfiguration</code> when no specific
+        <code>IOFactory</code> is set.<br/>
+        The original goal of <code>PropertiesConfiguration</code> wasn't to be
+        strictly compatible with the exact file format defined in
+        <code>java.util.Properties</code> (JUP). However, in cases where this
+        compatibility is required, the alternative <code>JupIOFactory</code> can
+        be used, as it aims to mimic the exact behavior of <code>JUP</code>. The
+        main differences concern the handling of leading and trailing whitespace
+        and the handling of escape sequences. <code>JupIOFactory</code> can also
+        be configured to avoid Unicode escape sequences (like \u00DF) when
+        the used encoding already supports all characters natively. E.g. UTF-8
+        is the new default encoding for resource bundle properties files since
+        Java 9, so Unicode escapes are not required anymore and not using them
+        can make properties files much more readable in regular text editors.
+      </p>
+      <p>
+        To make this discussion more concrete we provide an example of how to
+        inject a custom properties reader. The use case is that we have to load
+        a properties file that contains keys with whitespace, which is not
+        supported by <code>PropertiesConfiguration</code> per default. A
+        fragment from such a properties file could look as follows:
+      </p>
+        <source><![CDATA[
+Background Color = #800080
+Foreground Color = #000080
+]]></source>
+      <p>
+        The first step is to create a custom properties reader implementation
+        that can deal with such properties. The class is derived from
+        <code>PropertiesConfiguration.PropertiesReader</code> and overrides the
+        <code>parseProperty()</code> method:
+      </p>
+        <source><![CDATA[
+public class WhitespacePropertiesReader extends PropertiesConfiguration.PropertiesReader
+{
+    public WhitespacePropertiesReader(Reader in, char delimiter)
+    {
+        super(in, delimiter);
+    }
+
+    /**
+     * Special algorithm for parsing properties keys with whitespace. This
+     * method is called for each non-comment line read from the properties
+     * file.
+     */
+    @Override
+    protected void parseProperty(String line)
+    {
+        // simply split the line at the first '=' character
+        // (this should be more robust in production code)
+        int pos = line.indexOf('=');
+        String key = line.substring(0, pos).trim();
+        String value = line.substring(pos + 1).trim();
+
+        // now store the key and the value of the property
+        initPropertyName(key);
+        initPropertyValue(value);
+    }
+}
+]]></source>
+      <p>
+        Notice the calls to the methods <code>initPropertyName()</code> and
+        <code>initPropertyValue()</code>. Here the results of the parsing
+        operation are stored. The next step is to provide a specialized
+        implementation of the <code>IOFactory</code> interface that returns
+        the new properties reader class. As we only want to replace the
+        properties reader (and use the standard writer), we can derive our
+        implementation from <code>DefaultIOFactory</code> and thus only have
+        to override the <code>createPropertiesReader()</code> method.
+      </p>
+        <source><![CDATA[
+public class WhitespaceIOFactory extends PropertiesConfiguration.DefaultIOFactory
+{
+    /**
+     * Return our special properties reader.
+     */
+     @Override
+    public PropertiesReader createPropertiesReader(Reader in, char delimiter)
+    {
+        return new WhitespacePropertiesReader(in, delimiter);
+    }
+}
+]]></source>
+      <p>
+        Finally an instance of our new <code>IOFactory</code> implementation
+        has to be created and passed to the <code>PropertiesConfiguration</code>
+        object. This can be done via the initialization parameters passed to
+        the configuration builder:
+      </p>
+        <source><![CDATA[
+Parameters params = new Parameters();
+FileBasedConfigurationBuilder<Configuration> builder =
+    new FileBasedConfigurationBuilder<Configuration>(PropertiesConfiguration.class)
+    .configure(params.properties()
+        .setFileName("myfile.properties")
+        .setIOFactory(new WhitespaceIOFactory());
+Configuration config = builder.getConfiguration();
+]]></source>
+      </subsection>
+
+      <subsection name="Builder Configuration Related to Properties Files">
+      <p>
+        When setting up a configuration builder to produce a
+        <code>PropertiesConfiguration</code> instance typically an object
+        implementing the
+        <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/PropertiesBuilderParameters.html">
+        PropertiesBuilderParameters</a></code> interface is used. In addition
+        to the parameters common to all file-based configurations, there are
+        settings specific to properties files which are defined by the
+        <code><a href="../apidocs/org/apache/commons/configuration2/builder/PropertiesBuilderProperties.html">
+        PropertiesBuilderProperties</a></code> interface. These include
+        <ul>
+          <li>A flag whether <a href="#Includes">include files</a> are supported.
+          This is <strong>true</strong> by default, but can be switched off if
+          properties named <em>include</em> should not have a special meaning.</li>
+          <li>A custom <a href="#Layout_Objects">layout object</a>.</li>
+          <li>A custom <a href="#Custom_properties_readers_and_writers">I/O
+          factory</a>.</li>
+        </ul>
+      </p>
+      <p>
+        A parameters object for a properties configuration can be obtained using
+        the <code>properties()</code> method of a
+        <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Parameter.html">
+        Parameters</a></code> instance
+      </p>
+      </subsection>
+    </section>
+
+  </body>
+</document>

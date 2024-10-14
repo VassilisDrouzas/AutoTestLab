@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractInputCheckedMapDecorator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">AbstractInputCheckedMapDecorator.java</span></div><h1>AbstractInputCheckedMapDecorator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.lang.reflect.Array;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.collections4.iterators.AbstractIteratorDecorator;
+import org.apache.commons.collections4.keyvalue.AbstractMapEntryDecorator;
+import org.apache.commons.collections4.set.AbstractSetDecorator;
+
+/**
+ * An abstract base class that simplifies the task of creating map decorators.
+ * &lt;p&gt;
+ * The Map API is very difficult to decorate correctly, and involves implementing
+ * lots of different classes. This class exists to provide a simpler API.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Special hook methods are provided that are called when objects are added to
+ * the map. By overriding these methods, the input can be validated or manipulated.
+ * In addition to the main map methods, the entrySet is also affected, which is
+ * the hardest part of writing map implementations.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is package-scoped, and may be withdrawn or replaced in future
+ * versions of Commons Collections.
+ * &lt;/p&gt;
+ *
+ * @since 3.1
+ */
+abstract class AbstractInputCheckedMapDecorator&lt;K, V&gt;
+        extends AbstractMapDecorator&lt;K, V&gt; {
+
+    /**
+     * Implements an entry set that checks additions via setValue.
+     */
+    private final class EntrySet extends AbstractSetDecorator&lt;Map.Entry&lt;K, V&gt;&gt; {
+
+        /** Generated serial version ID. */
+        private static final long serialVersionUID = 4354731610923110264L;
+
+        /** The parent map */
+        private final AbstractInputCheckedMapDecorator&lt;K, V&gt; parent;
+
+<span class="fc" id="L61">        protected EntrySet(final Set&lt;Map.Entry&lt;K, V&gt;&gt; set, final AbstractInputCheckedMapDecorator&lt;K, V&gt; parent) {</span>
+<span class="fc" id="L62">            super(set);</span>
+<span class="fc" id="L63">            this.parent = parent;</span>
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public Iterator&lt;Map.Entry&lt;K, V&gt;&gt; iterator() {
+<span class="fc" id="L68">            return new EntrySetIterator(this.decorated().iterator(), parent);</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public Object[] toArray() {
+<span class="nc" id="L74">            final Object[] array = this.decorated().toArray();</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            for (int i = 0; i &lt; array.length; i++) {</span>
+<span class="nc" id="L76">                array[i] = new MapEntry((Map.Entry&lt;K, V&gt;) array[i], parent);</span>
+            }
+<span class="nc" id="L78">            return array;</span>
+        }
+
+        @Override
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public &lt;T&gt; T[] toArray(final T[] array) {
+<span class="fc" id="L84">            Object[] result = array;</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (array.length &gt; 0) {</span>
+                // we must create a new array to handle multithreaded situations
+                // where another thread could access data before we decorate it
+<span class="nc" id="L88">                result = (Object[]) Array.newInstance(array.getClass().getComponentType(), 0);</span>
+            }
+<span class="fc" id="L90">            result = this.decorated().toArray(result);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            for (int i = 0; i &lt; result.length; i++) {</span>
+<span class="fc" id="L92">                result[i] = new MapEntry((Map.Entry&lt;K, V&gt;) result[i], parent);</span>
+            }
+
+            // check to see if result should be returned straight
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (result.length &gt; array.length) {</span>
+<span class="fc" id="L97">                return (T[]) result;</span>
+            }
+
+            // copy back into input array to fulfil the method contract
+<span class="nc" id="L101">            System.arraycopy(result, 0, array, 0, result.length);</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            if (array.length &gt; result.length) {</span>
+<span class="nc" id="L103">                array[result.length] = null;</span>
+            }
+<span class="nc" id="L105">            return array;</span>
+        }
+    }
+
+    /**
+     * Implements an entry set iterator that checks additions via setValue.
+     */
+    private final class EntrySetIterator extends AbstractIteratorDecorator&lt;Map.Entry&lt;K, V&gt;&gt; {
+
+        /** The parent map */
+        private final AbstractInputCheckedMapDecorator&lt;K, V&gt; parent;
+
+        protected EntrySetIterator(final Iterator&lt;Map.Entry&lt;K, V&gt;&gt; iterator,
+<span class="fc" id="L118">                                   final AbstractInputCheckedMapDecorator&lt;K, V&gt; parent) {</span>
+<span class="fc" id="L119">            super(iterator);</span>
+<span class="fc" id="L120">            this.parent = parent;</span>
+<span class="fc" id="L121">        }</span>
+
+        @Override
+        public Map.Entry&lt;K, V&gt; next() {
+<span class="fc" id="L125">            final Map.Entry&lt;K, V&gt; entry = getIterator().next();</span>
+<span class="fc" id="L126">            return new MapEntry(entry, parent);</span>
+        }
+    }
+
+    /**
+     * Implements a map entry that checks additions via setValue.
+     */
+    private final class MapEntry extends AbstractMapEntryDecorator&lt;K, V&gt; {
+
+        /** The parent map */
+        private final AbstractInputCheckedMapDecorator&lt;K, V&gt; parent;
+
+<span class="fc" id="L138">        protected MapEntry(final Map.Entry&lt;K, V&gt; entry, final AbstractInputCheckedMapDecorator&lt;K, V&gt; parent) {</span>
+<span class="fc" id="L139">            super(entry);</span>
+<span class="fc" id="L140">            this.parent = parent;</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public V setValue(V value) {
+<span class="fc" id="L145">            value = parent.checkSetValue(value);</span>
+<span class="fc" id="L146">            return getMapEntry().setValue(value);</span>
+        }
+    }
+
+    /**
+     * Constructor only used in deserialization, do not use otherwise.
+     */
+<span class="fc" id="L153">    protected AbstractInputCheckedMapDecorator() {</span>
+<span class="fc" id="L154">    }</span>
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param map  the map to decorate, must not be null
+     * @throws NullPointerException if map is null
+     */
+    protected AbstractInputCheckedMapDecorator(final Map&lt;K, V&gt; map) {
+<span class="fc" id="L163">        super(map);</span>
+<span class="fc" id="L164">    }</span>
+
+    /**
+     * Hook method called when a value is being set using {@code setValue}.
+     * &lt;p&gt;
+     * An implementation may validate the value and throw an exception
+     * or it may transform the value into another object.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This implementation returns the input value.
+     * &lt;/p&gt;
+     *
+     * @param value  the value to check
+     * @return the input value
+     * @throws UnsupportedOperationException if the map may not be changed by setValue
+     * @throws IllegalArgumentException if the specified value is invalid
+     * @throws ClassCastException if the class of the specified value is invalid
+     * @throws NullPointerException if the specified value is null and nulls are invalid
+     */
+    protected abstract V checkSetValue(V value);
+
+    @Override
+    public Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (isSetValueChecking()) {</span>
+<span class="fc" id="L188">            return new EntrySet(map.entrySet(), this);</span>
+        }
+<span class="fc" id="L190">        return map.entrySet();</span>
+    }
+
+    /**
+     * Hook method called to determine if {@code checkSetValue} has any effect.
+     * &lt;p&gt;
+     * An implementation should return false if the {@code checkSetValue} method
+     * has no effect as this optimizes the implementation.
+     * &lt;p&gt;
+     * This implementation returns {@code true}.
+     *
+     * @return true always
+     */
+    protected boolean isSetValueChecking() {
+<span class="nc" id="L204">        return true;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

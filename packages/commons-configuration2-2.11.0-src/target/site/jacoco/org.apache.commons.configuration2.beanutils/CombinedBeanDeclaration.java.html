@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CombinedBeanDeclaration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.beanutils</a> &gt; <span class="el_source">CombinedBeanDeclaration.java</span></div><h1>CombinedBeanDeclaration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.beanutils;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+
+/**
+ * &lt;p&gt;
+ * A special implementation of the {@code BeanDeclaration} interface which allows combining multiple
+ * {@code BeanDeclaration} objects.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this class can be used if a bean is defined using multiple sources. For instance, there can be one
+ * definition with default values and one with actual values; if actual values are provided, they are used; otherwise,
+ * the default values apply.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When constructing an instance an arbitrary number of child {@code BeanDeclaration} objects can be specified. The
+ * implementations of the {@code BeanDeclaration} methods implement a logical combination of the data returned by these
+ * child declarations. The order in which child declarations are added is relevant; first entries take precedence over
+ * later ones. The comments of the single methods explain in which way a combination of the child declarations is built.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class CombinedBeanDeclaration implements BeanDeclaration {
+
+    /** A list with the child declarations. */
+    private final ArrayList&lt;BeanDeclaration&gt; childDeclarations;
+
+    /**
+     * Constructs a new instance of {@code CombinedBeanDeclaration} and initializes it with the given child declarations.
+     *
+     * @param decl the child declarations
+     * @throws NullPointerException if the array with child declarations is &lt;b&gt;null&lt;/b&gt;
+     */
+<span class="fc" id="L58">    public CombinedBeanDeclaration(final BeanDeclaration... decl) {</span>
+<span class="fc" id="L59">        childDeclarations = new ArrayList&lt;&gt;(Arrays.asList(decl));</span>
+<span class="fc" id="L60">    }</span>
+
+    private &lt;T&gt; T findFirst(final Function&lt;? super BeanDeclaration, ? extends T&gt; mapper) {
+<span class="fc" id="L63">        return childDeclarations.stream().map(mapper).filter(Objects::nonNull).findFirst().orElse(null);</span>
+    }
+
+    private Map&lt;String, Object&gt; get(final Function&lt;? super BeanDeclaration, ? extends Map&lt;String, Object&gt;&gt; mapper) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L68">        final ArrayList&lt;BeanDeclaration&gt; temp = (ArrayList&lt;BeanDeclaration&gt;) childDeclarations.clone();</span>
+<span class="fc" id="L69">        Collections.reverse(temp);</span>
+<span class="fc" id="L70">        return temp.stream().map(mapper).filter(Objects::nonNull).collect(HashMap::new, HashMap::putAll, HashMap::putAll);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation iterates over the list of child declarations and asks them for the bean class name.
+     * The first non-&lt;b&gt;null&lt;/b&gt; value is returned. If none of the child declarations have a defined bean class, result is
+     * &lt;b&gt;null&lt;/b&gt;.
+     */
+    @Override
+    public String getBeanClassName() {
+<span class="fc" id="L80">        return findFirst(BeanDeclaration::getBeanClassName);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation iterates over the list of child declarations and asks them for a bean factory name.
+     * The first non-&lt;b&gt;null&lt;/b&gt; value is returned. If none of the child declarations have a defined bean factory name,
+     * result is &lt;b&gt;null&lt;/b&gt;.
+     */
+    @Override
+    public String getBeanFactoryName() {
+<span class="fc" id="L90">        return findFirst(BeanDeclaration::getBeanFactoryName);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation iterates over the list of child declarations and asks them for a bean factory
+     * parameter. The first non-&lt;b&gt;null&lt;/b&gt; value is returned. If none of the child declarations have a defined bean factory
+     * parameter, result is &lt;b&gt;null&lt;/b&gt;.
+     */
+    @Override
+    public Object getBeanFactoryParameter() {
+<span class="fc" id="L100">        return findFirst(BeanDeclaration::getBeanFactoryParameter);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates a union of the properties returned by all child declarations. If a property
+     * is defined in multiple child declarations, the declaration that comes before in the list of children takes
+     * precedence.
+     */
+    @Override
+    public Map&lt;String, Object&gt; getBeanProperties() {
+<span class="fc" id="L110">        return get(BeanDeclaration::getBeanProperties);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation iterates over the list of child declarations and asks them for constructor
+     * arguments. The first non-&lt;b&gt;null&lt;/b&gt; and non empty collection is returned. If none of the child declarations provide
+     * constructor arguments, result is an empty collection.
+     */
+    @Override
+    public Collection&lt;ConstructorArg&gt; getConstructorArgs() {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        for (final BeanDeclaration d : childDeclarations) {</span>
+<span class="fc" id="L121">            final Collection&lt;ConstructorArg&gt; args = d.getConstructorArgs();</span>
+<span class="fc bfc" id="L122" title="All 4 branches covered.">            if (args != null &amp;&amp; !args.isEmpty()) {</span>
+<span class="fc" id="L123">                return args;</span>
+            }
+<span class="fc" id="L125">        }</span>
+<span class="fc" id="L126">        return Collections.emptyList();</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation creates a union of the nested bean declarations returned by all child declarations.
+     * If a complex property is defined in multiple child declarations, the declaration that comes before in the list of
+     * children takes precedence.
+     */
+    @Override
+    public Map&lt;String, Object&gt; getNestedBeanDeclarations() {
+<span class="fc" id="L136">        return get(BeanDeclaration::getNestedBeanDeclarations);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

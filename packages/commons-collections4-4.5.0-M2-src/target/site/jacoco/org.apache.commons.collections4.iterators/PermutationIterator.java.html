@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PermutationIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.iterators</a> &gt; <span class="el_source">PermutationIterator.java</span></div><h1>PermutationIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.iterators;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/**
+ * This iterator creates permutations of an input collection, using the
+ * Steinhaus-Johnson-Trotter algorithm (also called plain changes).
+ * &lt;p&gt;
+ * The iterator will return exactly n! permutations of the input collection.
+ * The {@code remove()} operation is not supported, and will throw an
+ * {@code UnsupportedOperationException}.
+ * &lt;p&gt;
+ * NOTE: in case an empty collection is provided, the iterator will
+ * return exactly one empty list as result, as 0! = 1.
+ *
+ * @param &lt;E&gt;  the type of the objects being permuted
+ *
+ * @since 4.0
+ */
+public class PermutationIterator&lt;E&gt; implements Iterator&lt;List&lt;E&gt;&gt; {
+
+    /**
+     * Permutation is done on these keys to handle equal objects.
+     */
+    private final int[] keys;
+
+    /**
+     * Mapping between keys and objects.
+     */
+    private final Map&lt;Integer, E&gt; objectMap;
+
+    /**
+     * Direction table used in the algorithm:
+     * &lt;ul&gt;
+     *   &lt;li&gt;false is left&lt;/li&gt;
+     *   &lt;li&gt;true is right&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    private final boolean[] direction;
+
+    /**
+     * Next permutation to return. When a permutation is requested
+     * this instance is provided and the next one is computed.
+     */
+    private List&lt;E&gt; nextPermutation;
+
+    /**
+     * Standard constructor for this class.
+     * @param collection  the collection to generate permutations for
+     * @throws NullPointerException if coll is null
+     */
+<span class="fc" id="L76">    public PermutationIterator(final Collection&lt;? extends E&gt; collection) {</span>
+<span class="fc" id="L77">        Objects.requireNonNull(collection, &quot;collection&quot;);</span>
+<span class="fc" id="L78">        keys = new int[collection.size()];</span>
+<span class="fc" id="L79">        direction = new boolean[collection.size()];</span>
+<span class="fc" id="L80">        Arrays.fill(direction, false);</span>
+<span class="fc" id="L81">        int value = 1;</span>
+<span class="fc" id="L82">        objectMap = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        for (final E e : collection) {</span>
+<span class="fc" id="L84">            objectMap.put(Integer.valueOf(value), e);</span>
+<span class="fc" id="L85">            keys[value - 1] = value;</span>
+<span class="fc" id="L86">            value++;</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">        nextPermutation = new ArrayList&lt;&gt;(collection);</span>
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * Indicates if there are more permutation available.
+     * @return true if there are more permutations, otherwise false
+     */
+    @Override
+    public boolean hasNext() {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        return nextPermutation != null;</span>
+    }
+
+    /**
+     * Returns the next permutation of the input collection.
+     * @return a list of the permutator's elements representing a permutation
+     * @throws NoSuchElementException if there are no more permutations
+     */
+    @Override
+    public List&lt;E&gt; next() {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (!hasNext()) {</span>
+<span class="fc" id="L108">            throw new NoSuchElementException();</span>
+        }
+
+        // find the largest mobile integer k
+<span class="fc" id="L112">        int indexOfLargestMobileInteger = -1;</span>
+<span class="fc" id="L113">        int largestKey = -1;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (int i = 0; i &lt; keys.length; i++) {</span>
+<span class="fc bfc" id="L115" title="All 12 branches covered.">            if (direction[i] &amp;&amp; i &lt; keys.length - 1 &amp;&amp; keys[i] &gt; keys[i + 1] ||</span>
+                !direction[i] &amp;&amp; i &gt; 0 &amp;&amp; keys[i] &gt; keys[i - 1]) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                if (keys[i] &gt; largestKey) { // NOPMD</span>
+<span class="fc" id="L118">                    largestKey = keys[i];</span>
+<span class="fc" id="L119">                    indexOfLargestMobileInteger = i;</span>
+                }
+            }
+        }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (largestKey == -1) {</span>
+<span class="fc" id="L124">            final List&lt;E&gt; toReturn = nextPermutation;</span>
+<span class="fc" id="L125">            nextPermutation = null;</span>
+<span class="fc" id="L126">            return toReturn;</span>
+        }
+
+        // swap k and the adjacent integer it is looking at
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        final int offset = direction[indexOfLargestMobileInteger] ? 1 : -1;</span>
+<span class="fc" id="L131">        final int tmpKey = keys[indexOfLargestMobileInteger];</span>
+<span class="fc" id="L132">        keys[indexOfLargestMobileInteger] = keys[indexOfLargestMobileInteger + offset];</span>
+<span class="fc" id="L133">        keys[indexOfLargestMobileInteger + offset] = tmpKey;</span>
+<span class="fc" id="L134">        final boolean tmpDirection = direction[indexOfLargestMobileInteger];</span>
+<span class="fc" id="L135">        direction[indexOfLargestMobileInteger] = direction[indexOfLargestMobileInteger + offset];</span>
+<span class="fc" id="L136">        direction[indexOfLargestMobileInteger + offset] = tmpDirection;</span>
+
+        // reverse the direction of all integers larger than k and build the result
+<span class="fc" id="L139">        final List&lt;E&gt; nextP = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        for (int i = 0; i &lt; keys.length; i++) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (keys[i] &gt; largestKey) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                direction[i] = !direction[i];</span>
+            }
+<span class="fc" id="L144">            nextP.add(objectMap.get(Integer.valueOf(keys[i])));</span>
+        }
+<span class="fc" id="L146">        final List&lt;E&gt; result = nextPermutation;</span>
+<span class="fc" id="L147">        nextPermutation = nextP;</span>
+<span class="fc" id="L148">        return result;</span>
+    }
+
+    @Override
+    public void remove() {
+<span class="fc" id="L153">        throw new UnsupportedOperationException(&quot;remove() is not supported&quot;);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

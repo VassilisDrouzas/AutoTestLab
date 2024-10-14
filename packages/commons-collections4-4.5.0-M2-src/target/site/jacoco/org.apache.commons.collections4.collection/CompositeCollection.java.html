@@ -1,0 +1,510 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompositeCollection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.collection</a> &gt; <span class="el_source">CompositeCollection.java</span></div><h1>CompositeCollection.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.collection;
+
+import java.io.Serializable;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Predicate;
+
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.iterators.EmptyIterator;
+import org.apache.commons.collections4.iterators.IteratorChain;
+import org.apache.commons.collections4.list.UnmodifiableList;
+
+/**
+ * Decorates a collection of other collections to provide a single unified view.
+ * &lt;p&gt;
+ * Changes made to this collection will actually be made on the decorated collection.
+ * Add and remove operations require the use of a pluggable strategy. If no
+ * strategy is provided then add and remove are unsupported.
+ * &lt;/p&gt;
+ * @param &lt;E&gt; the type of the elements in the collection
+ * @since 3.0
+ */
+public class CompositeCollection&lt;E&gt; implements Collection&lt;E&gt;, Serializable {
+
+    /**
+     * Pluggable strategy to handle changes to the composite.
+     *
+     * @param &lt;E&gt; the element being held in the collection
+     */
+    public interface CollectionMutator&lt;E&gt; extends Serializable {
+
+        /**
+         * Called when an object is to be added to the composite.
+         *
+         * @param composite  the CompositeCollection being changed
+         * @param collections  all of the Collection instances in this CompositeCollection
+         * @param obj  the object being added
+         * @return true if the collection is changed
+         * @throws UnsupportedOperationException if add is unsupported
+         * @throws ClassCastException if the object cannot be added due to its type
+         * @throws NullPointerException if the object cannot be added because its null
+         * @throws IllegalArgumentException if the object cannot be added
+         */
+        boolean add(CompositeCollection&lt;E&gt; composite, List&lt;Collection&lt;E&gt;&gt; collections, E obj);
+
+        /**
+         * Called when a collection is to be added to the composite.
+         *
+         * @param composite  the CompositeCollection being changed
+         * @param collections  all of the Collection instances in this CompositeCollection
+         * @param coll  the collection being added
+         * @return true if the collection is changed
+         * @throws UnsupportedOperationException if add is unsupported
+         * @throws ClassCastException if the object cannot be added due to its type
+         * @throws NullPointerException if the object cannot be added because its null
+         * @throws IllegalArgumentException if the object cannot be added
+         */
+        boolean addAll(CompositeCollection&lt;E&gt; composite,
+                              List&lt;Collection&lt;E&gt;&gt; collections,
+                              Collection&lt;? extends E&gt; coll);
+
+        /**
+         * Called when an object is to be removed to the composite.
+         *
+         * @param composite  the CompositeCollection being changed
+         * @param collections  all of the Collection instances in this CompositeCollection
+         * @param obj  the object being removed
+         * @return true if the collection is changed
+         * @throws UnsupportedOperationException if removed is unsupported
+         * @throws ClassCastException if the object cannot be removed due to its type
+         * @throws NullPointerException if the object cannot be removed because its null
+         * @throws IllegalArgumentException if the object cannot be removed
+         */
+        boolean remove(CompositeCollection&lt;E&gt; composite,
+                              List&lt;Collection&lt;E&gt;&gt; collections,
+                              Object obj);
+
+    }
+
+    /** Serialization version */
+    private static final long serialVersionUID = 8417515734108306801L;
+
+    /** CollectionMutator to handle changes to the collection */
+    private CollectionMutator&lt;E&gt; mutator;
+
+    /** Collections in the composite */
+<span class="pc" id="L107">    private final List&lt;Collection&lt;E&gt;&gt; all = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Create an empty CompositeCollection.
+     */
+<span class="fc" id="L112">    public CompositeCollection() {</span>
+<span class="fc" id="L113">    }</span>
+
+    /**
+     * Create a Composite Collection with one collection.
+     *
+     * @param compositeCollection  the Collection to be appended to the composite
+     */
+<span class="nc" id="L120">    public CompositeCollection(final Collection&lt;E&gt; compositeCollection) {</span>
+<span class="nc" id="L121">        addComposited(compositeCollection);</span>
+<span class="nc" id="L122">    }</span>
+
+    /**
+     * Create a Composite Collection with an array of collections.
+     *
+     * @param compositeCollections  the collections to composite
+     */
+<span class="nc" id="L129">    public CompositeCollection(final Collection&lt;E&gt;... compositeCollections) {</span>
+<span class="nc" id="L130">        addComposited(compositeCollections);</span>
+<span class="nc" id="L131">    }</span>
+
+    /**
+     * Create a Composite Collection with two collections.
+     *
+     * @param compositeCollection1  the Collection to be appended to the composite
+     * @param compositeCollection2  the Collection to be appended to the composite
+     */
+    public CompositeCollection(final Collection&lt;E&gt; compositeCollection1,
+<span class="nc" id="L140">                               final Collection&lt;E&gt; compositeCollection2) {</span>
+<span class="nc" id="L141">        addComposited(compositeCollection1, compositeCollection2);</span>
+<span class="nc" id="L142">    }</span>
+
+    /**
+     * Adds an object to the collection, throwing UnsupportedOperationException
+     * unless a CollectionMutator strategy is specified.
+     *
+     * @param obj  the object to add
+     * @return {@code true} if the collection was modified
+     * @throws UnsupportedOperationException if CollectionMutator hasn't been set
+     * @throws UnsupportedOperationException if add is unsupported
+     * @throws ClassCastException if the object cannot be added due to its type
+     * @throws NullPointerException if the object cannot be added because its null
+     * @throws IllegalArgumentException if the object cannot be added
+     */
+    @Override
+    public boolean add(final E obj) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (mutator == null) {</span>
+<span class="fc" id="L159">            throw new UnsupportedOperationException(</span>
+                &quot;add() is not supported on CompositeCollection without a CollectionMutator strategy&quot;);
+        }
+<span class="fc" id="L162">        return mutator.add(this, all, obj);</span>
+    }
+
+    /**
+     * Adds a collection of elements to this collection, throwing
+     * UnsupportedOperationException unless a CollectionMutator strategy is specified.
+     *
+     * @param coll  the collection to add
+     * @return true if the collection was modified
+     * @throws UnsupportedOperationException if CollectionMutator hasn't been set
+     * @throws UnsupportedOperationException if add is unsupported
+     * @throws ClassCastException if the object cannot be added due to its type
+     * @throws NullPointerException if the object cannot be added because its null
+     * @throws IllegalArgumentException if the object cannot be added
+     */
+    @Override
+    public boolean addAll(final Collection&lt;? extends E&gt; coll) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (mutator == null) {</span>
+<span class="fc" id="L180">            throw new UnsupportedOperationException(</span>
+                &quot;addAll() is not supported on CompositeCollection without a CollectionMutator strategy&quot;);
+        }
+<span class="fc" id="L183">        return mutator.addAll(this, all, coll);</span>
+    }
+
+    /**
+     * Add these Collections to the list of collections in this composite
+     *
+     * @param compositeCollection  the Collection to be appended to the composite
+     */
+    public void addComposited(final Collection&lt;E&gt; compositeCollection) {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (compositeCollection != null) {</span>
+<span class="fc" id="L193">            all.add(compositeCollection);</span>
+        }
+<span class="fc" id="L195">    }</span>
+
+    /**
+     * Add these Collections to the list of collections in this composite
+     *
+     * @param compositeCollections  the Collections to be appended to the composite
+     */
+    public void addComposited(final Collection&lt;E&gt;... compositeCollections) {
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        for (final Collection&lt;E&gt; compositeCollection : compositeCollections) {</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">            if (compositeCollection != null) {</span>
+<span class="nc" id="L205">                all.add(compositeCollection);</span>
+            }
+        }
+<span class="fc" id="L208">    }</span>
+
+    /**
+     * Add these Collections to the list of collections in this composite
+     *
+     * @param compositeCollection1  the Collection to be appended to the composite
+     * @param compositeCollection2  the Collection to be appended to the composite
+     */
+    public void addComposited(final Collection&lt;E&gt; compositeCollection1,
+                              final Collection&lt;E&gt; compositeCollection2) {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (compositeCollection1 != null) {</span>
+<span class="fc" id="L219">            all.add(compositeCollection1);</span>
+        }
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (compositeCollection2 != null) {</span>
+<span class="fc" id="L222">            all.add(compositeCollection2);</span>
+        }
+<span class="fc" id="L224">    }</span>
+
+    /**
+     * Removes all of the elements from this collection .
+     * &lt;p&gt;
+     * This implementation calls {@code clear()} on each collection.
+     * &lt;/p&gt;
+     * @throws UnsupportedOperationException if clear is unsupported
+     */
+    @Override
+    public void clear() {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (final Collection&lt;E&gt; coll : all) {</span>
+<span class="fc" id="L236">            coll.clear();</span>
+<span class="fc" id="L237">        }</span>
+<span class="fc" id="L238">    }</span>
+
+    /**
+     * Checks whether this composite collection contains the object.
+     * &lt;p&gt;
+     * This implementation calls {@code contains()} on each collection.
+     * &lt;/p&gt;
+     * @param obj  the object to search for
+     * @return true if obj is contained in any of the contained collections
+     */
+    @Override
+    public boolean contains(final Object obj) {
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">            if (item.contains(obj)) {</span>
+<span class="fc" id="L252">                return true;</span>
+            }
+<span class="fc" id="L254">        }</span>
+<span class="fc" id="L255">        return false;</span>
+    }
+
+    /**
+     * Checks whether this composite contains all the elements in the specified collection.
+     * &lt;p&gt;
+     * This implementation calls {@code contains()} for each element in the
+     * specified collection.
+     * &lt;/p&gt;
+     * @param coll  the collection to check for
+     * @return true if all elements contained
+     */
+    @Override
+    public boolean containsAll(final Collection&lt;?&gt; coll) {
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (coll == null) {</span>
+<span class="fc" id="L270">            return false;</span>
+        }
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (final Object item : coll) {</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            if (!contains(item)) {</span>
+<span class="fc" id="L274">                return false;</span>
+            }
+<span class="fc" id="L276">        }</span>
+<span class="fc" id="L277">        return true;</span>
+    }
+
+    /**
+     * Gets the collections being decorated.
+     *
+     * @return Unmodifiable list of all collections in this composite.
+     */
+    public List&lt;Collection&lt;E&gt;&gt; getCollections() {
+<span class="nc" id="L286">        return UnmodifiableList.unmodifiableList(all);</span>
+    }
+
+    /**
+     * Gets the collection mutator to be used for this CompositeCollection.
+     * @return CollectionMutator&amp;lt;E&amp;gt;
+     */
+    protected CollectionMutator&lt;E&gt; getMutator() {
+<span class="nc" id="L294">        return mutator;</span>
+    }
+
+    /**
+     * Checks whether this composite collection is empty.
+     * &lt;p&gt;
+     * This implementation calls {@code isEmpty()} on each collection.
+     * &lt;/p&gt;
+     * @return true if all of the contained collections are empty
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            if (!item.isEmpty()) {</span>
+<span class="fc" id="L308">                return false;</span>
+            }
+<span class="fc" id="L310">        }</span>
+<span class="fc" id="L311">        return true;</span>
+    }
+
+    /**
+     * Gets an iterator over all the collections in this composite.
+     * &lt;p&gt;
+     * This implementation uses an {@code IteratorChain}.
+     * &lt;/p&gt;
+     * @return an {@code IteratorChain} instance which supports
+     *  {@code remove()}. Iteration occurs over contained collections in
+     *  the order they were added, but this behavior should not be relied upon.
+     * @see IteratorChain
+     */
+    @Override
+    public Iterator&lt;E&gt; iterator() {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (all.isEmpty()) {</span>
+<span class="fc" id="L327">            return EmptyIterator.&lt;E&gt;emptyIterator();</span>
+        }
+<span class="fc" id="L329">        final IteratorChain&lt;E&gt; chain = new IteratorChain&lt;&gt;();</span>
+<span class="fc" id="L330">        all.forEach(item -&gt; chain.addIterator(item.iterator()));</span>
+<span class="fc" id="L331">        return chain;</span>
+    }
+
+    /**
+     * Removes an object from the collection, throwing UnsupportedOperationException
+     * unless a CollectionMutator strategy is specified.
+     *
+     * @param obj  the object being removed
+     * @return true if the collection is changed
+     * @throws UnsupportedOperationException if removed is unsupported
+     * @throws ClassCastException if the object cannot be removed due to its type
+     * @throws NullPointerException if the object cannot be removed because its null
+     * @throws IllegalArgumentException if the object cannot be removed
+     */
+    @Override
+    public boolean remove(final Object obj) {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (mutator == null) {</span>
+<span class="fc" id="L348">            throw new UnsupportedOperationException(</span>
+                &quot;remove() is not supported on CompositeCollection without a CollectionMutator strategy&quot;);
+        }
+<span class="fc" id="L351">        return mutator.remove(this, all, obj);</span>
+    }
+
+    /**
+     * Removes the elements in the specified collection from this composite collection.
+     * &lt;p&gt;
+     * This implementation calls {@code removeAll} on each collection.
+     * &lt;/p&gt;
+     * @param coll  the collection to remove
+     * @return true if the collection was modified
+     * @throws UnsupportedOperationException if removeAll is unsupported
+     */
+    @Override
+    public boolean removeAll(final Collection&lt;?&gt; coll) {
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (CollectionUtils.isEmpty(coll)) {</span>
+<span class="fc" id="L366">            return false;</span>
+        }
+<span class="fc" id="L368">        boolean changed = false;</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L370">            changed |= item.removeAll(coll);</span>
+<span class="fc" id="L371">        }</span>
+<span class="fc" id="L372">        return changed;</span>
+    }
+
+    /**
+     * Removes a collection from the those being decorated in this composite.
+     *
+     * @param coll  collection to be removed
+     */
+    public void removeComposited(final Collection&lt;E&gt; coll) {
+<span class="fc" id="L381">        all.remove(coll);</span>
+<span class="fc" id="L382">    }</span>
+
+    /**
+     * Removes all of the elements of this collection that satisfy the given predicate from this composite collection.
+     * &lt;p&gt;
+     * This implementation calls {@code removeIf} on each collection.
+     * &lt;/p&gt;
+     * @param filter  a predicate which returns true for elements to be removed
+     * @return true if the collection was modified
+     * @throws UnsupportedOperationException if removeIf is unsupported
+     * @since 4.4
+     */
+    @Override
+    public boolean removeIf(final Predicate&lt;? super E&gt; filter) {
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (Objects.isNull(filter)) {</span>
+<span class="fc" id="L397">            return false;</span>
+        }
+<span class="fc" id="L399">        boolean changed = false;</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L401">            changed |= item.removeIf(filter);</span>
+<span class="fc" id="L402">        }</span>
+<span class="fc" id="L403">        return changed;</span>
+    }
+
+    /**
+     * Retains all the elements in the specified collection in this composite collection,
+     * removing all others.
+     * &lt;p&gt;
+     * This implementation calls {@code retainAll()} on each collection.
+     * &lt;/p&gt;
+     * @param coll  the collection to remove
+     * @return true if the collection was modified
+     * @throws UnsupportedOperationException if retainAll is unsupported
+     */
+    @Override
+    public boolean retainAll(final Collection&lt;?&gt; coll) {
+<span class="fc" id="L418">        boolean changed = false;</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        if (coll != null) {</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">            for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L421">                changed |= item.retainAll(coll);</span>
+<span class="fc" id="L422">            }</span>
+        }
+<span class="fc" id="L424">        return changed;</span>
+    }
+
+    /**
+     * Specify a CollectionMutator strategy instance to handle changes.
+     *
+     * @param mutator  the mutator to use
+     */
+    public void setMutator(final CollectionMutator&lt;E&gt; mutator) {
+<span class="fc" id="L433">        this.mutator = mutator;</span>
+<span class="fc" id="L434">    }</span>
+
+    /**
+     * Gets the size of this composite collection.
+     * &lt;p&gt;
+     * This implementation calls {@code size()} on each collection.
+     * &lt;/p&gt;
+     * @return total number of elements in all contained containers
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L445">        int size = 0;</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc" id="L447">            size += item.size();</span>
+<span class="fc" id="L448">        }</span>
+<span class="fc" id="L449">        return size;</span>
+    }
+
+    /**
+     * Returns an array containing all of the elements in this composite.
+     *
+     * @return an object array of all the elements in the collection
+     */
+    @Override
+    public Object[] toArray() {
+<span class="fc" id="L459">        final Object[] result = new Object[size()];</span>
+<span class="fc" id="L460">        int i = 0;</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">        for (final Iterator&lt;E&gt; it = iterator(); it.hasNext(); i++) {</span>
+<span class="fc" id="L462">            result[i] = it.next();</span>
+        }
+<span class="fc" id="L464">        return result;</span>
+    }
+
+    /**
+     * Returns an object array, populating the supplied array if possible.
+     * See {@code Collection} interface for full details.
+     *
+     * @param &lt;T&gt;  the type of the elements in the collection
+     * @param array  the array to use, populating if possible
+     * @return an array of all the elements in the collection
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T&gt; T[] toArray(final T[] array) {
+<span class="fc" id="L478">        final int size = size();</span>
+<span class="fc" id="L479">        Object[] result = null;</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        if (array.length &gt;= size) {</span>
+<span class="fc" id="L481">            result = array;</span>
+        } else {
+<span class="fc" id="L483">            result = (Object[]) Array.newInstance(array.getClass().getComponentType(), size);</span>
+        }
+
+<span class="fc" id="L486">        int offset = 0;</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">        for (final Collection&lt;E&gt; item : all) {</span>
+<span class="fc bfc" id="L488" title="All 2 branches covered.">            for (final E e : item) {</span>
+<span class="fc" id="L489">                result[offset++] = e;</span>
+<span class="fc" id="L490">            }</span>
+<span class="fc" id="L491">        }</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">        if (result.length &gt; size) {</span>
+<span class="fc" id="L493">            result[size] = null;</span>
+        }
+<span class="fc" id="L495">        return (T[]) result;</span>
+    }
+
+    /**
+     * Returns a new collection containing all of the elements
+     *
+     * @return A new ArrayList containing all of the elements in this composite.
+     *         The new collection is &lt;i&gt;not&lt;/i&gt; backed by this composite.
+     */
+    public Collection&lt;E&gt; toCollection() {
+<span class="fc" id="L505">        return new ArrayList&lt;&gt;(this);</span>
+    }
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

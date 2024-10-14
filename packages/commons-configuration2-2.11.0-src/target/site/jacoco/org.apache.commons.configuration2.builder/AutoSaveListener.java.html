@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AutoSaveListener.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder</a> &gt; <span class="el_source">AutoSaveListener.java</span></div><h1>AutoSaveListener.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder;
+
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.event.EventListener;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.configuration2.io.FileHandlerListenerAdapter;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+/**
+ * &lt;p&gt;
+ * A listener class implementing an auto save mechanism for file-based configurations.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Instances of this class are used by {@link FileBasedConfigurationBuilder} to save their managed configuration
+ * instances when they are changed. Objects are registered at {@code Configuration} objects as event listeners and thus
+ * can trigger save operations whenever a change event is received.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There is one complication however: Some configuration implementations fire change events during a load operation.
+ * Such events must be ignored to prevent corruption of the source file. This is achieved by monitoring the associated
+ * {@code FileHandler}: during load operations no auto-save is performed.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+final class AutoSaveListener extends FileHandlerListenerAdapter implements EventListener&lt;ConfigurationEvent&gt; {
+    /** The logger. */
+<span class="fc" id="L46">    private final Log log = LogFactory.getLog(getClass());</span>
+
+    /** The associated builder. */
+    private final FileBasedConfigurationBuilder&lt;?&gt; builder;
+
+    /** Stores the file handler monitored by this listener. */
+    private FileHandler handler;
+
+    /**
+     * A counter to keep track whether a load operation is currently in progress.
+     */
+    private int loading;
+
+    /**
+     * Creates a new instance of {@code AutoSaveListener} and initializes it with the associated builder.
+     *
+     * @param bldr the associated builder
+     */
+<span class="fc" id="L64">    public AutoSaveListener(final FileBasedConfigurationBuilder&lt;?&gt; bldr) {</span>
+<span class="fc" id="L65">        builder = bldr;</span>
+<span class="fc" id="L66">    }</span>
+
+    /**
+     * Checks whether an auto save operation has to be performed based on the passed in event and the current state of this
+     * object.
+     *
+     * @param event the configuration change event
+     * @return &lt;b&gt;true&lt;/b&gt; if a save operation should be performed, &lt;b&gt;false&lt;/b&gt; otherwise
+     */
+    private boolean autoSaveRequired(final ConfigurationEvent event) {
+<span class="fc bfc" id="L76" title="All 4 branches covered.">        return !event.isBeforeUpdate() &amp;&amp; !inLoadOperation();</span>
+    }
+
+    /**
+     * Returns a flag whether a load operation is currently in progress.
+     *
+     * @return a flag whether a load operation is in progress
+     */
+    private synchronized boolean inLoadOperation() {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        return loading &gt; 0;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation decrements the counter for load operations in progress.
+     */
+    @Override
+    public synchronized void loaded(final FileHandler handler) {
+<span class="fc" id="L93">        loading--;</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation increments the counter for load operations in progress.
+     */
+    @Override
+    public synchronized void loading(final FileHandler handler) {
+<span class="fc" id="L101">        loading++;</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation checks whether an auto-safe operation should be performed. This is the case if the
+     * event indicates that an update of the configuration has been performed and currently no load operation is in
+     * progress.
+     */
+    @Override
+    public void onEvent(final ConfigurationEvent event) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (autoSaveRequired(event)) {</span>
+            try {
+<span class="fc" id="L113">                builder.save();</span>
+<span class="fc" id="L114">            } catch (final ConfigurationException ce) {</span>
+<span class="fc" id="L115">                log.warn(&quot;Auto save failed!&quot;, ce);</span>
+<span class="fc" id="L116">            }</span>
+        }
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * Updates the {@code FileHandler}. This method is called by the builder when a new configuration instance was created
+     * which is associated with a new file handler. It updates the internal file handler reference and performs necessary
+     * listener registrations.
+     *
+     * @param fh the new {@code FileHandler} (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+    public synchronized void updateFileHandler(final FileHandler fh) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (handler != null) {</span>
+<span class="fc" id="L129">            handler.removeFileHandlerListener(this);</span>
+        }
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (fh != null) {</span>
+<span class="fc" id="L133">            fh.addFileHandlerListener(this);</span>
+        }
+<span class="fc" id="L135">        handler = fh;</span>
+<span class="fc" id="L136">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractBitwiseTrie.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.trie</a> &gt; <span class="el_source">AbstractBitwiseTrie.java</span></div><h1>AbstractBitwiseTrie.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.trie;
+
+import java.io.Serializable;
+import java.util.AbstractMap;
+import java.util.Map;
+import java.util.Objects;
+
+import org.apache.commons.collections4.Trie;
+
+/**
+ * This class provides some basic {@link Trie} functionality and
+ * utility methods for actual bitwise {@link Trie} implementations.
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 4.0
+ */
+public abstract class AbstractBitwiseTrie&lt;K, V&gt; extends AbstractMap&lt;K, V&gt;
+        implements Trie&lt;K, V&gt;, Serializable {
+
+    /**
+     * A basic implementation of {@link Entry}.
+     */
+    abstract static class BasicEntry&lt;K, V&gt; implements Map.Entry&lt;K, V&gt;, Serializable {
+
+        private static final long serialVersionUID = -944364551314110330L;
+
+        protected K key;
+
+        protected V value;
+
+<span class="nc" id="L48">        BasicEntry(final K key) {</span>
+<span class="nc" id="L49">            this.key = key;</span>
+<span class="nc" id="L50">        }</span>
+
+<span class="fc" id="L52">        BasicEntry(final K key, final V value) {</span>
+<span class="fc" id="L53">            this.key = key;</span>
+<span class="fc" id="L54">            this.value = value;</span>
+<span class="fc" id="L55">        }</span>
+
+        @Override
+        public boolean equals(final Object o) {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (o == this) {</span>
+<span class="fc" id="L60">                return true;</span>
+            }
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">            if (!(o instanceof Map.Entry)) {</span>
+<span class="nc" id="L63">                return false;</span>
+            }
+
+<span class="fc" id="L66">            final Map.Entry&lt;?, ?&gt; other = (Map.Entry&lt;?, ?&gt;) o;</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if (compare(key, other.getKey())</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                    &amp;&amp; compare(value, other.getValue())) {</span>
+<span class="fc" id="L69">                return true;</span>
+            }
+<span class="fc" id="L71">            return false;</span>
+        }
+
+        @Override
+        public K getKey() {
+<span class="fc" id="L76">            return key;</span>
+        }
+
+        @Override
+        public V getValue() {
+<span class="fc" id="L81">            return value;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            return (getKey() == null ? 0 : getKey().hashCode()) ^</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                   (getValue() == null ? 0 : getValue().hashCode());</span>
+        }
+
+        /**
+         * Replaces the current key and value with the provided key &amp;amp; value.
+         */
+        public V setKeyValue(final K key, final V value) {
+<span class="fc" id="L94">            this.key = key;</span>
+<span class="fc" id="L95">            return setValue(value);</span>
+        }
+
+        @Override
+        public V setValue(final V value) {
+<span class="fc" id="L100">            final V previous = this.value;</span>
+<span class="fc" id="L101">            this.value = value;</span>
+<span class="fc" id="L102">            return previous;</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc" id="L107">            return key + &quot;=&quot; + value;</span>
+        }
+    }
+
+    private static final long serialVersionUID = 5826987063535505652L;
+
+    /**
+     * Delegates to {@link Objects#equals(Object, Object)}.
+     */
+    static boolean compare(final Object a, final Object b) {
+<span class="fc" id="L117">        return Objects.equals(a, b);</span>
+    }
+
+    /**
+     * The {@link KeyAnalyzer} that's being used to build the PATRICIA {@link Trie}.
+     */
+    private final KeyAnalyzer&lt;? super K&gt; keyAnalyzer;
+
+    /**
+     * Constructs a new {@link Trie} using the given {@link KeyAnalyzer}.
+     *
+     * @param keyAnalyzer  the {@link KeyAnalyzer} to use
+     */
+<span class="fc" id="L130">    protected AbstractBitwiseTrie(final KeyAnalyzer&lt;? super K&gt; keyAnalyzer) {</span>
+<span class="fc" id="L131">        this.keyAnalyzer = Objects.requireNonNull(keyAnalyzer, &quot;keyAnalyzer&quot;);</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Utility method for calling {@link KeyAnalyzer#bitIndex(Object, int, int, Object, int, int)}.
+     */
+    final int bitIndex(final K key, final K foundKey) {
+<span class="fc" id="L138">        return keyAnalyzer.bitIndex(key, 0, lengthInBits(key), foundKey, 0, lengthInBits(foundKey));</span>
+    }
+
+    /**
+     * Returns the number of bits per element in the key
+     *
+     * @see KeyAnalyzer#bitsPerElement()
+     */
+    final int bitsPerElement() {
+<span class="nc" id="L147">        return keyAnalyzer.bitsPerElement();</span>
+    }
+
+    /**
+     * A utility method to cast keys. It actually doesn't cast anything. It's just fooling the compiler!
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    final K castKey(final Object key) {
+<span class="fc" id="L155">        return (K) key;</span>
+    }
+
+    /**
+     * A utility method for calling {@link KeyAnalyzer#compare(Object, Object)}
+     */
+    final boolean compareKeys(final K key, final K other) {
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (key == null) {</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            return other == null;</span>
+        }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (other == null) {</span>
+<span class="fc" id="L166">            return false;</span>
+        }
+
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        return keyAnalyzer.compare(key, other) == 0;</span>
+    }
+
+    /**
+     * Returns the {@link KeyAnalyzer} that constructed the {@link Trie}.
+     * @return the {@link KeyAnalyzer} used by this {@link Trie}
+     */
+    protected KeyAnalyzer&lt;? super K&gt; getKeyAnalyzer() {
+<span class="fc" id="L177">        return keyAnalyzer;</span>
+    }
+
+    /**
+     * Returns whether or not the given bit on the key is set or false if the key is null.
+     *
+     * @see KeyAnalyzer#isBitSet(Object, int, int)
+     */
+    final boolean isBitSet(final K key, final int bitIndex, final int lengthInBits) {
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        if (key == null) { // root's might be null!</span>
+<span class="nc" id="L187">            return false;</span>
+        }
+<span class="fc" id="L189">        return keyAnalyzer.isBitSet(key, bitIndex, lengthInBits);</span>
+    }
+
+    /**
+     * Returns the length of the given key in bits
+     *
+     * @see KeyAnalyzer#lengthInBits(Object)
+     */
+    final int lengthInBits(final K key) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (key == null) {</span>
+<span class="fc" id="L199">            return 0;</span>
+        }
+
+<span class="fc" id="L202">        return keyAnalyzer.lengthInBits(key);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L207">        final StringBuilder buffer = new StringBuilder();</span>
+<span class="fc" id="L208">        buffer.append(&quot;Trie[&quot;).append(size()).append(&quot;]={\n&quot;);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (final Map.Entry&lt;K, V&gt; entry : entrySet()) {</span>
+<span class="fc" id="L210">            buffer.append(&quot;  &quot;).append(entry).append(&quot;\n&quot;);</span>
+<span class="fc" id="L211">        }</span>
+<span class="fc" id="L212">        buffer.append(&quot;}\n&quot;);</span>
+<span class="fc" id="L213">        return buffer.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

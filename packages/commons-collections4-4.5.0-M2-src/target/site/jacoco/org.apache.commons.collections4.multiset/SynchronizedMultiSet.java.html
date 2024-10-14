@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SynchronizedMultiSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.multiset</a> &gt; <span class="el_source">SynchronizedMultiSet.java</span></div><h1>SynchronizedMultiSet.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.multiset;
+
+import java.util.Set;
+
+import org.apache.commons.collections4.MultiSet;
+import org.apache.commons.collections4.collection.SynchronizedCollection;
+
+/**
+ * Decorates another {@link MultiSet} to synchronize its behavior
+ * for a multithreaded environment.
+ * &lt;p&gt;
+ * Methods are synchronized, then forwarded to the decorated multiset.
+ * Iterators must be separately synchronized around the loop.
+ * &lt;/p&gt;
+ *
+ * @param &lt;E&gt; the type held in the multiset
+ * @since 4.1
+ */
+public class SynchronizedMultiSet&lt;E&gt; extends SynchronizedCollection&lt;E&gt; implements MultiSet&lt;E&gt; {
+
+    /**
+     * Synchronized Set for the MultiSet class.
+     */
+    static class SynchronizedSet&lt;T&gt; extends SynchronizedCollection&lt;T&gt; implements Set&lt;T&gt; {
+        /** Serialization version */
+        private static final long serialVersionUID = 20150629L;
+
+        /**
+         * Constructs a new instance.
+         * @param set  the set to decorate
+         * @param lock  the lock to use, shared with the multiset
+         */
+        SynchronizedSet(final Set&lt;T&gt; set, final Object lock) {
+<span class="fc" id="L50">            super(set, lock);</span>
+<span class="fc" id="L51">        }</span>
+    }
+
+    /** Serialization version */
+    private static final long serialVersionUID = 20150629L;
+
+    /**
+     * Factory method to create a synchronized multiset.
+     *
+     * @param &lt;E&gt; the type of the elements in the multiset
+     * @param multiset  the multiset to decorate, must not be null
+     * @return a new synchronized MultiSet
+     * @throws NullPointerException if multiset is null
+     */
+    public static &lt;E&gt; SynchronizedMultiSet&lt;E&gt; synchronizedMultiSet(final MultiSet&lt;E&gt; multiset) {
+<span class="fc" id="L66">        return new SynchronizedMultiSet&lt;&gt;(multiset);</span>
+    }
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param multiset  the multiset to decorate, must not be null
+     * @throws NullPointerException if multiset is null
+     */
+    protected SynchronizedMultiSet(final MultiSet&lt;E&gt; multiset) {
+<span class="fc" id="L76">        super(multiset);</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param multiset  the multiset to decorate, must not be null
+     * @param lock  the lock to use, must not be null
+     * @throws NullPointerException if multiset or lock is null
+     */
+    protected SynchronizedMultiSet(final MultiSet&lt;E&gt; multiset, final Object lock) {
+<span class="nc" id="L87">        super(multiset, lock);</span>
+<span class="nc" id="L88">    }</span>
+
+    @Override
+    public int add(final E object, final int count) {
+<span class="fc" id="L92">        synchronized (lock) {</span>
+<span class="fc" id="L93">            return decorated().add(object, count);</span>
+        }
+    }
+
+    /**
+     * Gets the multiset being decorated.
+     *
+     * @return the decorated multiset
+     */
+    @Override
+    protected MultiSet&lt;E&gt; decorated() {
+<span class="fc" id="L104">        return (MultiSet&lt;E&gt;) super.decorated();</span>
+    }
+
+    @Override
+    public Set&lt;Entry&lt;E&gt;&gt; entrySet() {
+<span class="fc" id="L109">        synchronized (lock) {</span>
+<span class="fc" id="L110">            final Set&lt;MultiSet.Entry&lt;E&gt;&gt; set = decorated().entrySet();</span>
+<span class="fc" id="L111">            return new SynchronizedSet&lt;&gt;(set, lock);</span>
+        }
+    }
+
+    @Override
+    public boolean equals(final Object object) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (object == this) {</span>
+<span class="fc" id="L118">            return true;</span>
+        }
+<span class="fc" id="L120">        synchronized (lock) {</span>
+<span class="fc" id="L121">            return decorated().equals(object);</span>
+        }
+    }
+
+    @Override
+    public int getCount(final Object object) {
+<span class="fc" id="L127">        synchronized (lock) {</span>
+<span class="fc" id="L128">            return decorated().getCount(object);</span>
+        }
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L134">        synchronized (lock) {</span>
+<span class="fc" id="L135">            return decorated().hashCode();</span>
+        }
+    }
+
+    @Override
+    public int remove(final Object object, final int count) {
+<span class="fc" id="L141">        synchronized (lock) {</span>
+<span class="fc" id="L142">            return decorated().remove(object, count);</span>
+        }
+    }
+
+    @Override
+    public int setCount(final E object, final int count) {
+<span class="nc" id="L148">        synchronized (lock) {</span>
+<span class="nc" id="L149">            return decorated().setCount(object, count);</span>
+        }
+    }
+
+    @Override
+    public Set&lt;E&gt; uniqueSet() {
+<span class="nc" id="L155">        synchronized (lock) {</span>
+<span class="nc" id="L156">            final Set&lt;E&gt; set = decorated().uniqueSet();</span>
+<span class="nc" id="L157">            return new SynchronizedSet&lt;&gt;(set, lock);</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

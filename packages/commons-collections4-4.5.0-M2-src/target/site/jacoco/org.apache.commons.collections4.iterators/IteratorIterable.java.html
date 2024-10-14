@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IteratorIterable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.iterators</a> &gt; <span class="el_source">IteratorIterable.java</span></div><h1>IteratorIterable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.iterators;
+
+import java.util.Iterator;
+
+import org.apache.commons.collections4.ResettableIterator;
+
+/**
+ * Adapter to make an {@link Iterator Iterator} instance appear to be an
+ * {@link Iterable Iterable} instance.  The iterable can be constructed in one
+ * of two variants:  single use, multiple use.
+ *
+ * &lt;p&gt;
+ * In the single use iterable case, the iterable is only usable for one
+ * iterative operation over the source iterator.  Subsequent iterative
+ * operations use the same, exhausted source iterator.  To create a single use
+ * iterable, construct a new {@link IteratorIterable} using a {@link Iterator}
+ * that is NOT a {@link ResettableIterator} iterator:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ *   Iterator&amp;lt;Integer&amp;gt; iterator = // some non-resettable iterator
+ *   Iterable&amp;lt;Integer&amp;gt; iterable = new IteratorIterable&amp;lt;Integer&amp;gt;(iterator);
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * In the multiple use iterable case, the iterable is usable for any number of
+ * iterative operations over the source iterator.  Of special note, even though
+ * the iterable supports multiple iterations, it does not support concurrent
+ * iterations. To implicitly create a multiple use iterable, construct a new
+ * {@link IteratorIterable} using a {@link ResettableIterator} iterator:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ *   Integer[] array = {Integer.valueOf(1),Integer.valueOf(2),Integer.valueOf(3)};
+ *   Iterator&amp;lt;Integer&amp;gt; iterator = IteratorUtils.arrayIterator(array); // a resettable iterator
+ *   Iterable&amp;lt;Integer&amp;gt; iterable = new IteratorIterable&amp;lt;Integer&amp;gt;(iterator);
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * A multiple use iterable can also be explicitly constructed using any
+ * {@link Iterator} and specifying {@code true} for the
+ * {@code multipleUse} flag:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ *   Iterator&amp;lt;Integer&amp;gt; iterator = // some non-resettable iterator
+ *   Iterable&amp;lt;Integer&amp;gt; iterable = new IteratorIterable&amp;lt;Integer&amp;gt;(iterator, true);
+ * &lt;/pre&gt;
+ *
+ * @param &lt;E&gt; the type of elements returned by this iterator.
+ * @since 4.0
+ */
+public class IteratorIterable&lt;E&gt; implements Iterable&lt;E&gt; {
+
+    /**
+     * Factory method to create an {@link Iterator Iterator} from another
+     * iterator over objects of a different subtype.
+     */
+    private static &lt;E&gt; Iterator&lt;E&gt; createTypesafeIterator(final Iterator&lt;? extends E&gt; iterator) {
+<span class="fc" id="L76">        return new Iterator&lt;E&gt;() {</span>
+            @Override
+            public boolean hasNext() {
+<span class="fc" id="L79">                return iterator.hasNext();</span>
+            }
+
+            @Override
+            public E next() {
+<span class="fc" id="L84">                return iterator.next();</span>
+            }
+
+            @Override
+            public void remove() {
+<span class="nc" id="L89">                iterator.remove();</span>
+<span class="nc" id="L90">            }</span>
+        };
+    }
+
+    /** The iterator being adapted into an iterable. */
+    private final Iterator&lt;? extends E&gt; iterator;
+
+    /** The iterator parameterized as the {@link #iterator()} return type. */
+    private final Iterator&lt;E&gt; typeSafeIterator;
+
+    /**
+     * Constructs a new {@code IteratorIterable} that will use the given
+     * iterator.
+     *
+     * @param iterator the iterator to use.
+     */
+    public IteratorIterable(final Iterator&lt;? extends E&gt; iterator) {
+<span class="fc" id="L107">        this(iterator, false);</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Constructs a new {@code IteratorIterable} that will use the given
+     * iterator.
+     *
+     * @param iterator the iterator to use.
+     * @param multipleUse {@code true} if the new iterable can be used in multiple iterations
+     */
+<span class="fc" id="L117">    public IteratorIterable(final Iterator&lt;? extends E&gt; iterator, final boolean multipleUse) {</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        if (multipleUse &amp;&amp; !(iterator instanceof ResettableIterator)) {</span>
+<span class="fc" id="L119">            this.iterator = new ListIteratorWrapper&lt;&gt;(iterator);</span>
+        } else {
+<span class="fc" id="L121">            this.iterator = iterator;</span>
+        }
+<span class="fc" id="L123">        this.typeSafeIterator = createTypesafeIterator(this.iterator);</span>
+<span class="fc" id="L124">    }</span>
+
+    /**
+     * Gets the iterator wrapped by this iterable.
+     *
+     * @return the iterator
+     */
+    @Override
+    public Iterator&lt;E&gt; iterator() {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (iterator instanceof ResettableIterator) {</span>
+<span class="fc" id="L134">            ((ResettableIterator&lt;? extends E&gt;) iterator).reset();</span>
+        }
+<span class="fc" id="L136">        return typeSafeIterator;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

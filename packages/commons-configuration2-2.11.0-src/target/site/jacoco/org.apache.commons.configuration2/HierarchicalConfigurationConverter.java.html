@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HierarchicalConfigurationConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">HierarchicalConfigurationConverter.java</span></div><h1>HierarchicalConfigurationConverter.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.configuration2.tree.DefaultConfigurationKey;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngine;
+
+/**
+ * &lt;p&gt;
+ * A base class for converters that transform a normal configuration object into a hierarchical configuration.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class provides a default mechanism for iterating over the keys in a configuration and to throw corresponding
+ * element start and end events. By handling these events a hierarchy can be constructed that is equivalent to the keys
+ * in the original configuration.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Concrete sub classes will implement event handlers that generate SAX events for XML processing or construct a
+ * {@code HierarchicalConfiguration} root node. All in all with this class it is possible to treat a default
+ * configuration as if it was a hierarchical configuration, which can be sometimes useful.
+ * &lt;/p&gt;
+ *
+ * @see HierarchicalConfiguration
+ */
+<span class="fc" id="L48">abstract class HierarchicalConfigurationConverter {</span>
+    /**
+     * Fires all necessary element end events for the specified keys. This method is called for each key obtained from the
+     * configuration to be converted. It calculates the common part of the actual and the last processed key and thus
+     * determines how many elements must be closed.
+     *
+     * @param keyLast the last processed key
+     * @param keyAct the actual key
+     */
+    protected void closeElements(final DefaultConfigurationKey keyLast, final DefaultConfigurationKey keyAct) {
+<span class="fc" id="L58">        final DefaultConfigurationKey keyDiff = keyAct.differenceKey(keyLast);</span>
+<span class="fc" id="L59">        final Iterator&lt;String&gt; it = reverseIterator(keyDiff);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (it.hasNext()) {</span>
+            // Skip first because it has already been closed by fireValue()
+<span class="fc" id="L62">            it.next();</span>
+        }
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L66">            elementEnd(it.next());</span>
+        }
+<span class="fc" id="L68">    }</span>
+
+    /**
+     * An event handler method that is called when an element ends. For each call of {@code elementStart()} there will be a
+     * corresponding call of this method. Concrete sub classes must implement it to perform a proper event handling.
+     *
+     * @param name the name of the ending element
+     */
+    protected abstract void elementEnd(String name);
+
+    /**
+     * An event handler method that is called when an element starts. Concrete sub classes must implement it to perform a
+     * proper event handling.
+     *
+     * @param name the name of the new element
+     * @param value the element's value; can be &lt;b&gt;null&lt;/b&gt; if the element does not have any value
+     */
+    protected abstract void elementStart(String name, Object value);
+
+    /**
+     * Fires all necessary element start events with the actual element values. This method is called for each key obtained
+     * from the configuration to be processed with the last part of the key as argument. The value can be either a single
+     * value or a collection.
+     *
+     * @param name the name of the actual element
+     * @param value the element's value
+     */
+    protected void fireValue(final String name, final Object value) {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (value instanceof Collection) {</span>
+<span class="fc" id="L97">            final Collection&lt;?&gt; valueCol = (Collection&lt;?&gt;) value;</span>
+<span class="fc" id="L98">            valueCol.forEach(v -&gt; fireValue(name, v));</span>
+<span class="fc" id="L99">        } else {</span>
+<span class="fc" id="L100">            elementStart(name, value);</span>
+<span class="fc" id="L101">            elementEnd(name);</span>
+        }
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Fires all necessary element start events for the specified key. This method is called for each key obtained from the
+     * configuration to be converted. It ensures that all elements &quot;between&quot; the last key and the actual key are opened and
+     * their values are set.
+     *
+     * @param keyLast the last processed key
+     * @param keyAct the actual key
+     * @param config the configuration to process
+     * @param keySet the set with the processed keys
+     * @return the name of the last element on the path
+     */
+    protected String openElements(final DefaultConfigurationKey keyLast, final DefaultConfigurationKey keyAct, final Configuration config,
+        final Set&lt;String&gt; keySet) {
+<span class="fc" id="L118">        final DefaultConfigurationKey.KeyIterator it = keyLast.differenceKey(keyAct).iterator();</span>
+<span class="fc" id="L119">        final DefaultConfigurationKey k = keyLast.commonKey(keyAct);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        for (it.nextKey(); it.hasNext(); it.nextKey()) {</span>
+<span class="fc" id="L121">            k.append(it.currentKey(true));</span>
+<span class="fc" id="L122">            elementStart(it.currentKey(true), config.getProperty(k.toString()));</span>
+<span class="fc" id="L123">            keySet.add(k.toString());</span>
+        }
+<span class="fc" id="L125">        return it.currentKey(true);</span>
+    }
+
+    /**
+     * Processes the specified configuration object. This method implements the iteration over the configuration's keys. All
+     * defined keys are translated into a set of element start and end events represented by calls to the
+     * {@code elementStart()} and {@code elementEnd()} methods.
+     *
+     * @param config the configuration to be processed
+     */
+    public void process(final Configuration config) {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (config != null) {</span>
+<span class="fc" id="L137">            final DefaultExpressionEngine exprEngine = DefaultExpressionEngine.INSTANCE;</span>
+<span class="fc" id="L138">            final DefaultConfigurationKey keyEmpty = new DefaultConfigurationKey(exprEngine);</span>
+<span class="fc" id="L139">            DefaultConfigurationKey keyLast = keyEmpty;</span>
+<span class="fc" id="L140">            final Set&lt;String&gt; keySet = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            for (final Iterator&lt;String&gt; it = config.getKeys(); it.hasNext();) {</span>
+<span class="fc" id="L143">                final String key = it.next();</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                if (keySet.contains(key)) {</span>
+                    // this key has already been processed by openElements
+<span class="nc" id="L146">                    continue;</span>
+                }
+<span class="fc" id="L148">                final DefaultConfigurationKey keyAct = new DefaultConfigurationKey(exprEngine, key);</span>
+<span class="fc" id="L149">                closeElements(keyLast, keyAct);</span>
+<span class="fc" id="L150">                final String elem = openElements(keyLast, keyAct, config, keySet);</span>
+<span class="fc" id="L151">                fireValue(elem, config.getProperty(key));</span>
+<span class="fc" id="L152">                keyLast = keyAct;</span>
+<span class="fc" id="L153">            }</span>
+
+            // close all open
+<span class="fc" id="L156">            closeElements(keyLast, keyEmpty);</span>
+        }
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Helper method for determining a reverse iterator for the specified key. This implementation returns an iterator that
+     * returns the parts of the given key in reverse order, ignoring indices.
+     *
+     * @param key the key
+     * @return a reverse iterator for the parts of this key
+     */
+    protected Iterator&lt;String&gt; reverseIterator(final DefaultConfigurationKey key) {
+<span class="fc" id="L168">        final List&lt;String&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (final DefaultConfigurationKey.KeyIterator it = key.iterator(); it.hasNext();) {</span>
+<span class="fc" id="L170">            list.add(it.nextKey());</span>
+        }
+<span class="fc" id="L172">        Collections.reverse(list);</span>
+<span class="fc" id="L173">        return list.iterator();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

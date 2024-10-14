@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventListenerList.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.event</a> &gt; <span class="el_source">EventListenerList.java</span></div><h1>EventListenerList.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.event;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/**
+ * &lt;p&gt;
+ * A class for managing event listeners for an event source.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class allows registering an arbitrary number of event listeners for specific event types. Event types are
+ * specified using the {@link EventType} class. Due to the type parameters in method signatures, it is guaranteed that
+ * registered listeners are compatible with the event types they are interested in.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are also methods for firing events. Here all registered listeners are determined - based on the event type
+ * specified at registration time - which should receive the event to be fired. So basically, the event type at listener
+ * registration serves as a filter criterion. Because of the hierarchical nature of event types it can be determined in
+ * a fine-grained way which events are propagated to which listeners. It is also possible to register a listener
+ * multiple times for different event types.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: This class is thread-safe.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class EventListenerList {
+    /**
+     * A special {@code Iterator} implementation used by the {@code getEventListenerIterator()} method. This iterator
+     * returns only listeners compatible with a specified event type. It has a convenience method for invoking the current
+     * listener in the iteration with an event.
+     *
+     * @param &lt;T&gt; the event type
+     */
+    public static final class EventListenerIterator&lt;T extends Event&gt; implements Iterator&lt;EventListener&lt;? super T&gt;&gt; {
+        /** The underlying iterator. */
+        private final Iterator&lt;EventListenerRegistrationData&lt;?&gt;&gt; underlyingIterator;
+
+        /** The base event type. */
+        private final EventType&lt;T&gt; baseEventType;
+
+        /** The set with accepted event types. */
+        private final Set&lt;EventType&lt;?&gt;&gt; acceptedTypes;
+
+        /** The next element in the iteration. */
+        private EventListener&lt;? super T&gt; nextElement;
+
+<span class="fc" id="L72">        private EventListenerIterator(final Iterator&lt;EventListenerRegistrationData&lt;?&gt;&gt; it, final EventType&lt;T&gt; base) {</span>
+<span class="fc" id="L73">            underlyingIterator = it;</span>
+<span class="fc" id="L74">            baseEventType = base;</span>
+<span class="fc" id="L75">            acceptedTypes = EventType.fetchSuperEventTypes(base);</span>
+<span class="fc" id="L76">            initNextElement();</span>
+<span class="fc" id="L77">        }</span>
+
+        /**
+         * Extracts the listener from the given data object and performs a cast to the target type. This is safe because it has
+         * been checked before that the type is compatible.
+         *
+         * @param regData the data object
+         * @return the extracted listener
+         */
+        @SuppressWarnings(&quot;unchecked&quot;)
+        private EventListener&lt;? super T&gt; castListener(final EventListenerRegistrationData&lt;?&gt; regData) {
+            @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L89">            final EventListener listener = regData.getListener();</span>
+<span class="fc" id="L90">            return listener;</span>
+        }
+
+        @Override
+        public boolean hasNext() {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            return nextElement != null;</span>
+        }
+
+        /**
+         * Determines the next element in the iteration.
+         */
+        private void initNextElement() {
+<span class="fc" id="L102">            nextElement = null;</span>
+<span class="fc bfc" id="L103" title="All 4 branches covered.">            while (underlyingIterator.hasNext() &amp;&amp; nextElement == null) {</span>
+<span class="fc" id="L104">                final EventListenerRegistrationData&lt;?&gt; regData = underlyingIterator.next();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                if (acceptedTypes.contains(regData.getEventType())) {</span>
+<span class="fc" id="L106">                    nextElement = castListener(regData);</span>
+                }
+<span class="fc" id="L108">            }</span>
+<span class="fc" id="L109">        }</span>
+
+        /**
+         * Obtains the next event listener in this iteration and invokes it with the given event object.
+         *
+         * @param event the event object
+         * @throws NoSuchElementException if iteration is at its end
+         */
+        public void invokeNext(final Event event) {
+<span class="fc" id="L118">            validateEvent(event);</span>
+<span class="fc" id="L119">            invokeNextListenerUnchecked(event);</span>
+<span class="fc" id="L120">        }</span>
+
+        /**
+         * Invokes the next event listener in the iteration without doing a validity check on the event. This method is called
+         * internally to avoid duplicate event checks.
+         *
+         * @param event the event object
+         */
+        private void invokeNextListenerUnchecked(final Event event) {
+<span class="fc" id="L129">            callListener(next(), event);</span>
+<span class="fc" id="L130">        }</span>
+
+        @Override
+        public EventListener&lt;? super T&gt; next() {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (nextElement == null) {</span>
+<span class="fc" id="L135">                throw new NoSuchElementException(&quot;No more event listeners!&quot;);</span>
+            }
+
+<span class="fc" id="L138">            final EventListener&lt;? super T&gt; result = nextElement;</span>
+<span class="fc" id="L139">            initNextElement();</span>
+<span class="fc" id="L140">            return result;</span>
+        }
+
+        /**
+         * {@inheritDoc} This implementation always throws an exception. Removing elements is not supported.
+         */
+        @Override
+        public void remove() {
+<span class="fc" id="L148">            throw new UnsupportedOperationException(&quot;Removing elements is not supported!&quot;);</span>
+        }
+
+        /**
+         * Checks whether the specified event can be passed to an event listener in this iteration. This check is done via the
+         * hierarchy of event types.
+         *
+         * @param event the event object
+         * @throws IllegalArgumentException if the event is invalid
+         */
+        private void validateEvent(final Event event) {
+<span class="fc bfc" id="L159" title="All 4 branches covered.">            if (event == null || !EventType.fetchSuperEventTypes(event.getEventType()).contains(baseEventType)) {</span>
+<span class="fc" id="L160">                throw new IllegalArgumentException(&quot;Event incompatible with listener iteration: &quot; + event);</span>
+            }
+<span class="fc" id="L162">        }</span>
+    }
+
+    /**
+     * Helper method for calling an event listener with an event. We have to operate on raw types to make this code compile.
+     * However, this is safe because of the way the listeners have been registered and associated with event types - so it
+     * is ensured that the event is compatible with the listener.
+     *
+     * @param listener the event listener to be called
+     * @param event the event to be fired
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private static void callListener(final EventListener&lt;?&gt; listener, final Event event) {
+        @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L176">        final EventListener rowListener = listener;</span>
+<span class="fc" id="L177">        rowListener.onEvent(event);</span>
+<span class="fc" id="L178">    }</span>
+
+    /** A list with the listeners added to this object. */
+    private final List&lt;EventListenerRegistrationData&lt;?&gt;&gt; listeners;
+
+    /**
+     * Creates a new instance of {@code EventListenerList}.
+     */
+<span class="fc" id="L186">    public EventListenerList() {</span>
+<span class="fc" id="L187">        listeners = new CopyOnWriteArrayList&lt;&gt;();</span>
+<span class="fc" id="L188">    }</span>
+
+    /**
+     * Adds all event listener registrations stored in the specified {@code EventListenerList} to this list.
+     *
+     * @param c the list to be copied (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if the list to be copied is &lt;b&gt;null&lt;/b&gt;
+     */
+    public void addAll(final EventListenerList c) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (c == null) {</span>
+<span class="fc" id="L198">            throw new IllegalArgumentException(&quot;List to be copied must not be null!&quot;);</span>
+        }
+<span class="fc" id="L200">        c.getRegistrations().forEach(this::addEventListener);</span>
+<span class="fc" id="L201">    }</span>
+
+    /**
+     * Adds the specified listener registration data object to the internal list of event listeners. This is an alternative
+     * registration method; the event type and the listener are passed as a single data object.
+     *
+     * @param regData the registration data object (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param &lt;T&gt; the type of events processed by this listener
+     * @throws IllegalArgumentException if the registration data object is &lt;b&gt;null&lt;/b&gt;
+     */
+    public &lt;T extends Event&gt; void addEventListener(final EventListenerRegistrationData&lt;T&gt; regData) {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (regData == null) {</span>
+<span class="fc" id="L213">            throw new IllegalArgumentException(&quot;EventListenerRegistrationData must not be null!&quot;);</span>
+        }
+<span class="fc" id="L215">        listeners.add(regData);</span>
+<span class="fc" id="L216">    }</span>
+
+    /**
+     * Adds an event listener for the specified event type. This listener is notified about events of this type and all its
+     * sub types.
+     *
+     * @param type the event type (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param listener the listener to be registered (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param &lt;T&gt; the type of events processed by this listener
+     * @throws IllegalArgumentException if a required parameter is &lt;b&gt;null&lt;/b&gt;
+     */
+    public &lt;T extends Event&gt; void addEventListener(final EventType&lt;T&gt; type, final EventListener&lt;? super T&gt; listener) {
+<span class="fc" id="L228">        listeners.add(new EventListenerRegistrationData&lt;&gt;(type, listener));</span>
+<span class="fc" id="L229">    }</span>
+
+    /**
+     * Removes all event listeners registered at this object.
+     */
+    public void clear() {
+<span class="fc" id="L235">        listeners.clear();</span>
+<span class="fc" id="L236">    }</span>
+
+    /**
+     * Fires an event to all registered listeners matching the event type.
+     *
+     * @param event the event to be fired (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if the event is &lt;b&gt;null&lt;/b&gt;
+     */
+    public void fire(final Event event) {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (event == null) {</span>
+<span class="fc" id="L246">            throw new IllegalArgumentException(&quot;Event to be fired must not be null!&quot;);</span>
+        }
+
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        for (final EventListenerIterator&lt;? extends Event&gt; iterator = getEventListenerIterator(event.getEventType()); iterator.hasNext();) {</span>
+<span class="fc" id="L250">            iterator.invokeNextListenerUnchecked(event);</span>
+        }
+<span class="fc" id="L252">    }</span>
+
+    /**
+     * Gets a specialized iterator for obtaining all event listeners stored in this list which are compatible with the
+     * specified event type.
+     *
+     * @param eventType the event type object
+     * @param &lt;T&gt; the event type
+     * @return an {@code Iterator} with the selected event listeners
+     */
+    public &lt;T extends Event&gt; EventListenerIterator&lt;T&gt; getEventListenerIterator(final EventType&lt;T&gt; eventType) {
+<span class="fc" id="L263">        return new EventListenerIterator&lt;&gt;(listeners.iterator(), eventType);</span>
+    }
+
+    /**
+     * Gets an {@code Iterable} allowing access to all event listeners stored in this list which are compatible with the
+     * specified event type.
+     *
+     * @param eventType the event type object
+     * @param &lt;T&gt; the event type
+     * @return an {@code Iterable} with the selected event listeners
+     */
+    public &lt;T extends Event&gt; Iterable&lt;EventListener&lt;? super T&gt;&gt; getEventListeners(final EventType&lt;T&gt; eventType) {
+<span class="fc" id="L275">        return () -&gt; getEventListenerIterator(eventType);</span>
+    }
+
+    /**
+     * Gets an (unmodifiable) list with registration information about all event listeners registered at this object.
+     *
+     * @return a list with event listener registration information
+     */
+    public List&lt;EventListenerRegistrationData&lt;?&gt;&gt; getRegistrations() {
+<span class="fc" id="L284">        return Collections.unmodifiableList(listeners);</span>
+    }
+
+    /**
+     * Gets a list with {@code EventListenerRegistrationData} objects for all event listener registrations of the
+     * specified event type or an event type having this type as super type (directly or indirectly). Note that this is the
+     * opposite direction than querying event types for firing events: in this case event listener registrations are
+     * searched which are super event types from a given type. This method in contrast returns event listener registrations
+     * for listeners that extend a given super type.
+     *
+     * @param eventType the event type object
+     * @param &lt;T&gt; the event type
+     * @return a list with the matching event listener registration objects
+     */
+    public &lt;T extends Event&gt; List&lt;EventListenerRegistrationData&lt;? extends T&gt;&gt; getRegistrationsForSuperType(final EventType&lt;T&gt; eventType) {
+<span class="fc" id="L299">        final Map&lt;EventType&lt;?&gt;, Set&lt;EventType&lt;?&gt;&gt;&gt; superTypes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L300">        final List&lt;EventListenerRegistrationData&lt;? extends T&gt;&gt; results = new LinkedList&lt;&gt;();</span>
+
+<span class="fc" id="L302">        listeners.forEach(reg -&gt; {</span>
+<span class="fc" id="L303">            final Set&lt;EventType&lt;?&gt;&gt; base = superTypes.computeIfAbsent(reg.getEventType(), EventType::fetchSuperEventTypes);</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">            if (base.contains(eventType)) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;)
+                final
+                // This is safe because we just did a check
+<span class="fc" id="L308">                EventListenerRegistrationData&lt;? extends T&gt; result = (EventListenerRegistrationData&lt;? extends T&gt;) reg;</span>
+<span class="fc" id="L309">                results.add(result);</span>
+            }
+<span class="fc" id="L311">        });</span>
+
+<span class="fc" id="L313">        return results;</span>
+    }
+
+    /**
+     * Removes the event listener registration defined by the passed in data object. This is an alternative method for
+     * removing a listener which expects the event type and the listener in a single data object.
+     *
+     * @param regData the registration data object
+     * @param &lt;T&gt; the type of events processed by this listener
+     * @return a flag whether a listener registration was removed
+     * @see #removeEventListener(EventType, EventListener)
+     */
+    public &lt;T extends Event&gt; boolean removeEventListener(final EventListenerRegistrationData&lt;T&gt; regData) {
+<span class="fc" id="L326">        return listeners.remove(regData);</span>
+    }
+
+    /**
+     * Removes the event listener registration for the given event type and listener. An event listener instance may be
+     * registered multiple times for different event types. Therefore, when removing a listener the event type of the
+     * registration in question has to be specified. The return value indicates whether a registration was removed. A value
+     * of &lt;b&gt;false&lt;/b&gt; means that no such combination of event type and listener was found.
+     *
+     * @param eventType the event type
+     * @param listener the event listener to be removed
+     * @param &lt;T&gt; the type of events processed by this listener
+     * @return a flag whether a listener registration was removed
+     */
+    public &lt;T extends Event&gt; boolean removeEventListener(final EventType&lt;T&gt; eventType, final EventListener&lt;? super T&gt; listener) {
+<span class="fc bfc" id="L341" title="All 6 branches covered.">        return !(listener == null || eventType == null) &amp;&amp; removeEventListener(new EventListenerRegistrationData&lt;&gt;(eventType, listener));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

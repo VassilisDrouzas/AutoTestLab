@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataSourceXAConnectionFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2.managed</a> &gt; <span class="el_source">DataSourceXAConnectionFactory.java</span></div><h1>DataSourceXAConnectionFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2.managed;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Objects;
+
+import javax.sql.ConnectionEvent;
+import javax.sql.ConnectionEventListener;
+import javax.sql.PooledConnection;
+import javax.sql.XAConnection;
+import javax.sql.XADataSource;
+import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
+import javax.transaction.xa.XAResource;
+
+import org.apache.commons.dbcp2.Utils;
+
+/**
+ * An implementation of XAConnectionFactory which uses a real XADataSource to obtain connections and XAResources.
+ *
+ * @since 2.0
+ */
+public class DataSourceXAConnectionFactory implements XAConnectionFactory {
+
+    private static final class XAConnectionEventListener implements ConnectionEventListener {
+        @Override
+        public void connectionClosed(final ConnectionEvent event) {
+<span class="fc" id="L44">            final PooledConnection pc = (PooledConnection) event.getSource();</span>
+<span class="fc" id="L45">            pc.removeConnectionEventListener(this);</span>
+            try {
+<span class="fc" id="L47">                pc.close();</span>
+<span class="nc" id="L48">            } catch (final SQLException e) {</span>
+<span class="nc" id="L49">                System.err.println(&quot;Failed to close XAConnection&quot;);</span>
+<span class="nc" id="L50">                e.printStackTrace();</span>
+<span class="fc" id="L51">            }</span>
+<span class="fc" id="L52">        }</span>
+
+        @Override
+        public void connectionErrorOccurred(final ConnectionEvent event) {
+<span class="nc" id="L56">            connectionClosed(event);</span>
+<span class="nc" id="L57">        }</span>
+    }
+
+    private final TransactionRegistry transactionRegistry;
+    private final XADataSource xaDataSource;
+    private String userName;
+    private char[] userPassword;
+
+    /**
+     * Creates an DataSourceXAConnectionFactory which uses the specified XADataSource to create database connections.
+     * The connections are enlisted into transactions using the specified transaction manager.
+     *
+     * @param transactionManager
+     *            the transaction manager in which connections will be enlisted
+     * @param xaDataSource
+     *            the data source from which connections will be retrieved
+     * @since 2.6.0
+     */
+    public DataSourceXAConnectionFactory(final TransactionManager transactionManager, final XADataSource xaDataSource) {
+<span class="fc" id="L76">        this(transactionManager, xaDataSource, null, (char[]) null, null);</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Creates an DataSourceXAConnectionFactory which uses the specified XADataSource to create database connections.
+     * The connections are enlisted into transactions using the specified transaction manager.
+     *
+     * @param transactionManager
+     *            the transaction manager in which connections will be enlisted
+     * @param xaDataSource
+     *            the data source from which connections will be retrieved
+     * @param userName
+     *            the user name used for authenticating new connections or null for unauthenticated
+     * @param userPassword
+     *            the password used for authenticating new connections
+     */
+    public DataSourceXAConnectionFactory(final TransactionManager transactionManager, final XADataSource xaDataSource,
+            final String userName, final char[] userPassword) {
+<span class="nc" id="L94">        this(transactionManager, xaDataSource, userName, userPassword, null);</span>
+<span class="nc" id="L95">    }</span>
+
+    /**
+     * Creates an DataSourceXAConnectionFactory which uses the specified XADataSource to create database connections.
+     * The connections are enlisted into transactions using the specified transaction manager.
+     *
+     * @param transactionManager
+     *            the transaction manager in which connections will be enlisted
+     * @param xaDataSource
+     *            the data source from which connections will be retrieved
+     * @param userName
+     *            the user name used for authenticating new connections or null for unauthenticated
+     * @param userPassword
+     *            the password used for authenticating new connections
+     * @param transactionSynchronizationRegistry
+     *            register with this TransactionSynchronizationRegistry
+     * @since 2.6.0
+     */
+    public DataSourceXAConnectionFactory(final TransactionManager transactionManager, final XADataSource xaDataSource,
+<span class="fc" id="L114">            final String userName, final char[] userPassword, final TransactionSynchronizationRegistry transactionSynchronizationRegistry) {</span>
+<span class="fc" id="L115">        Objects.requireNonNull(transactionManager, &quot;transactionManager&quot;);</span>
+<span class="fc" id="L116">        Objects.requireNonNull(xaDataSource, &quot;xaDataSource&quot;);</span>
+        // We do allow the transactionSynchronizationRegistry to be null for non-app server environments
+<span class="fc" id="L118">        this.transactionRegistry = new TransactionRegistry(transactionManager, transactionSynchronizationRegistry);</span>
+<span class="fc" id="L119">        this.xaDataSource = xaDataSource;</span>
+<span class="fc" id="L120">        this.userName = userName;</span>
+<span class="fc" id="L121">        this.userPassword = Utils.clone(userPassword);</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Creates an DataSourceXAConnectionFactory which uses the specified XADataSource to create database connections.
+     * The connections are enlisted into transactions using the specified transaction manager.
+     *
+     * @param transactionManager
+     *            the transaction manager in which connections will be enlisted
+     * @param xaDataSource
+     *            the data source from which connections will be retrieved
+     * @param userName
+     *            the user name used for authenticating new connections or null for unauthenticated
+     * @param userPassword
+     *            the password used for authenticating new connections
+     */
+    public DataSourceXAConnectionFactory(final TransactionManager transactionManager, final XADataSource xaDataSource,
+            final String userName, final String userPassword) {
+<span class="nc" id="L139">        this(transactionManager, xaDataSource, userName, Utils.toCharArray(userPassword), null);</span>
+<span class="nc" id="L140">    }</span>
+
+    /**
+     * Creates an DataSourceXAConnectionFactory which uses the specified XADataSource to create database connections.
+     * The connections are enlisted into transactions using the specified transaction manager.
+     *
+     * @param transactionManager
+     *            the transaction manager in which connections will be enlisted
+     * @param xaDataSource
+     *            the data source from which connections will be retrieved
+     * @param transactionSynchronizationRegistry
+     *            register with this TransactionSynchronizationRegistry
+     */
+    public DataSourceXAConnectionFactory(final TransactionManager transactionManager, final XADataSource xaDataSource, final TransactionSynchronizationRegistry transactionSynchronizationRegistry) {
+<span class="fc" id="L154">        this(transactionManager, xaDataSource, null, (char[]) null, transactionSynchronizationRegistry);</span>
+<span class="fc" id="L155">    }</span>
+
+    @Override
+    public Connection createConnection() throws SQLException {
+        // create a new XAConnection
+        final XAConnection xaConnection;
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (userName == null) {</span>
+<span class="fc" id="L162">            xaConnection = xaDataSource.getXAConnection();</span>
+        } else {
+<span class="nc" id="L164">            xaConnection = xaDataSource.getXAConnection(userName, Utils.toString(userPassword));</span>
+        }
+        // get the real connection and XAResource from the connection
+<span class="fc" id="L167">        final Connection connection = xaConnection.getConnection();</span>
+<span class="fc" id="L168">        final XAResource xaResource = xaConnection.getXAResource();</span>
+        // register the XA resource for the connection
+<span class="fc" id="L170">        transactionRegistry.registerConnection(connection, xaResource);</span>
+        // The Connection we're returning is a handle on the XAConnection.
+        // When the pool calling us closes the Connection, we need to
+        // also close the XAConnection that holds the physical connection.
+<span class="fc" id="L174">        xaConnection.addConnectionEventListener(new XAConnectionEventListener());</span>
+
+<span class="fc" id="L176">        return connection;</span>
+    }
+
+    @Override
+    public TransactionRegistry getTransactionRegistry() {
+<span class="fc" id="L181">        return transactionRegistry;</span>
+    }
+
+    /**
+     * Gets the user name used to authenticate new connections.
+     *
+     * @return the user name or null if unauthenticated connections are used
+     * @deprecated Use {@link #getUserName()}.
+     */
+    @Deprecated
+    public String getUsername() {
+<span class="nc" id="L192">        return userName;</span>
+    }
+
+    /**
+     * Gets the user name used to authenticate new connections.
+     *
+     * @return the user name or null if unauthenticated connections are used
+     * @since 2.6.0
+     */
+    public String getUserName() {
+<span class="nc" id="L202">        return userName;</span>
+    }
+
+    /**
+     * Gets the user password.
+     *
+     * @return the user password.
+     */
+    public char[] getUserPassword() {
+<span class="nc" id="L211">        return Utils.clone(userPassword);</span>
+    }
+
+    /**
+     * Gets the XA data source.
+     *
+     * @return the XA data source.
+     */
+    public XADataSource getXaDataSource() {
+<span class="nc" id="L220">        return xaDataSource;</span>
+    }
+
+    /**
+     * Sets the password used to authenticate new connections.
+     *
+     * @param userPassword
+     *            the password used for authenticating the connection or null for unauthenticated.
+     * @since 2.4.0
+     */
+    public void setPassword(final char[] userPassword) {
+<span class="nc" id="L231">        this.userPassword = Utils.clone(userPassword);</span>
+<span class="nc" id="L232">    }</span>
+
+    /**
+     * Sets the password used to authenticate new connections.
+     *
+     * @param userPassword
+     *            the password used for authenticating the connection or null for unauthenticated
+     */
+    public void setPassword(final String userPassword) {
+<span class="nc" id="L241">        this.userPassword = Utils.toCharArray(userPassword);</span>
+<span class="nc" id="L242">    }</span>
+
+    /**
+     * Sets the user name used to authenticate new connections.
+     *
+     * @param userName
+     *            the user name used for authenticating the connection or null for unauthenticated
+     */
+    public void setUsername(final String userName) {
+<span class="nc" id="L251">        this.userName = userName;</span>
+<span class="nc" id="L252">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

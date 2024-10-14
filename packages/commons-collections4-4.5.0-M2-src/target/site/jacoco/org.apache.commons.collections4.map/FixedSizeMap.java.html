@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FixedSizeMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">FixedSizeMap.java</span></div><h1>FixedSizeMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.collections4.BoundedMap;
+import org.apache.commons.collections4.collection.UnmodifiableCollection;
+import org.apache.commons.collections4.set.UnmodifiableSet;
+
+/**
+ * Decorates another {@code Map} to fix the size, preventing add/remove.
+ * &lt;p&gt;
+ * Any action that would change the size of the map is disallowed.
+ * The put method is allowed to change the value associated with an existing
+ * key however.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If trying to remove or clear the map, an UnsupportedOperationException is
+ * thrown. If trying to put a new mapping into the map, an
+ * IllegalArgumentException is thrown. This is because the put method can
+ * succeed if the mapping's key already exists in the map, so the put method
+ * is not always unsupported.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that FixedSizeMap is not synchronized and is not thread-safe.&lt;/strong&gt;
+ * If you wish to use this map from multiple threads concurrently, you must use
+ * appropriate synchronization. The simplest approach is to wrap this map
+ * using {@link java.util.Collections#synchronizedMap(Map)}. This class may throw
+ * exceptions when accessed by concurrent threads without synchronization.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is Serializable from Commons Collections 3.1.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.0
+ */
+public class FixedSizeMap&lt;K, V&gt;
+        extends AbstractMapDecorator&lt;K, V&gt;
+        implements BoundedMap&lt;K, V&gt;, Serializable {
+
+    /** Serialization version */
+    private static final long serialVersionUID = 7450927208116179316L;
+
+    /**
+     * Factory method to create a fixed size map.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param map  the map to decorate, must not be null
+     * @return a new fixed size map
+     * @throws NullPointerException if map is null
+     * @since 4.0
+     */
+    public static &lt;K, V&gt; FixedSizeMap&lt;K, V&gt; fixedSizeMap(final Map&lt;K, V&gt; map) {
+<span class="fc" id="L78">        return new FixedSizeMap&lt;&gt;(map);</span>
+    }
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param map  the map to decorate, must not be null
+     * @throws NullPointerException if map is null
+     */
+    protected FixedSizeMap(final Map&lt;K, V&gt; map) {
+<span class="fc" id="L88">        super(map);</span>
+<span class="fc" id="L89">    }</span>
+
+    @Override
+    public void clear() {
+<span class="fc" id="L93">        throw new UnsupportedOperationException(&quot;Map is fixed size&quot;);</span>
+    }
+
+    @Override
+    public Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc" id="L98">        final Set&lt;Map.Entry&lt;K, V&gt;&gt; set = map.entrySet();</span>
+        // unmodifiable set will still allow modification via Map.Entry objects
+<span class="fc" id="L100">        return UnmodifiableSet.unmodifiableSet(set);</span>
+    }
+
+    @Override
+    public boolean isFull() {
+<span class="nc" id="L105">        return true;</span>
+    }
+
+    @Override
+    public Set&lt;K&gt; keySet() {
+<span class="fc" id="L110">        final Set&lt;K&gt; set = map.keySet();</span>
+<span class="fc" id="L111">        return UnmodifiableSet.unmodifiableSet(set);</span>
+    }
+
+    @Override
+    public int maxSize() {
+<span class="nc" id="L116">        return size();</span>
+    }
+
+    @Override
+    public V put(final K key, final V value) {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (!map.containsKey(key)) {</span>
+<span class="fc" id="L122">            throw new IllegalArgumentException(&quot;Cannot put new key/value pair - Map is fixed size&quot;);</span>
+        }
+<span class="fc" id="L124">        return map.put(key, value);</span>
+    }
+
+    @Override
+    public void putAll(final Map&lt;? extends K, ? extends V&gt; mapToCopy) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        for (final K key : mapToCopy.keySet()) {</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">            if (!containsKey(key)) {</span>
+<span class="nc" id="L131">                throw new IllegalArgumentException(&quot;Cannot put new key/value pair - Map is fixed size&quot;);</span>
+            }
+<span class="nc" id="L133">        }</span>
+<span class="nc" id="L134">        map.putAll(mapToCopy);</span>
+<span class="nc" id="L135">    }</span>
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in  the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     * @since 3.1
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // (1) should only fail if input stream is incorrect
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L147">        in.defaultReadObject();</span>
+<span class="fc" id="L148">        map = (Map&lt;K, V&gt;) in.readObject(); // (1)</span>
+<span class="fc" id="L149">    }</span>
+
+    @Override
+    public V remove(final Object key) {
+<span class="fc" id="L153">        throw new UnsupportedOperationException(&quot;Map is fixed size&quot;);</span>
+    }
+
+    @Override
+    public Collection&lt;V&gt; values() {
+<span class="fc" id="L158">        final Collection&lt;V&gt; coll = map.values();</span>
+<span class="fc" id="L159">        return UnmodifiableCollection.unmodifiableCollection(coll);</span>
+    }
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out  the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     * @since 3.1
+     */
+    private void writeObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L170">        out.defaultWriteObject();</span>
+<span class="fc" id="L171">        out.writeObject(map);</span>
+<span class="fc" id="L172">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

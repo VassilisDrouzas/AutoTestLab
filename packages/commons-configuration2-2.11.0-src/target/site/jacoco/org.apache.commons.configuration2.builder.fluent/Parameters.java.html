@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Parameters.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder.fluent</a> &gt; <span class="el_source">Parameters.java</span></div><h1>Parameters.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder.fluent;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+
+import org.apache.commons.configuration2.builder.BasicBuilderParameters;
+import org.apache.commons.configuration2.builder.BuilderParameters;
+import org.apache.commons.configuration2.builder.DatabaseBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.DefaultParametersHandler;
+import org.apache.commons.configuration2.builder.DefaultParametersManager;
+import org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.HierarchicalBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.INIBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.JndiBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.PropertiesBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.XMLBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.combined.CombinedBuilderParametersImpl;
+import org.apache.commons.configuration2.builder.combined.MultiFileBuilderParametersImpl;
+
+//@formatter:off
+/**
+ * A convenience class for creating parameter objects for initializing configuration builder objects.
+ * &lt;p&gt;
+ * For setting initialization properties of new configuration objects, a number of specialized parameter classes exists.
+ * These classes use inheritance to organize the properties they support in a logic way. For instance, parameters for
+ * file-based configurations also support the basic properties common to all configuration implementations, parameters
+ * for XML configurations also include file-based and basic properties, etc.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When constructing a configuration builder, an easy-to-use fluent API is desired to define specific properties for the
+ * configuration to be created. However, the inheritance structure of the parameter classes makes it surprisingly
+ * difficult to provide such an API. This class comes to rescue by defining a set of methods for the creation of
+ * interface-based parameter objects offering a truly fluent API. The methods provided can be called directly when
+ * setting up a configuration builder as shown in the following example code fragment:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * Parameters params = new Parameters();
+ * configurationBuilder.configure(params.fileBased()
+ *   .setThrowExceptionOnMissing(true)
+ *   .setEncoding(&amp;quot;UTF-8&amp;quot;)
+ *   .setListDelimiter('#')
+ *   .setFileName(&amp;quot;test.xml&amp;quot;));
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * Using this class it is not only possible to create new parameters objects but also to initialize the newly created
+ * objects with default values. This is via the associated {@link DefaultParametersManager} object. Such an object can
+ * be passed to the constructor, or a new (uninitialized) instance is created. There are convenience methods for
+ * interacting with the associated {@code DefaultParametersManager}, namely to register or remove
+ * {@link DefaultParametersHandler} objects. On all newly created parameters objects the handlers registered at the
+ * associated {@code DefaultParametersHandler} are automatically applied.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: This class is thread-safe.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+//@formatter:off
+public final class Parameters {
+    /**
+     * A specialized {@code InvocationHandler} implementation which maps the methods of a parameters interface to an
+     * implementation of the corresponding property interfaces. The parameters interface is a union of multiple property
+     * interfaces. The wrapped object implements all of these, but not the union interface. Therefore, a reflection-based
+     * approach is required. A special handling is required for the method of the {@code BuilderParameters} interface
+     * because here no fluent return value is used.
+     */
+    private static final class ParametersIfcInvocationHandler implements InvocationHandler {
+        /**
+         * Checks whether the specified method belongs to an interface which requires fluent result values.
+         *
+         * @param method the method to be checked
+         * @return a flag whether the method's result should be handled as a fluent result value
+         */
+        private static boolean isFluentResult(final Method method) {
+<span class="fc" id="L92">            final Class&lt;?&gt; declaringClass = method.getDeclaringClass();</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">            return declaringClass.isInterface() &amp;&amp; !declaringClass.equals(BuilderParameters.class);</span>
+        }
+
+        /** The target object of reflection calls. */
+        private final Object target;
+
+        /**
+         * Creates a new instance of {@code ParametersIfcInvocationHandler} and sets the wrapped parameters object.
+         *
+         * @param targetObj the target object for reflection calls
+         */
+<span class="fc" id="L104">        public ParametersIfcInvocationHandler(final Object targetObj) {</span>
+<span class="fc" id="L105">            target = targetObj;</span>
+<span class="fc" id="L106">        }</span>
+
+        /**
+         * {@inheritDoc} This implementation delegates method invocations to the target object and handles the return value
+         * correctly.
+         */
+        @Override
+        public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+<span class="fc" id="L114">            final Object result = method.invoke(target, args);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            return isFluentResult(method) ? proxy : result;</span>
+        }
+    }
+
+    /** The manager for default handlers. */
+    private final DefaultParametersManager defaultParametersManager;
+
+    /**
+     * Creates a new instance of {@code Parameters}. A new, uninitialized {@link DefaultParametersManager} is created.
+     */
+    public Parameters() {
+<span class="fc" id="L126">        this(null);</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Creates a new instance of {@code Parameters} and initializes it with the given {@code DefaultParametersManager}.
+     * Because {@code DefaultParametersManager} is thread-safe, it makes sense to share a single instance between multiple
+     * {@code Parameters} objects; that way the same initialization is performed on newly created parameters objects.
+     *
+     * @param manager the {@code DefaultParametersHandler} (may be &lt;b&gt;null&lt;/b&gt;, then a new default instance is created)
+     */
+<span class="fc" id="L136">    public Parameters(final DefaultParametersManager manager) {</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        defaultParametersManager = manager != null ? manager : new DefaultParametersManager();</span>
+<span class="fc" id="L138">    }</span>
+
+    /**
+     * Creates a new instance of a parameters object for basic configuration properties.
+     *
+     * @return the new parameters object
+     */
+    public BasicBuilderParameters basic() {
+<span class="fc" id="L146">        return new BasicBuilderParameters();</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for combined configuration builder properties.
+     *
+     * @return the new parameters object
+     */
+    public CombinedBuilderParameters combined() {
+<span class="fc" id="L155">        return createParametersProxy(new CombinedBuilderParametersImpl(), CombinedBuilderParameters.class);</span>
+    }
+
+    /**
+     * Creates a proxy object for a given parameters interface based on the given implementation object. The newly created
+     * object is initialized with default values if there are matching {@link DefaultParametersHandler} objects.
+     *
+     * @param &lt;T&gt; the type of the parameters interface
+     * @param target the implementing target object
+     * @param ifcClass the interface class
+     * @param superIfcs an array with additional interface classes to be implemented
+     * @return the proxy object
+     */
+    private &lt;T&gt; T createParametersProxy(final Object target, final Class&lt;T&gt; ifcClass, final Class&lt;?&gt;... superIfcs) {
+<span class="fc" id="L169">        final Class&lt;?&gt;[] ifcClasses = new Class&lt;?&gt;[1 + superIfcs.length];</span>
+<span class="fc" id="L170">        ifcClasses[0] = ifcClass;</span>
+<span class="fc" id="L171">        System.arraycopy(superIfcs, 0, ifcClasses, 1, superIfcs.length);</span>
+<span class="fc" id="L172">        final Object obj = Proxy.newProxyInstance(Parameters.class.getClassLoader(), ifcClasses, new ParametersIfcInvocationHandler(target));</span>
+<span class="fc" id="L173">        getDefaultParametersManager().initializeParameters((BuilderParameters) obj);</span>
+<span class="fc" id="L174">        return ifcClass.cast(obj);</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for database configurations.
+     *
+     * @return the new parameters object
+     */
+    public DatabaseBuilderParameters database() {
+<span class="fc" id="L183">        return createParametersProxy(new DatabaseBuilderParametersImpl(), DatabaseBuilderParameters.class);</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for file-based configuration properties.
+     *
+     * @return the new parameters object
+     */
+    public FileBasedBuilderParameters fileBased() {
+<span class="fc" id="L192">        return createParametersProxy(new FileBasedBuilderParametersImpl(), FileBasedBuilderParameters.class);</span>
+    }
+
+    /**
+     * Gets the {@code DefaultParametersManager} associated with this object.
+     *
+     * @return the {@code DefaultParametersManager}
+     */
+    public DefaultParametersManager getDefaultParametersManager() {
+<span class="fc" id="L201">        return defaultParametersManager;</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for hierarchical configurations.
+     *
+     * @return the new parameters object
+     */
+    public HierarchicalBuilderParameters hierarchical() {
+<span class="fc" id="L210">        return createParametersProxy(new HierarchicalBuilderParametersImpl(), HierarchicalBuilderParameters.class, FileBasedBuilderParameters.class);</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for INI configurations.
+     *
+     * @return the new parameters object
+     */
+    public INIBuilderParameters ini() {
+<span class="fc" id="L219">        return createParametersProxy(new INIBuilderParametersImpl(), INIBuilderParameters.class, FileBasedBuilderParameters.class,</span>
+            HierarchicalBuilderParameters.class);
+    }
+
+    /**
+     * Creates a new instance of a parameters object for JNDI configurations.
+     *
+     * @return the new parameters object
+     */
+    public JndiBuilderParameters jndi() {
+<span class="fc" id="L229">        return createParametersProxy(new JndiBuilderParametersImpl(), JndiBuilderParameters.class);</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for a builder for multiple file-based configurations.
+     *
+     * @return the new parameters object
+     */
+    public MultiFileBuilderParameters multiFile() {
+<span class="fc" id="L238">        return createParametersProxy(new MultiFileBuilderParametersImpl(), MultiFileBuilderParameters.class);</span>
+    }
+
+    /**
+     * Creates a new instance of a parameters object for properties configurations.
+     *
+     * @return the new parameters object
+     */
+    public PropertiesBuilderParameters properties() {
+<span class="fc" id="L247">        return createParametersProxy(new PropertiesBuilderParametersImpl(), PropertiesBuilderParameters.class, FileBasedBuilderParameters.class);</span>
+    }
+
+    /**
+     * Registers the specified {@code DefaultParametersHandler} object for the given parameters class. This is a convenience
+     * method which just delegates to the associated {@code DefaultParametersManager}.
+     *
+     * @param &lt;T&gt; the type of the parameters supported by this handler
+     * @param paramsClass the parameters class supported by this handler (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param handler the {@code DefaultParametersHandler} to be registered (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if a required parameter is missing
+     * @see DefaultParametersManager
+     */
+    public &lt;T&gt; void registerDefaultsHandler(final Class&lt;T&gt; paramsClass, final DefaultParametersHandler&lt;? super T&gt; handler) {
+<span class="fc" id="L261">        getDefaultParametersManager().registerDefaultsHandler(paramsClass, handler);</span>
+<span class="fc" id="L262">    }</span>
+
+    /**
+     * Registers the specified {@code DefaultParametersHandler} object for the given parameters class and start class in the
+     * inheritance hierarchy. This is a convenience method which just delegates to the associated
+     * {@code DefaultParametersManager}.
+     *
+     * @param &lt;T&gt; the type of the parameters supported by this handler
+     * @param paramsClass the parameters class supported by this handler (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param handler the {@code DefaultParametersHandler} to be registered (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param startClass an optional start class in the hierarchy of parameter objects for which this handler should be
+     *        applied
+     * @throws IllegalArgumentException if a required parameter is missing
+     */
+    public &lt;T&gt; void registerDefaultsHandler(final Class&lt;T&gt; paramsClass, final DefaultParametersHandler&lt;? super T&gt; handler, final Class&lt;?&gt; startClass) {
+<span class="fc" id="L277">        getDefaultParametersManager().registerDefaultsHandler(paramsClass, handler, startClass);</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Creates a new instance of a parameters object for XML configurations.
+     *
+     * @return the new parameters object
+     */
+    public XMLBuilderParameters xml() {
+<span class="fc" id="L286">        return createParametersProxy(new XMLBuilderParametersImpl(), XMLBuilderParameters.class, FileBasedBuilderParameters.class,</span>
+            HierarchicalBuilderParameters.class);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

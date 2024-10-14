@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CombinedReloadingController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.reloading</a> &gt; <span class="el_source">CombinedReloadingController.java</span></div><h1>CombinedReloadingController.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.reloading;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Objects;
+
+/**
+ * &lt;p&gt;
+ * A specialized {@code ReloadingController} implementation which manages an arbitrary number of other
+ * {@code ReloadingController} objects.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class can be used to handle multiple simple controllers for reload operations as a single object. As a usage
+ * example consider a combined configuration containing a number of configuration sources of which some support
+ * reloading. In this scenario all {@code ReloadingController} instances for the reloading-enabled sources can be added
+ * to a {@code CombinedReloadingController}. Then by triggering the combined controller a reload check is performed on
+ * all child sources.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is a typical implementation of the &lt;em&gt;composite pattern&lt;/em&gt;. An instance is constructed with a
+ * collection of sub {@code ReloadingController} objects. Its operations are implemented by delegating to all child
+ * controllers.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class expects the managed controller objects to be passed to the constructor. From this list a defensive copy is
+ * created so that it cannot be changed later on. Derived classes can override the {@link #getSubControllers()} method
+ * if they need another way to handle child controllers (e.g. a more dynamic way). However, they are then responsible to
+ * ensure a safe access to this list in a multi-threaded environment.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class CombinedReloadingController extends ReloadingController {
+    /**
+     * A specialized implementation of the {@code ReloadingDetector} interface which operates on a collection of
+     * {@code ReloadingController} objects. The methods defined by the {@code ReloadingDetector} interface are delegated to
+     * the managed controllers.
+     */
+    private static final class MultiReloadingControllerDetector implements ReloadingDetector {
+        /** A reference to the owning combined reloading controller. */
+        private final CombinedReloadingController owner;
+
+        /**
+         * Creates a new instance of {@code MultiReloadingControllerDetector}.
+         *
+         * @param owner the owner
+         */
+<span class="fc" id="L65">        public MultiReloadingControllerDetector(final CombinedReloadingController owner) {</span>
+<span class="fc" id="L66">            this.owner = owner;</span>
+<span class="fc" id="L67">        }</span>
+
+        /**
+         * {@inheritDoc} This implementation delegates to the managed controllers. For all of them the
+         * {@code checkForReloading()} method is called, giving them the chance to trigger a reload if necessary. If one of
+         * these calls returns &lt;b&gt;true&lt;/b&gt;, the result of this method is &lt;b&gt;true&lt;/b&gt;, otherwise &lt;b&gt;false&lt;/b&gt;.
+         */
+        @Override
+        public boolean isReloadingRequired() {
+<span class="pc" id="L76">            return owner.getSubControllers().stream().reduce(false, (b, rc) -&gt; b | rc.checkForReloading(null), (t, u) -&gt; t | u);</span>
+        }
+
+        /**
+         * {@inheritDoc} This implementation resets the reloading state on all managed controllers.
+         */
+        @Override
+        public void reloadingPerformed() {
+<span class="fc" id="L84">            owner.getSubControllers().forEach(ReloadingController::resetReloadingState);</span>
+<span class="fc" id="L85">        }</span>
+    }
+
+    /** Constant for a dummy reloading detector. */
+<span class="fc" id="L89">    private static final ReloadingDetector DUMMY = new MultiReloadingControllerDetector(null);</span>
+
+    /**
+     * Checks the collection with the passed in sub controllers and creates a defensive copy.
+     *
+     * @param subCtrls the collection with sub controllers
+     * @return a copy of the collection to be stored in the newly created instance
+     * @throws IllegalArgumentException if the passed in collection is &lt;b&gt;null&lt;/b&gt; or contains &lt;b&gt;null&lt;/b&gt; entries
+     */
+    private static Collection&lt;ReloadingController&gt; checkManagedControllers(final Collection&lt;? extends ReloadingController&gt; subCtrls) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (subCtrls == null) {</span>
+<span class="fc" id="L100">            throw new IllegalArgumentException(&quot;Collection with sub controllers must not be null!&quot;);</span>
+        }
+<span class="fc" id="L102">        final Collection&lt;ReloadingController&gt; ctrls = new ArrayList&lt;&gt;(subCtrls);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (ctrls.stream().anyMatch(Objects::isNull)) {</span>
+<span class="fc" id="L104">            throw new IllegalArgumentException(&quot;Collection with sub controllers contains a null entry!&quot;);</span>
+        }
+
+<span class="fc" id="L107">        return Collections.unmodifiableCollection(ctrls);</span>
+    }
+
+    /** The collection with managed reloading controllers. */
+    private final Collection&lt;ReloadingController&gt; controllers;
+
+    /** The reloading detector used by this instance. */
+    private final ReloadingDetector detector;
+
+    /**
+     * Creates a new instance of {@code CombinedReloadingController} and initializes it with the {@code ReloadingController}
+     * objects to be managed.
+     *
+     * @param subCtrls the collection with sub {@code ReloadingController}s (must not be &lt;b&gt;null&lt;/b&gt; or contain &lt;b&gt;null&lt;/b&gt;
+     *        entries)
+     * @throws IllegalArgumentException if the passed in collection is &lt;b&gt;null&lt;/b&gt; or contains &lt;b&gt;null&lt;/b&gt; entries
+     */
+    public CombinedReloadingController(final Collection&lt;? extends ReloadingController&gt; subCtrls) {
+<span class="fc" id="L125">        super(DUMMY);</span>
+<span class="fc" id="L126">        controllers = checkManagedControllers(subCtrls);</span>
+<span class="fc" id="L127">        detector = new MultiReloadingControllerDetector(this);</span>
+<span class="fc" id="L128">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation returns a special reloading detector which operates on all managed controllers.
+     */
+    @Override
+    public ReloadingDetector getDetector() {
+<span class="fc" id="L135">        return detector;</span>
+    }
+
+    /**
+     * Gets a (unmodifiable) collection with the sub controllers managed by this combined controller.
+     *
+     * @return a collection with sub controllers
+     */
+    public Collection&lt;ReloadingController&gt; getSubControllers() {
+<span class="fc" id="L144">        return controllers;</span>
+    }
+
+    /**
+     * Resets the reloading state of all managed sub controllers unconditionally. This method is intended to be called after
+     * the creation of an instance. It may be the case that some of the sub controllers are already in reloading state, so
+     * their state is out of sync with this controller's global reloading state. This method ensures that the reloading
+     * state of all sub controllers is reset.
+     */
+    public void resetInitialReloadingState() {
+<span class="fc" id="L154">        getDetector().reloadingPerformed();</span>
+<span class="fc" id="L155">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

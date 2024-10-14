@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LazyMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">LazyMap.java</span></div><h1>LazyMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Map;
+import java.util.Objects;
+
+import org.apache.commons.collections4.Factory;
+import org.apache.commons.collections4.Transformer;
+import org.apache.commons.collections4.functors.FactoryTransformer;
+
+/**
+ * Decorates another {@code Map} to create objects in the map on demand.
+ * &lt;p&gt;
+ * When the {@link #get(Object)} method is called with a key that does not
+ * exist in the map, the factory is used to create the object. The created
+ * object will be added to the map using the requested key.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For instance:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * Factory&amp;lt;Date&amp;gt; factory = new Factory&amp;lt;Date&amp;gt;() {
+ *     public Date create() {
+ *         return new Date();
+ *     }
+ * }
+ * Map&amp;lt;String, Date&amp;gt; lazy = LazyMap.lazyMap(new HashMap&amp;lt;String, Date&amp;gt;(), factory);
+ * Date date = lazy.get(&quot;NOW&quot;);
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * After the above code is executed, {@code date} will refer to
+ * a new {@code Date} instance. Furthermore, that {@code Date}
+ * instance is mapped to the &quot;NOW&quot; key in the map.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that LazyMap is not synchronized and is not thread-safe.&lt;/strong&gt;
+ * If you wish to use this map from multiple threads concurrently, you must use
+ * appropriate synchronization. The simplest approach is to wrap this map
+ * using {@link java.util.Collections#synchronizedMap(Map)}. This class may throw
+ * exceptions when accessed by concurrent threads without synchronization.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is Serializable from Commons Collections 3.1.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.0
+ */
+public class LazyMap&lt;K, V&gt; extends AbstractMapDecorator&lt;K, V&gt; implements Serializable {
+
+    /** Serialization version */
+    private static final long serialVersionUID = 7990956402564206740L;
+
+    /**
+     * Factory method to create a lazily instantiated map.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param map  the map to decorate, must not be null
+     * @param factory  the factory to use, must not be null
+     * @return a new lazy map
+     * @throws NullPointerException if map or factory is null
+     * @since 4.0
+     */
+    public static &lt;K, V&gt; LazyMap&lt;K, V&gt; lazyMap(final Map&lt;K, V&gt; map, final Factory&lt;? extends V&gt; factory) {
+<span class="fc" id="L87">        return new LazyMap&lt;&gt;(map, factory);</span>
+    }
+
+    /**
+     * Factory method to create a lazily instantiated map.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param map  the map to decorate, must not be null
+     * @param factory  the factory to use, must not be null
+     * @return a new lazy map
+     * @throws NullPointerException if map or factory is null
+     * @since 4.0
+     */
+    public static &lt;V, K&gt; LazyMap&lt;K, V&gt; lazyMap(final Map&lt;K, V&gt; map, final Transformer&lt;? super K, ? extends V&gt; factory) {
+<span class="fc" id="L102">        return new LazyMap&lt;&gt;(map, factory);</span>
+    }
+
+    /** The factory to use to construct elements */
+    protected final Transformer&lt;? super K, ? extends V&gt; factory;
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param map  the map to decorate, must not be null
+     * @param factory  the factory to use, must not be null
+     * @throws NullPointerException if map or factory is null
+     */
+    protected LazyMap(final Map&lt;K, V&gt; map, final Factory&lt;? extends V&gt; factory) {
+<span class="fc" id="L116">        super(map);</span>
+<span class="fc" id="L117">        this.factory = FactoryTransformer.factoryTransformer(Objects.requireNonNull(factory, &quot;factory&quot;));</span>
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param map  the map to decorate, must not be null
+     * @param factory  the factory to use, must not be null
+     * @throws NullPointerException if map or factory is null
+     */
+    protected LazyMap(final Map&lt;K, V&gt; map, final Transformer&lt;? super K, ? extends V&gt; factory) {
+<span class="fc" id="L128">        super(map);</span>
+<span class="fc" id="L129">        this.factory = Objects.requireNonNull(factory, &quot;factory&quot;);</span>
+<span class="fc" id="L130">    }</span>
+
+    @Override
+    public V get(final Object key) {
+        // create value for key if key is not currently in the map
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (!map.containsKey(key)) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L137">            final K castKey = (K) key;</span>
+<span class="fc" id="L138">            final V value = factory.transform(castKey);</span>
+<span class="fc" id="L139">            map.put(castKey, value);</span>
+<span class="fc" id="L140">            return value;</span>
+        }
+<span class="fc" id="L142">        return map.get(key);</span>
+    }
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in  the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     * @since 3.1
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L155">        in.defaultReadObject();</span>
+<span class="fc" id="L156">        map = (Map&lt;K, V&gt;) in.readObject();</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out  the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     * @since 3.1
+     */
+    private void writeObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L167">        out.defaultWriteObject();</span>
+<span class="fc" id="L168">        out.writeObject(map);</span>
+<span class="fc" id="L169">    }</span>
+
+    // no need to wrap keySet, entrySet or values as they are views of
+    // existing map entries - you can't do a map-style get on them.
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

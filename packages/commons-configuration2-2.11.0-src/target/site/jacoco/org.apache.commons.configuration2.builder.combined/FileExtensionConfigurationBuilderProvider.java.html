@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileExtensionConfigurationBuilderProvider.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder.combined</a> &gt; <span class="el_source">FileExtensionConfigurationBuilderProvider.java</span></div><h1>FileExtensionConfigurationBuilderProvider.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder.combined;
+
+import java.util.Collection;
+
+import org.apache.commons.configuration2.builder.BuilderParameters;
+import org.apache.commons.configuration2.builder.FileBasedBuilderParametersImpl;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+
+/**
+ * &lt;p&gt;
+ * A specialized implementation of {@link ConfigurationBuilderProvider} which determines the name of the result
+ * configuration class based on the extension of the file to load.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class works analogously to its base class {@link BaseConfigurationBuilderProvider}; especially, the resulting
+ * builder is created based on reflection. It extends the super class's functionality by a specific mechanism for
+ * determining the resulting configuration class: At construction time two configuration class names and a file
+ * extension are passed in. If a file name is provided in the builder's initialization parameters and this file name has
+ * the specified extension, then the first configuration class name is used; otherwise the default configuration class
+ * name is selected.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are some tags for {@code CombinedConfigurationProvider} which can produce different results depending on the
+ * configuration files they have to load. This class can be used to implement this feature in a generic way.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class FileExtensionConfigurationBuilderProvider extends BaseConfigurationBuilderProvider {
+    /** Constant for the file extension separator. */
+    private static final char EXT_SEPARATOR = '.';
+
+    /**
+     * Extracts the extension from the given file name. The name can be &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param fileName the file name
+     * @return the extension (&lt;b&gt;null&lt;/b&gt; if there is none)
+     */
+    private static String extractExtension(final String fileName) {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (fileName == null) {</span>
+<span class="fc" id="L57">            return null;</span>
+        }
+
+<span class="fc" id="L60">        final int pos = fileName.lastIndexOf(EXT_SEPARATOR);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        return pos &lt; 0 ? null : fileName.substring(pos + 1);</span>
+    }
+
+    /**
+     * Tries to obtain the current file name from the given list of parameter objects.
+     *
+     * @param params the parameter objects
+     * @return the file name or &lt;b&gt;null&lt;/b&gt; if unspecified
+     */
+    private static String fetchCurrentFileName(final Collection&lt;BuilderParameters&gt; params) {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (final BuilderParameters p : params) {</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (p instanceof FileBasedBuilderParametersImpl) {</span>
+<span class="fc" id="L73">                final FileBasedBuilderParametersImpl fp = (FileBasedBuilderParametersImpl) p;</span>
+<span class="fc" id="L74">                return fp.getFileHandler().getFileName();</span>
+            }
+<span class="nc" id="L76">        }</span>
+<span class="fc" id="L77">        return null;</span>
+    }
+
+    /** The matching configuration class. */
+    private final String matchingConfigurationClass;
+
+    /** The file extension. */
+    private final String extension;
+
+    /**
+     * Creates a new instance of {@code FileExtensionConfigurationBuilderProvider}.
+     *
+     * @param bldrCls the name of the builder class
+     * @param reloadBldrCls the name of a builder class to be used if reloading support is required (&lt;b&gt;null&lt;/b&gt; if
+     *        reloading is not supported)
+     * @param matchingConfigCls the name of the configuration class to be used if the provided file extension matches (must
+     *        not be &lt;b&gt;null&lt;/b&gt;)
+     * @param defConfigClass the name of the configuration class to be used if the provided file extension does not match
+     *        (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param ext the file extension to select the configuration class (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param paramCls a collection with the names of parameters classes; an instance of a parameters object with basic
+     *        properties is created automatically and does not need to be contained in this list; the collection can be
+     *        &lt;b&gt;null&lt;/b&gt; if no additional parameter objects are needed
+     * @throws IllegalArgumentException if a required parameter is missing
+     */
+    public FileExtensionConfigurationBuilderProvider(final String bldrCls, final String reloadBldrCls, final String matchingConfigCls,
+        final String defConfigClass, final String ext, final Collection&lt;String&gt; paramCls) {
+<span class="fc" id="L104">        super(bldrCls, reloadBldrCls, defConfigClass, paramCls);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (matchingConfigCls == null) {</span>
+<span class="fc" id="L106">            throw new IllegalArgumentException(&quot;Matching configuration class must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (ext == null) {</span>
+<span class="fc" id="L109">            throw new IllegalArgumentException(&quot;File extension must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L112">        matchingConfigurationClass = matchingConfigCls;</span>
+<span class="fc" id="L113">        extension = ext;</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation tries to find a {@link FileBasedBuilderParametersImpl} object in the parameter
+     * objects. If one is found, the extension of the file name is obtained and compared against the stored file extension.
+     * In case of a match, the matching configuration class is selected, otherwise the default one.
+     */
+    @Override
+    protected String determineConfigurationClass(final ConfigurationDeclaration decl, final Collection&lt;BuilderParameters&gt; params)
+        throws ConfigurationException {
+<span class="fc" id="L124">        final String currentExt = extractExtension(fetchCurrentFileName(params));</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        return getExtension().equalsIgnoreCase(currentExt) ? getMatchingConfigurationClass() : getConfigurationClass();</span>
+    }
+
+    /**
+     * Gets the file extension of this provider.
+     *
+     * @return the file extension to match
+     */
+    public String getExtension() {
+<span class="fc" id="L134">        return extension;</span>
+    }
+
+    /**
+     * Gets the name of the matching configuration class. This class is used if the file extension matches the extension
+     * of this provider.
+     *
+     * @return the matching configuration class
+     */
+    public String getMatchingConfigurationClass() {
+<span class="fc" id="L144">        return matchingConfigurationClass;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

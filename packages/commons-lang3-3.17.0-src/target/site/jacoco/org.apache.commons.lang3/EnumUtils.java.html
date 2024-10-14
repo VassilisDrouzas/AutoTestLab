@@ -1,0 +1,433 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EnumUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">EnumUtils.java</span></div><h1>EnumUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * Utility library to provide helper methods for Java enums.
+ *
+ * &lt;p&gt;#ThreadSafe#&lt;/p&gt;
+ *
+ * @since 3.0
+ */
+public class EnumUtils {
+
+    private static final String CANNOT_STORE_S_S_VALUES_IN_S_BITS = &quot;Cannot store %s %s values in %s bits&quot;;
+    private static final String ENUM_CLASS_MUST_BE_DEFINED = &quot;EnumClass must be defined.&quot;;
+    private static final String NULL_ELEMENTS_NOT_PERMITTED = &quot;null elements not permitted&quot;;
+    private static final String S_DOES_NOT_SEEM_TO_BE_AN_ENUM_TYPE = &quot;%s does not seem to be an Enum type&quot;;
+
+    /**
+     * Validate {@code enumClass}.
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass to check
+     * @return {@code enumClass}
+     * @throws NullPointerException if {@code enumClass} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class
+     * @since 3.2
+     */
+    private static &lt;E extends Enum&lt;E&gt;&gt; Class&lt;E&gt; asEnum(final Class&lt;E&gt; enumClass) {
+<span class="fc" id="L54">        Objects.requireNonNull(enumClass, ENUM_CLASS_MUST_BE_DEFINED);</span>
+<span class="fc" id="L55">        Validate.isTrue(enumClass.isEnum(), S_DOES_NOT_SEEM_TO_BE_AN_ENUM_TYPE, enumClass);</span>
+<span class="fc" id="L56">        return enumClass;</span>
+    }
+
+    /**
+     * Validate that {@code enumClass} is compatible with representation in a {@code long}.
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass to check
+     * @return {@code enumClass}
+     * @throws NullPointerException if {@code enumClass} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class or has more than 64 values
+     * @since 3.0.1
+     */
+    private static &lt;E extends Enum&lt;E&gt;&gt; Class&lt;E&gt; checkBitVectorable(final Class&lt;E&gt; enumClass) {
+<span class="fc" id="L69">        final E[] constants = asEnum(enumClass).getEnumConstants();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        Validate.isTrue(constants.length &lt;= Long.SIZE, CANNOT_STORE_S_S_VALUES_IN_S_BITS,</span>
+<span class="fc" id="L71">            Integer.valueOf(constants.length), enumClass.getSimpleName(), Integer.valueOf(Long.SIZE));</span>
+
+<span class="fc" id="L73">        return enumClass;</span>
+    }
+
+    /**
+     * Creates a long bit vector representation of the given array of Enum values.
+     *
+     * &lt;p&gt;This generates a value that is usable by {@link EnumUtils#processBitVector}.&lt;/p&gt;
+     *
+     * &lt;p&gt;Do not use this method if you have more than 64 values in your Enum, as this
+     * would create a value greater than a long can hold.&lt;/p&gt;
+     *
+     * @param enumClass the class of the enum we are working with, not {@code null}
+     * @param values    the values we want to convert, not {@code null}
+     * @param &lt;E&gt;       the type of the enumeration
+     * @return a long whose value provides a binary representation of the given set of enum values.
+     * @throws NullPointerException if {@code enumClass} or {@code values} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class or has more than 64 values
+     * @since 3.0.1
+     * @see #generateBitVectors(Class, Iterable)
+     */
+    @SafeVarargs
+    public static &lt;E extends Enum&lt;E&gt;&gt; long generateBitVector(final Class&lt;E&gt; enumClass, final E... values) {
+<span class="fc" id="L95">        Validate.noNullElements(values);</span>
+<span class="fc" id="L96">        return generateBitVector(enumClass, Arrays.asList(values));</span>
+    }
+
+    /**
+     * Creates a long bit vector representation of the given subset of an Enum.
+     *
+     * &lt;p&gt;This generates a value that is usable by {@link EnumUtils#processBitVector}.&lt;/p&gt;
+     *
+     * &lt;p&gt;Do not use this method if you have more than 64 values in your Enum, as this
+     * would create a value greater than a long can hold.&lt;/p&gt;
+     *
+     * @param enumClass the class of the enum we are working with, not {@code null}
+     * @param values    the values we want to convert, not {@code null}, neither containing {@code null}
+     * @param &lt;E&gt;       the type of the enumeration
+     * @return a long whose value provides a binary representation of the given set of enum values.
+     * @throws NullPointerException if {@code enumClass} or {@code values} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class or has more than 64 values,
+     *                                  or if any {@code values} {@code null}
+     * @since 3.0.1
+     * @see #generateBitVectors(Class, Iterable)
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; long generateBitVector(final Class&lt;E&gt; enumClass, final Iterable&lt;? extends E&gt; values) {
+<span class="fc" id="L118">        checkBitVectorable(enumClass);</span>
+<span class="fc" id="L119">        Objects.requireNonNull(values, &quot;values&quot;);</span>
+<span class="fc" id="L120">        long total = 0;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        for (final E constant : values) {</span>
+<span class="fc" id="L122">            Objects.requireNonNull(constant, NULL_ELEMENTS_NOT_PERMITTED);</span>
+<span class="fc" id="L123">            total |= 1L &lt;&lt; constant.ordinal();</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">        return total;</span>
+    }
+
+    /**
+     * Creates a bit vector representation of the given subset of an Enum using as many {@code long}s as needed.
+     *
+     * &lt;p&gt;This generates a value that is usable by {@link EnumUtils#processBitVectors}.&lt;/p&gt;
+     *
+     * &lt;p&gt;Use this method if you have more than 64 values in your Enum.&lt;/p&gt;
+     *
+     * @param enumClass the class of the enum we are working with, not {@code null}
+     * @param values    the values we want to convert, not {@code null}, neither containing {@code null}
+     * @param &lt;E&gt;       the type of the enumeration
+     * @return a long[] whose values provide a binary representation of the given set of enum values
+     *         with the least significant digits rightmost.
+     * @throws NullPointerException if {@code enumClass} or {@code values} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class, or if any {@code values} {@code null}
+     * @since 3.2
+     */
+    @SafeVarargs
+    public static &lt;E extends Enum&lt;E&gt;&gt; long[] generateBitVectors(final Class&lt;E&gt; enumClass, final E... values) {
+<span class="fc" id="L146">        asEnum(enumClass);</span>
+<span class="fc" id="L147">        Validate.noNullElements(values);</span>
+<span class="fc" id="L148">        final EnumSet&lt;E&gt; condensed = EnumSet.noneOf(enumClass);</span>
+<span class="fc" id="L149">        Collections.addAll(condensed, values);</span>
+<span class="fc" id="L150">        final long[] result = new long[(enumClass.getEnumConstants().length - 1) / Long.SIZE + 1];</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (final E value : condensed) {</span>
+<span class="fc" id="L152">            result[value.ordinal() / Long.SIZE] |= 1L &lt;&lt; value.ordinal() % Long.SIZE;</span>
+<span class="fc" id="L153">        }</span>
+<span class="fc" id="L154">        ArrayUtils.reverse(result);</span>
+<span class="fc" id="L155">        return result;</span>
+    }
+
+    /**
+     * Creates a bit vector representation of the given subset of an Enum using as many {@code long}s as needed.
+     *
+     * &lt;p&gt;This generates a value that is usable by {@link EnumUtils#processBitVectors}.&lt;/p&gt;
+     *
+     * &lt;p&gt;Use this method if you have more than 64 values in your Enum.&lt;/p&gt;
+     *
+     * @param enumClass the class of the enum we are working with, not {@code null}
+     * @param values    the values we want to convert, not {@code null}, neither containing {@code null}
+     * @param &lt;E&gt;       the type of the enumeration
+     * @return a long[] whose values provide a binary representation of the given set of enum values
+     *         with the least significant digits rightmost.
+     * @throws NullPointerException if {@code enumClass} or {@code values} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class, or if any {@code values} {@code null}
+     * @since 3.2
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; long[] generateBitVectors(final Class&lt;E&gt; enumClass, final Iterable&lt;? extends E&gt; values) {
+<span class="fc" id="L175">        asEnum(enumClass);</span>
+<span class="fc" id="L176">        Objects.requireNonNull(values, &quot;values&quot;);</span>
+<span class="fc" id="L177">        final EnumSet&lt;E&gt; condensed = EnumSet.noneOf(enumClass);</span>
+<span class="fc" id="L178">        values.forEach(constant -&gt; condensed.add(Objects.requireNonNull(constant, NULL_ELEMENTS_NOT_PERMITTED)));</span>
+<span class="fc" id="L179">        final long[] result = new long[(enumClass.getEnumConstants().length - 1) / Long.SIZE + 1];</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        for (final E value : condensed) {</span>
+<span class="fc" id="L181">            result[value.ordinal() / Long.SIZE] |= 1L &lt;&lt; value.ordinal() % Long.SIZE;</span>
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">        ArrayUtils.reverse(result);</span>
+<span class="fc" id="L184">        return result;</span>
+    }
+
+    /**
+     * Gets the enum for the class, returning {@code null} if not found.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it does not throw an exception
+     * for an invalid enum name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass  the class of the enum to query, not null
+     * @param enumName   the enum name, null returns null
+     * @return the enum, null if not found
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getEnum(final Class&lt;E&gt; enumClass, final String enumName) {
+<span class="fc" id="L199">        return getEnum(enumClass, enumName, null);</span>
+    }
+
+    /**
+     * Gets the enum for the class, returning {@code defaultEnum} if not found.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it does not throw an exception
+     * for an invalid enum name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass   the class of the enum to query, not null
+     * @param enumName    the enum name, null returns default enum
+     * @param defaultEnum the default enum
+     * @return the enum, default enum if not found
+     * @since 3.10
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getEnum(final Class&lt;E&gt; enumClass, final String enumName, final E defaultEnum) {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (enumName == null) {</span>
+<span class="fc" id="L217">            return defaultEnum;</span>
+        }
+        try {
+<span class="fc" id="L220">            return Enum.valueOf(enumClass, enumName);</span>
+<span class="fc" id="L221">        } catch (final IllegalArgumentException ex) {</span>
+<span class="fc" id="L222">            return defaultEnum;</span>
+        }
+    }
+
+    /**
+     * Gets the enum for the class, returning {@code null} if not found.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it does not throw an exception
+     * for an invalid enum name and performs case insensitive matching of the name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt;         the type of the enumeration
+     * @param enumClass   the class of the enum to query, not null
+     * @param enumName    the enum name, null returns null
+     * @return the enum, null if not found
+     * @since 3.8
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getEnumIgnoreCase(final Class&lt;E&gt; enumClass, final String enumName) {
+<span class="fc" id="L239">        return getEnumIgnoreCase(enumClass, enumName, null);</span>
+    }
+
+    /**
+     * Gets the enum for the class, returning {@code defaultEnum} if not found.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it does not throw an exception
+     * for an invalid enum name and performs case insensitive matching of the name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt;         the type of the enumeration
+     * @param enumClass   the class of the enum to query, not null
+     * @param enumName    the enum name, null returns default enum
+     * @param defaultEnum the default enum
+     * @return the enum, default enum if not found
+     * @since 3.10
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getEnumIgnoreCase(final Class&lt;E&gt; enumClass, final String enumName,
+        final E defaultEnum) {
+<span class="fc" id="L257">        return getFirstEnumIgnoreCase(enumClass, enumName, Enum::name, defaultEnum);</span>
+    }
+
+    /**
+     * Gets the {@link List} of enums.
+     *
+     * &lt;p&gt;This method is useful when you need a list of enums rather than an array.&lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass  the class of the enum to query, not null
+     * @return the modifiable list of enums, never null
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; List&lt;E&gt; getEnumList(final Class&lt;E&gt; enumClass) {
+<span class="fc" id="L270">        return new ArrayList&lt;&gt;(Arrays.asList(enumClass.getEnumConstants()));</span>
+    }
+
+    /**
+     * Gets the {@link Map} of enums by name.
+     *
+     * &lt;p&gt;This method is useful when you need a map of enums by name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass  the class of the enum to query, not null
+     * @return the modifiable map of enum names to enums, never null
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; Map&lt;String, E&gt; getEnumMap(final Class&lt;E&gt; enumClass) {
+<span class="fc" id="L283">        return getEnumMap(enumClass, E::name);</span>
+    }
+
+    /**
+     * Gets the {@link Map} of enums by name.
+     *
+     * &lt;p&gt;
+     * This method is useful when you need a map of enums by name.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt;         the type of enumeration
+     * @param &lt;K&gt;         the type of the map key
+     * @param enumClass   the class of the enum to query, not null
+     * @param keyFunction the function to query for the key, not null
+     * @return the modifiable map of enums, never null
+     * @since 3.13.0
+     */
+    public static &lt;E extends Enum&lt;E&gt;, K&gt; Map&lt;K, E&gt; getEnumMap(final Class&lt;E&gt; enumClass, final Function&lt;E, K&gt; keyFunction) {
+<span class="fc" id="L301">        return Stream.of(enumClass.getEnumConstants()).collect(Collectors.toMap(keyFunction::apply, Function.identity()));</span>
+    }
+
+    /**
+     * Gets the enum for the class in a system property, returning {@code defaultEnum} if not found.
+     *
+     * &lt;p&gt;
+     * This method differs from {@link Enum#valueOf} in that it does not throw an exception for an invalid enum name.
+     * &lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass the class of the enum to query, not null
+     * @param propName the system property key for the enum name, null returns default enum
+     * @param defaultEnum the default enum
+     * @return the enum, default enum if not found
+     * @since 3.13.0
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getEnumSystemProperty(final Class&lt;E&gt; enumClass, final String propName,
+        final E defaultEnum) {
+<span class="fc bfc" id="L320" title="All 4 branches covered.">        return enumClass == null || propName == null ? defaultEnum</span>
+<span class="fc" id="L321">            : getEnum(enumClass, System.getProperty(propName), defaultEnum);</span>
+    }
+
+    /**
+     * Gets the enum for the class, returning {@code defaultEnum} if not found.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it does not throw an exception
+     * for an invalid enum name and performs case insensitive matching of the name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt;         the type of the enumeration
+     * @param enumClass   the class of the enum to query, not null
+     * @param enumName    the enum name, null returns default enum
+     * @param stringFunction the function that gets the string for an enum for comparison to {@code enumName}.
+     * @param defaultEnum the default enum
+     * @return the enum, default enum if not found
+     * @since 3.13.0
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getFirstEnumIgnoreCase(final Class&lt;E&gt; enumClass, final String enumName, final Function&lt;E, String&gt; stringFunction,
+        final E defaultEnum) {
+<span class="fc bfc" id="L340" title="All 4 branches covered.">        if (enumName == null || !enumClass.isEnum()) {</span>
+<span class="fc" id="L341">            return defaultEnum;</span>
+        }
+<span class="fc" id="L343">        return Stream.of(enumClass.getEnumConstants()).filter(e -&gt; enumName.equalsIgnoreCase(stringFunction.apply(e))).findFirst().orElse(defaultEnum);</span>
+    }
+
+    /**
+     * Checks if the specified name is a valid enum for the class.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it checks if the name is
+     * a valid enum without needing to catch the exception.&lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass  the class of the enum to query, not null
+     * @param enumName   the enum name, null returns false
+     * @return true if the enum name is valid, otherwise false
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; boolean isValidEnum(final Class&lt;E&gt; enumClass, final String enumName) {
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        return getEnum(enumClass, enumName) != null;</span>
+    }
+
+    /**
+     * Checks if the specified name is a valid enum for the class.
+     *
+     * &lt;p&gt;This method differs from {@link Enum#valueOf} in that it checks if the name is
+     * a valid enum without needing to catch the exception
+     * and performs case insensitive matching of the name.&lt;/p&gt;
+     *
+     * @param &lt;E&gt; the type of the enumeration
+     * @param enumClass  the class of the enum to query, not null
+     * @param enumName   the enum name, null returns false
+     * @return true if the enum name is valid, otherwise false
+     * @since 3.8
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; boolean isValidEnumIgnoreCase(final Class&lt;E&gt; enumClass, final String enumName) {
+<span class="fc bfc" id="L375" title="All 2 branches covered.">        return getEnumIgnoreCase(enumClass, enumName) != null;</span>
+    }
+
+    /**
+     * Convert a long value created by {@link EnumUtils#generateBitVector} into the set of
+     * enum values that it represents.
+     *
+     * &lt;p&gt;If you store this value, beware any changes to the enum that would affect ordinal values.&lt;/p&gt;
+     * @param enumClass the class of the enum we are working with, not {@code null}
+     * @param value     the long value representation of a set of enum values
+     * @param &lt;E&gt;       the type of the enumeration
+     * @return a set of enum values
+     * @throws NullPointerException if {@code enumClass} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class or has more than 64 values
+     * @since 3.0.1
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; EnumSet&lt;E&gt; processBitVector(final Class&lt;E&gt; enumClass, final long value) {
+<span class="fc" id="L392">        checkBitVectorable(enumClass).getEnumConstants();</span>
+<span class="fc" id="L393">        return processBitVectors(enumClass, value);</span>
+    }
+
+    /**
+     * Convert a {@code long[]} created by {@link EnumUtils#generateBitVectors} into the set of
+     * enum values that it represents.
+     *
+     * &lt;p&gt;If you store this value, beware any changes to the enum that would affect ordinal values.&lt;/p&gt;
+     * @param enumClass the class of the enum we are working with, not {@code null}
+     * @param values     the long[] bearing the representation of a set of enum values, the least significant digits rightmost, not {@code null}
+     * @param &lt;E&gt;       the type of the enumeration
+     * @return a set of enum values
+     * @throws NullPointerException if {@code enumClass} is {@code null}
+     * @throws IllegalArgumentException if {@code enumClass} is not an enum class
+     * @since 3.2
+     */
+    public static &lt;E extends Enum&lt;E&gt;&gt; EnumSet&lt;E&gt; processBitVectors(final Class&lt;E&gt; enumClass, final long... values) {
+<span class="fc" id="L410">        final EnumSet&lt;E&gt; results = EnumSet.noneOf(asEnum(enumClass));</span>
+<span class="fc" id="L411">        final long[] lvalues = ArrayUtils.clone(Objects.requireNonNull(values, &quot;values&quot;));</span>
+<span class="fc" id="L412">        ArrayUtils.reverse(lvalues);</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        for (final E constant : enumClass.getEnumConstants()) {</span>
+<span class="fc" id="L414">            final int block = constant.ordinal() / Long.SIZE;</span>
+<span class="fc bfc" id="L415" title="All 4 branches covered.">            if (block &lt; lvalues.length &amp;&amp; (lvalues[block] &amp; 1L &lt;&lt; constant.ordinal() % Long.SIZE) != 0) {</span>
+<span class="fc" id="L416">                results.add(constant);</span>
+            }
+        }
+<span class="fc" id="L419">        return results;</span>
+    }
+
+    /**
+     * This constructor is public to permit tools that require a JavaBean
+     * instance to operate.
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="fc" id="L429">    public EnumUtils() {</span>
+        // empty
+<span class="fc" id="L431">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

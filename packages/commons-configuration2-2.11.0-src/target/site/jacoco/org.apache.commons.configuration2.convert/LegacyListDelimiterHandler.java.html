@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LegacyListDelimiterHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.convert</a> &gt; <span class="el_source">LegacyListDelimiterHandler.java</span></div><h1>LegacyListDelimiterHandler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.convert;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * &lt;p&gt;
+ * A specialized implementation of {@code ListDelimiterHandler} which simulates the list delimiter handling as it was
+ * used by {@code PropertiesConfiguration} in Commons Configuration 1.x.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class mainly exists for compatibility reasons. It is intended to be used by applications which have to deal with
+ * properties files created by an older version of this library.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * In the 1.x series of Commons Configuration list handling was not fully consistent. The escaping of property values
+ * was done in a different way if they contained a list delimiter or not. From version 2.0 on, escaping is more
+ * stringent which might cause slightly different results when parsing properties files created by or for Configuration
+ * 1.x. If you encounter such problems, you can switch to this {@code ListDelimiterHandler} implementation rather than
+ * the default one. In other cases, this class should not be used!
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: An instance of this class can safely be shared between multiple {@code Configuration} instances.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class LegacyListDelimiterHandler extends AbstractListDelimiterHandler {
+    /** Constant for the escaping character. */
+    private static final String ESCAPE = &quot;\\&quot;;
+
+    /** Constant for the escaped escaping character. */
+    private static final String DOUBLE_ESC = ESCAPE + ESCAPE;
+
+    /** Constant for a duplicated sequence of escaping characters. */
+    private static final String QUAD_ESC = DOUBLE_ESC + DOUBLE_ESC;
+
+    /**
+     * Returns the number of trailing backslashes. This is sometimes needed for the correct handling of escape characters.
+     *
+     * @param line the string to investigate
+     * @return the number of trailing backslashes
+     */
+    private static int countTrailingBS(final String line) {
+<span class="fc" id="L66">        int bsCount = 0;</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">        for (int idx = line.length() - 1; idx &gt;= 0 &amp;&amp; line.charAt(idx) == '\\'; idx--) {</span>
+<span class="fc" id="L68">            bsCount++;</span>
+        }
+
+<span class="fc" id="L71">        return bsCount;</span>
+    }
+
+    /** The list delimiter character. */
+    private final char delimiter;
+
+    /**
+     * Creates a new instance of {@code LegacyListDelimiterHandler} and sets the list delimiter character.
+     *
+     * @param listDelimiter the list delimiter character
+     */
+<span class="fc" id="L82">    public LegacyListDelimiterHandler(final char listDelimiter) {</span>
+<span class="fc" id="L83">        delimiter = listDelimiter;</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation performs delimiter escaping for a single value (which is not part of a list).
+     */
+    @Override
+    public Object escape(final Object value, final ValueTransformer transformer) {
+<span class="fc" id="L91">        return escapeValue(value, false, transformer);</span>
+    }
+
+    /**
+     * Performs the escaping of backslashes in the specified properties value. Because a double backslash is used to escape
+     * the escape character of a list delimiter, double backslashes also have to be escaped if the property is part of a
+     * (single line) list. In addition, because the output is written into a properties file, each occurrence of a backslash
+     * again has to be doubled. This method is called by {@code escapeValue()}.
+     *
+     * @param value the value to be escaped
+     * @param inList a flag whether the value is part of a list
+     * @return the value with escaped backslashes as string
+     */
+    protected String escapeBackslashs(final Object value, final boolean inList) {
+<span class="fc" id="L105">        String strValue = String.valueOf(value);</span>
+
+<span class="fc bfc" id="L107" title="All 4 branches covered.">        if (inList &amp;&amp; strValue.contains(DOUBLE_ESC)) {</span>
+<span class="fc" id="L108">            strValue = StringUtils.replace(strValue, DOUBLE_ESC, QUAD_ESC);</span>
+        }
+
+<span class="fc" id="L111">        return strValue;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation performs a special encoding of backslashes at the end of a string so that they are
+     * not interpreted as escape character for a following list delimiter.
+     */
+    @Override
+    public Object escapeList(final List&lt;?&gt; values, final ValueTransformer transformer) {
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (!values.isEmpty()) {</span>
+<span class="fc" id="L121">            final Iterator&lt;?&gt; it = values.iterator();</span>
+<span class="fc" id="L122">            String lastValue = escapeValue(it.next(), true, transformer);</span>
+<span class="fc" id="L123">            final StringBuilder buf = new StringBuilder(lastValue);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+                // if the last value ended with an escape character, it has
+                // to be escaped itself; otherwise the list delimiter will
+                // be escaped
+<span class="fc bfc" id="L128" title="All 4 branches covered.">                if (lastValue.endsWith(ESCAPE) &amp;&amp; countTrailingBS(lastValue) / 2 % 2 != 0) {</span>
+<span class="fc" id="L129">                    buf.append(ESCAPE).append(ESCAPE);</span>
+                }
+<span class="fc" id="L131">                buf.append(getDelimiter());</span>
+<span class="fc" id="L132">                lastValue = escapeValue(it.next(), true, transformer);</span>
+<span class="fc" id="L133">                buf.append(lastValue);</span>
+            }
+<span class="fc" id="L135">            return buf.toString();</span>
+        }
+<span class="nc" id="L137">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc} This is just a dummy implementation. It is never called.
+     */
+    @Override
+    protected String escapeString(final String s) {
+<span class="nc" id="L145">        return null;</span>
+    }
+
+    /**
+     * Escapes the given property value. This method is called on saving the configuration for each property value. It
+     * ensures a correct handling of backslash characters and also takes care that list delimiter characters in the value
+     * are escaped.
+     *
+     * @param value the property value
+     * @param inList a flag whether the value is part of a list
+     * @param transformer the {@code ValueTransformer}
+     * @return the escaped property value
+     */
+    protected String escapeValue(final Object value, final boolean inList, final ValueTransformer transformer) {
+<span class="fc" id="L159">        String escapedValue = String.valueOf(transformer.transformValue(escapeBackslashs(value, inList)));</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (getDelimiter() != 0) {</span>
+<span class="fc" id="L161">            escapedValue = StringUtils.replace(escapedValue, String.valueOf(getDelimiter()), ESCAPE + getDelimiter());</span>
+        }
+<span class="fc" id="L163">        return escapedValue;</span>
+    }
+
+    /**
+     * Gets the list delimiter character.
+     *
+     * @return the list delimiter character
+     */
+    public char getDelimiter() {
+<span class="fc" id="L172">        return delimiter;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation simulates the old splitting algorithm. The string is split at the delimiter
+     * character if it is not escaped. If the delimiter character is not found, the input is returned unchanged.
+     */
+    @Override
+    protected Collection&lt;String&gt; splitString(final String s, final boolean trim) {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (s.indexOf(getDelimiter()) &lt; 0) {</span>
+<span class="fc" id="L182">            return Collections.singleton(s);</span>
+        }
+
+<span class="fc" id="L185">        final List&lt;String&gt; list = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L187">        StringBuilder token = new StringBuilder();</span>
+<span class="fc" id="L188">        int begin = 0;</span>
+<span class="fc" id="L189">        boolean inEscape = false;</span>
+<span class="fc" id="L190">        final char esc = ESCAPE.charAt(0);</span>
+
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        while (begin &lt; s.length()) {</span>
+<span class="fc" id="L193">            final char c = s.charAt(begin);</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (inEscape) {</span>
+                // last character was the escape marker
+                // can current character be escaped?
+<span class="fc bfc" id="L197" title="All 4 branches covered.">                if (c != getDelimiter() &amp;&amp; c != esc) {</span>
+                    // no, also add escape character
+<span class="fc" id="L199">                    token.append(esc);</span>
+                }
+<span class="fc" id="L201">                token.append(c);</span>
+<span class="fc" id="L202">                inEscape = false;</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">            } else if (c == getDelimiter()) {</span>
+                // found a list delimiter -&gt; add token and
+                // resetDefaultFileSystem buffer
+<span class="fc" id="L206">                String t = token.toString();</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">                if (trim) {</span>
+<span class="fc" id="L208">                    t = t.trim();</span>
+                }
+<span class="fc" id="L210">                list.add(t);</span>
+<span class="fc" id="L211">                token = new StringBuilder();</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            } else if (c == esc) {</span>
+                // eventually escape next character
+<span class="fc" id="L214">                inEscape = true;</span>
+            } else {
+<span class="fc" id="L216">                token.append(c);</span>
+            }
+
+<span class="fc" id="L219">            begin++;</span>
+<span class="fc" id="L220">        }</span>
+
+        // Trailing delimiter?
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (inEscape) {</span>
+<span class="fc" id="L224">            token.append(esc);</span>
+        }
+        // Add last token
+<span class="fc" id="L227">        String t = token.toString();</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">        if (trim) {</span>
+<span class="fc" id="L229">            t = t.trim();</span>
+        }
+<span class="fc" id="L231">        list.add(t);</span>
+
+<span class="fc" id="L233">        return list;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

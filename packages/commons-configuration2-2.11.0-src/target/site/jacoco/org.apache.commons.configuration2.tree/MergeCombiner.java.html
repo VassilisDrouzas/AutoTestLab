@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MergeCombiner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">MergeCombiner.java</span></div><h1>MergeCombiner.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * &lt;p&gt;
+ * A specialized implementation of the {@code NodeCombiner} interface that performs a merge from two passed in node
+ * hierarchies.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This combiner performs the merge using a few rules:
+ * &lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;Nodes can be merged when attributes that appear in both have the same value.&lt;/li&gt;
+ * &lt;li&gt;Only a single node in the second file is considered a match to the node in the first file.&lt;/li&gt;
+ * &lt;li&gt;Attributes in nodes that match are merged.
+ * &lt;li&gt;Nodes in both files that do not match are added to the result.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * @since 1.7
+ */
+<span class="fc" id="L43">public class MergeCombiner extends NodeCombiner {</span>
+    /**
+     * Checks whether the attributes of the passed in node are compatible.
+     *
+     * @param attrs1 the attributes of the first node
+     * @param node the 2nd node
+     * @return a flag whether these nodes can be combined regarding their attributes
+     */
+    private static boolean matchAttributes(final Map&lt;String, Object&gt; attrs1, final ImmutableNode node) {
+<span class="fc" id="L52">        final Map&lt;String, Object&gt; attrs2 = node.getAttributes();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (final Map.Entry&lt;String, Object&gt; e : attrs1.entrySet()) {</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">            if (attrs2.containsKey(e.getKey()) &amp;&amp; !Objects.equals(e.getValue(), attrs2.get(e.getKey()))) {</span>
+<span class="fc" id="L55">                return false;</span>
+            }
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">        return true;</span>
+    }
+
+    /**
+     * Handles the attributes during a combination process. First all attributes of the first node will be added to the
+     * result. Then all attributes of the second node, which are not contained in the first node, will also be added.
+     *
+     * @param result the builder for the resulting node
+     * @param node1 the first node
+     * @param node2 the second node
+     */
+    protected void addAttributes(final ImmutableNode.Builder result, final ImmutableNode node1, final ImmutableNode node2) {
+<span class="fc" id="L70">        final Map&lt;String, Object&gt; attributes = new HashMap&lt;&gt;(node1.getAttributes());</span>
+<span class="fc" id="L71">        node2.getAttributes().forEach(attributes::putIfAbsent);</span>
+<span class="fc" id="L72">        result.addAttributes(attributes);</span>
+<span class="fc" id="L73">    }</span>
+
+    /**
+     * Tests if the first node can be combined with the second node. A node can only be combined if its attributes are all
+     * present in the second node and they all have the same value.
+     *
+     * @param node2 the second node
+     * @param child the child node (of the first node)
+     * @param children2 the children of the 2nd node
+     * @return a child of the second node, with which a combination is possible
+     */
+    protected ImmutableNode canCombine(final ImmutableNode node2, final ImmutableNode child, final List&lt;ImmutableNode&gt; children2) {
+<span class="fc" id="L85">        final Map&lt;String, Object&gt; attrs1 = child.getAttributes();</span>
+<span class="fc" id="L86">        final List&lt;ImmutableNode&gt; nodes = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L88">        final List&lt;ImmutableNode&gt; children = HANDLER.getChildren(node2, child.getNodeName());</span>
+<span class="fc" id="L89">        children.forEach(node -&gt; {</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (matchAttributes(attrs1, node)) {</span>
+<span class="fc" id="L91">                nodes.add(node);</span>
+            }
+<span class="fc" id="L93">        });</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (nodes.size() == 1) {</span>
+<span class="fc" id="L96">            return nodes.get(0);</span>
+        }
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">        if (nodes.size() &gt; 1 &amp;&amp; !isListNode(child)) {</span>
+<span class="fc" id="L99">            nodes.forEach(children2::remove);</span>
+        }
+
+<span class="fc" id="L102">        return null;</span>
+    }
+
+    /**
+     * Combines the given nodes to a new union node.
+     *
+     * @param node1 the first source node
+     * @param node2 the second source node
+     * @return the union node
+     */
+
+    @Override
+    public ImmutableNode combine(final ImmutableNode node1, final ImmutableNode node2) {
+<span class="fc" id="L115">        final ImmutableNode.Builder result = new ImmutableNode.Builder();</span>
+<span class="fc" id="L116">        result.name(node1.getNodeName());</span>
+<span class="fc" id="L117">        result.value(node1.getValue());</span>
+<span class="fc" id="L118">        addAttributes(result, node1, node2);</span>
+
+        // Check if nodes can be combined
+<span class="fc" id="L121">        final List&lt;ImmutableNode&gt; children2 = new LinkedList&lt;&gt;(node2.getChildren());</span>
+<span class="fc" id="L122">        node1.forEach(child1 -&gt; {</span>
+<span class="fc" id="L123">            final ImmutableNode child2 = canCombine(node2, child1, children2);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (child2 != null) {</span>
+<span class="fc" id="L125">                result.addChild(combine(child1, child2));</span>
+<span class="fc" id="L126">                children2.remove(child2);</span>
+            } else {
+<span class="fc" id="L128">                result.addChild(child1);</span>
+            }
+<span class="fc" id="L130">        });</span>
+
+        // Add remaining children of node 2
+<span class="fc" id="L133">        children2.forEach(result::addChild);</span>
+<span class="fc" id="L134">        return result.create();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

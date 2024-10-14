@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReferenceTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">ReferenceTracker.java</span></div><h1>ReferenceTracker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * &lt;p&gt;
+ * A class which allows an {@link InMemoryNodeModel} to associate arbitrary objects with nodes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Some special configuration implementations need additional data to be stored with their nodes structure. We call such
+ * data &amp;quot;references&amp;quot; because objects required by a configuration are referenced. In such constellations, it is
+ * necessary to keep track about the nodes associated with references even if they are replaced by others during an
+ * update operation of the model. This is the task of this class.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Basically, an instance manages a map associating nodes with reference objects. When a node is replaced the map gets
+ * updated. References becoming orphans because the nodes pointing to them were removed are tracked, too. They may be of
+ * importance for special configuration implementations as they might require additional updates. A concrete use case
+ * for this class is {@code XMLConfiguration} which stores the DOM nodes represented by configuration nodes as
+ * references.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: This class is intended to work in a concurrent environment. Instances are immutable. The
+ * represented state can be updated by creating new instances which are then stored by the owning node model.
+ * &lt;/p&gt;
+ */
+final class ReferenceTracker {
+    /** A map with reference data. */
+    private final Map&lt;ImmutableNode, Object&gt; references;
+
+    /** A list with the removed references. */
+    private final List&lt;Object&gt; removedReferences;
+
+    /**
+     * Creates a new instance of {@code ReferenceTracker}. This instance does not yet contain any data about references.
+     */
+    public ReferenceTracker() {
+<span class="fc" id="L59">        this(Collections.&lt;ImmutableNode, Object&gt;emptyMap(), Collections.emptyList());</span>
+<span class="fc" id="L60">    }</span>
+
+    /**
+     * Creates a new instance of {@code ReferenceTracker} and sets the data to be managed. This constructor is used
+     * internally when references are updated.
+     *
+     * @param refs the references
+     * @param removedRefs the removed references
+     */
+<span class="fc" id="L69">    private ReferenceTracker(final Map&lt;ImmutableNode, Object&gt; refs, final List&lt;Object&gt; removedRefs) {</span>
+<span class="fc" id="L70">        references = refs;</span>
+<span class="fc" id="L71">        removedReferences = removedRefs;</span>
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Adds all references stored in the passed in map to the managed references. A new instance is created managing this
+     * new set of references.
+     *
+     * @param refs the references to be added
+     * @return the new instance
+     */
+    public ReferenceTracker addReferences(final Map&lt;ImmutableNode, ?&gt; refs) {
+<span class="fc" id="L82">        final Map&lt;ImmutableNode, Object&gt; newRefs = new HashMap&lt;&gt;(references);</span>
+<span class="fc" id="L83">        newRefs.putAll(refs);</span>
+<span class="fc" id="L84">        return new ReferenceTracker(newRefs, removedReferences);</span>
+    }
+
+    /**
+     * Gets the reference object associated with the given node.
+     *
+     * @param node the node
+     * @return the reference object for this node or &lt;b&gt;null&lt;/b&gt;
+     */
+    public Object getReference(final ImmutableNode node) {
+<span class="fc" id="L94">        return references.get(node);</span>
+    }
+
+    /**
+     * Gets the list with removed references. This list is immutable.
+     *
+     * @return the list with removed references
+     */
+    public List&lt;Object&gt; getRemovedReferences() {
+<span class="fc" id="L103">        return Collections.unmodifiableList(removedReferences);</span>
+    }
+
+    /**
+     * Updates the references managed by this object at the end of a model transaction. This method is called by the
+     * transaction with the nodes that have been replaced by others and the nodes that have been removed. The internal data
+     * structures are updated correspondingly.
+     *
+     * @param replacedNodes the map with nodes that have been replaced
+     * @param removedNodes the list with nodes that have been removed
+     * @return the new instance
+     */
+    public ReferenceTracker updateReferences(final Map&lt;ImmutableNode, ImmutableNode&gt; replacedNodes, final Collection&lt;ImmutableNode&gt; removedNodes) {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (!references.isEmpty()) {</span>
+<span class="fc" id="L117">            Map&lt;ImmutableNode, Object&gt; newRefs = null;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            for (final Map.Entry&lt;ImmutableNode, ImmutableNode&gt; e : replacedNodes.entrySet()) {</span>
+<span class="fc" id="L119">                final Object ref = references.get(e.getKey());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (ref != null) {</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    if (newRefs == null) {</span>
+<span class="fc" id="L122">                        newRefs = new HashMap&lt;&gt;(references);</span>
+                    }
+<span class="fc" id="L124">                    newRefs.put(e.getValue(), ref);</span>
+<span class="fc" id="L125">                    newRefs.remove(e.getKey());</span>
+                }
+<span class="fc" id="L127">            }</span>
+
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            List&lt;Object&gt; newRemovedRefs = newRefs != null ? new LinkedList&lt;&gt;(removedReferences) : null;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            for (final ImmutableNode node : removedNodes) {</span>
+<span class="fc" id="L131">                final Object ref = references.get(node);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                if (ref != null) {</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                    if (newRefs == null) {</span>
+<span class="nc" id="L134">                        newRefs = new HashMap&lt;&gt;(references);</span>
+                    }
+<span class="fc" id="L136">                    newRefs.remove(node);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                    if (newRemovedRefs == null) {</span>
+<span class="nc" id="L138">                        newRemovedRefs = new LinkedList&lt;&gt;(removedReferences);</span>
+                    }
+<span class="fc" id="L140">                    newRemovedRefs.add(ref);</span>
+                }
+<span class="fc" id="L142">            }</span>
+
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">            if (newRefs != null) {</span>
+<span class="fc" id="L145">                return new ReferenceTracker(newRefs, newRemovedRefs);</span>
+            }
+        }
+
+<span class="fc" id="L149">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

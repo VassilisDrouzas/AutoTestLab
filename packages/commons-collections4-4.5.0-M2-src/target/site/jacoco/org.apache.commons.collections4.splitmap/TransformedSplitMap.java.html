@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransformedSplitMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.splitmap</a> &gt; <span class="el_source">TransformedSplitMap.java</span></div><h1>TransformedSplitMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.splitmap;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Map;
+import java.util.Objects;
+
+import org.apache.commons.collections4.Put;
+import org.apache.commons.collections4.Transformer;
+import org.apache.commons.collections4.map.LinkedMap;
+
+/**
+ * Decorates another {@link Map} to transform objects that are added.
+ * &lt;p&gt;
+ * The Map put methods and Map.Entry setValue method are affected by this class.
+ * Thus objects must be removed or searched for using their transformed form.
+ * For example, if the transformation converts Strings to Integers, you must use
+ * the Integer form to remove objects.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that TransformedMap is not synchronized and is not
+ * thread-safe.&lt;/strong&gt; If you wish to use this map from multiple threads
+ * concurrently, you must use appropriate synchronization. The simplest approach
+ * is to wrap this map using {@link java.util.Collections#synchronizedMap(Map)}.
+ * This class may throw exceptions when accessed by concurrent threads without
+ * synchronization.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The &quot;put&quot; and &quot;get&quot; type constraints of this class are mutually independent;
+ * contrast with {@link org.apache.commons.collections4.map.TransformedMap} which,
+ * by virtue of its implementing {@link Map}&amp;lt;K, V&amp;gt;, must be constructed in such
+ * a way that its read and write parameters are generalized to a common (super-)type.
+ * In practice this would often mean {@code &amp;gt;Object, Object&amp;gt;}, defeating
+ * much of the usefulness of having parameterized types.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * On the downside, this class is not drop-in compatible with {@link java.util.Map}
+ * but is intended to be worked with either directly or by {@link Put} and
+ * {@link org.apache.commons.collections4.Get Get} generalizations.
+ * &lt;/p&gt;
+ *
+ * @param &lt;J&gt; the type of the keys to put in this map
+ * @param &lt;K&gt; the type of the keys to get in this map
+ * @param &lt;U&gt; the type of the values to put in this map
+ * @param &lt;V&gt; the type of the values to get in this map
+ * @since 4.0
+ *
+ * @see org.apache.commons.collections4.SplitMapUtils#readableMap(org.apache.commons.collections4.Get)
+ * @see org.apache.commons.collections4.SplitMapUtils#writableMap(Put)
+ */
+public class TransformedSplitMap&lt;J, K, U, V&gt; extends AbstractIterableGetMapDecorator&lt;K, V&gt;
+        implements Put&lt;J, U&gt;, Serializable {
+
+    /** Serialization version */
+    private static final long serialVersionUID = 5966875321133456994L;
+
+    /**
+     * Factory method to create a transforming map.
+     * &lt;p&gt;
+     * If there are any elements already in the map being decorated, they are
+     * NOT transformed.
+     *
+     * @param &lt;J&gt;  the input key type
+     * @param &lt;K&gt;  the output key type
+     * @param &lt;U&gt;  the input value type
+     * @param &lt;V&gt;  the output value type
+     * @param map the map to decorate, must not be null
+     * @param keyTransformer the transformer to use for key conversion, must not be null
+     * @param valueTransformer the transformer to use for value conversion, must not be null
+     * @return a new transformed map
+     * @throws NullPointerException if map or either of the transformers is null
+     */
+    public static &lt;J, K, U, V&gt; TransformedSplitMap&lt;J, K, U, V&gt; transformingMap(final Map&lt;K, V&gt; map,
+            final Transformer&lt;? super J, ? extends K&gt; keyTransformer,
+            final Transformer&lt;? super U, ? extends V&gt; valueTransformer) {
+<span class="fc" id="L94">        return new TransformedSplitMap&lt;&gt;(map, keyTransformer, valueTransformer);</span>
+    }
+    /** The transformer to use for the key */
+    private final Transformer&lt;? super J, ? extends K&gt; keyTransformer;
+
+    /** The transformer to use for the value */
+    private final Transformer&lt;? super U, ? extends V&gt; valueTransformer;
+
+    /**
+     * Constructor that wraps (not copies).
+     * &lt;p&gt;
+     * If there are any elements already in the collection being decorated, they
+     * are NOT transformed.
+     *
+     * @param map the map to decorate, must not be null
+     * @param keyTransformer the transformer to use for key conversion, must not be null
+     * @param valueTransformer the transformer to use for value conversion, must not be null
+     * @throws NullPointerException if map or either of the transformers is null
+     */
+    protected TransformedSplitMap(final Map&lt;K, V&gt; map, final Transformer&lt;? super J, ? extends K&gt; keyTransformer,
+            final Transformer&lt;? super U, ? extends V&gt; valueTransformer) {
+<span class="fc" id="L115">        super(map);</span>
+<span class="fc" id="L116">        this.keyTransformer = Objects.requireNonNull(keyTransformer, &quot;keyTransformer&quot;);</span>
+<span class="fc" id="L117">        this.valueTransformer = Objects.requireNonNull(valueTransformer, &quot;valueTransformer&quot;);</span>
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * Override to transform the value when using {@code setValue}.
+     *
+     * @param value the value to transform
+     * @return the transformed value
+     */
+    protected V checkSetValue(final U value) {
+<span class="nc" id="L127">        return valueTransformer.transform(value);</span>
+    }
+
+    @Override
+    public void clear() {
+<span class="fc" id="L132">        decorated().clear();</span>
+<span class="fc" id="L133">    }</span>
+
+    @Override
+    public V put(final J key, final U value) {
+<span class="fc" id="L137">        return decorated().put(transformKey(key), transformValue(value));</span>
+    }
+
+    @Override
+    public void putAll(final Map&lt;? extends J, ? extends U&gt; mapToCopy) {
+<span class="fc" id="L142">        decorated().putAll(transformMap(mapToCopy));</span>
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     * @since 3.1
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // (1) should only fail if input stream is incorrect
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L155">        in.defaultReadObject();</span>
+<span class="fc" id="L156">        map = (Map&lt;K, V&gt;) in.readObject(); // (1)</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Transforms a key.
+     * &lt;p&gt;
+     * The transformer itself may throw an exception if necessary.
+     *
+     * @param object the object to transform
+     * @return the transformed object
+     */
+    protected K transformKey(final J object) {
+<span class="fc" id="L168">        return keyTransformer.transform(object);</span>
+    }
+
+    /**
+     * Transforms a map.
+     * &lt;p&gt;
+     * The transformer itself may throw an exception if necessary.
+     *
+     * @param map the map to transform
+     * @return the transformed object
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected Map&lt;K, V&gt; transformMap(final Map&lt;? extends J, ? extends U&gt; map) {
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (map.isEmpty()) {</span>
+<span class="nc" id="L182">            return (Map&lt;K, V&gt;) map;</span>
+        }
+<span class="fc" id="L184">        final Map&lt;K, V&gt; result = new LinkedMap&lt;&gt;(map.size());</span>
+
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        for (final Map.Entry&lt;? extends J, ? extends U&gt; entry : map.entrySet()) {</span>
+<span class="fc" id="L187">            result.put(transformKey(entry.getKey()), transformValue(entry.getValue()));</span>
+<span class="fc" id="L188">        }</span>
+<span class="fc" id="L189">        return result;</span>
+    }
+
+    /**
+     * Transforms a value.
+     * &lt;p&gt;
+     * The transformer itself may throw an exception if necessary.
+     *
+     * @param object the object to transform
+     * @return the transformed object
+     */
+    protected V transformValue(final U object) {
+<span class="fc" id="L201">        return valueTransformer.transform(object);</span>
+    }
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     */
+    private void writeObject(final ObjectOutputStream out) throws IOException {
+<span class="nc" id="L211">        out.defaultWriteObject();</span>
+<span class="nc" id="L212">        out.writeObject(decorated());</span>
+<span class="nc" id="L213">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

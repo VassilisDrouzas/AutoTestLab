@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransformerUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4</a> &gt; <span class="el_source">TransformerUtils.java</span></div><h1>TransformerUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.Objects;
+
+import org.apache.commons.collections4.functors.ChainedTransformer;
+import org.apache.commons.collections4.functors.CloneTransformer;
+import org.apache.commons.collections4.functors.ClosureTransformer;
+import org.apache.commons.collections4.functors.ConstantTransformer;
+import org.apache.commons.collections4.functors.EqualPredicate;
+import org.apache.commons.collections4.functors.ExceptionTransformer;
+import org.apache.commons.collections4.functors.FactoryTransformer;
+import org.apache.commons.collections4.functors.IfTransformer;
+import org.apache.commons.collections4.functors.InstantiateTransformer;
+import org.apache.commons.collections4.functors.InvokerTransformer;
+import org.apache.commons.collections4.functors.MapTransformer;
+import org.apache.commons.collections4.functors.NOPTransformer;
+import org.apache.commons.collections4.functors.PredicateTransformer;
+import org.apache.commons.collections4.functors.StringValueTransformer;
+import org.apache.commons.collections4.functors.SwitchTransformer;
+
+/**
+ * {@code TransformerUtils} provides reference implementations and
+ * utilities for the Transformer functor interface. The supplied transformers are:
+ * &lt;ul&gt;
+ * &lt;li&gt;Invoker - returns the result of a method call on the input object
+ * &lt;li&gt;Clone - returns a clone of the input object
+ * &lt;li&gt;Constant - always returns the same object
+ * &lt;li&gt;Closure - performs a Closure and returns the input object
+ * &lt;li&gt;Predicate - returns the result of the predicate as a Boolean
+ * &lt;li&gt;Factory - returns a new object from a factory
+ * &lt;li&gt;Chained - chains two or more transformers together
+ * &lt;li&gt;If - calls one transformer or another based on a predicate
+ * &lt;li&gt;Switch - calls one transformer based on one or more predicates
+ * &lt;li&gt;SwitchMap - calls one transformer looked up from a Map
+ * &lt;li&gt;Instantiate - the Class input object is instantiated
+ * &lt;li&gt;Map - returns an object from a supplied Map
+ * &lt;li&gt;Null - always returns null
+ * &lt;li&gt;NOP - returns the input object, which should be immutable
+ * &lt;li&gt;Exception - always throws an exception
+ * &lt;li&gt;StringValue - returns a {@link String} representation of the input object
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Since v4.1 only transformers which are considered to be safe are
+ * Serializable. Transformers considered to be unsafe for serialization are:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;Invoker
+ * &lt;li&gt;Clone
+ * &lt;li&gt;Instantiate
+ * &lt;/ul&gt;
+ *
+ * @since 3.0
+ */
+public class TransformerUtils {
+
+    /**
+     * Creates a Transformer that calls a Closure each time the transformer is used.
+     * The transformer returns the input object.
+     *
+     * @param &lt;T&gt;  the input/output type
+     * @param closure  the closure to run each time in the transformer, not null
+     * @return the transformer
+     * @throws NullPointerException if the closure is null
+     * @see ClosureTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; asTransformer(final Closure&lt;? super T&gt; closure) {
+<span class="fc" id="L85">        return ClosureTransformer.closureTransformer(closure);</span>
+    }
+
+    /**
+     * Creates a Transformer that calls a Factory each time the transformer is used.
+     * The transformer will return the value returned by the factory.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param factory  the factory to run each time in the transformer, not null
+     * @return the transformer
+     * @throws NullPointerException if the factory is null
+     * @see FactoryTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; asTransformer(final Factory&lt;? extends O&gt; factory) {
+<span class="fc" id="L100">        return FactoryTransformer.factoryTransformer(factory);</span>
+    }
+
+    /**
+     * Creates a Transformer that calls a Predicate each time the transformer is used.
+     * The transformer will return either {@link Boolean#TRUE} or {@link Boolean#FALSE}.
+     *
+     * @param &lt;T&gt;  the input type
+     * @param predicate  the predicate to run each time in the transformer, not null
+     * @return the transformer
+     * @throws NullPointerException if the predicate is null
+     * @see PredicateTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, Boolean&gt; asTransformer(final Predicate&lt;? super T&gt; predicate) {
+<span class="fc" id="L114">        return PredicateTransformer.predicateTransformer(predicate);</span>
+    }
+
+    /**
+     * Create a new Transformer that calls each transformer in turn, passing the
+     * result into the next transformer. The ordering is that of the iterator()
+     * method on the collection.
+     *
+     * @param &lt;T&gt;  the input/output type
+     * @param transformers  a collection of transformers to chain
+     * @return the transformer
+     * @throws NullPointerException if the transformers collection or any of the transformers is null
+     * @see ChainedTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; chainedTransformer(
+            final Collection&lt;? extends Transformer&lt;? super T, ? extends T&gt;&gt; transformers) {
+<span class="fc" id="L130">        return ChainedTransformer.chainedTransformer(transformers);</span>
+    }
+
+    /**
+     * Create a new Transformer that calls each transformer in turn, passing the
+     * result into the next transformer.
+     *
+     * @param &lt;T&gt;  the input/output type
+     * @param transformers  an array of transformers to chain
+     * @return the transformer
+     * @throws NullPointerException if the transformers array or any of the transformers is null
+     * @see ChainedTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; chainedTransformer(
+            final Transformer&lt;? super T, ? extends T&gt;... transformers) {
+<span class="fc" id="L145">        return ChainedTransformer.chainedTransformer(transformers);</span>
+    }
+
+    /**
+     * Gets a transformer that returns a clone of the input object.
+     * The input object will be cloned using one of these techniques (in order):
+     * &lt;ul&gt;
+     * &lt;li&gt;public clone method&lt;/li&gt;
+     * &lt;li&gt;public copy constructor&lt;/li&gt;
+     * &lt;li&gt;serialization clone&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param &lt;T&gt;  the input/output type
+     * @return the transformer
+     * @see CloneTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; cloneTransformer() {
+<span class="fc" id="L162">        return CloneTransformer.cloneTransformer();</span>
+    }
+
+    /**
+     * Creates a Transformer that will return the same object each time the
+     * transformer is used.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param constantToReturn  the constant object to return each time in the transformer
+     * @return the transformer.
+     * @see ConstantTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; constantTransformer(final O constantToReturn) {
+<span class="fc" id="L176">        return ConstantTransformer.constantTransformer(constantToReturn);</span>
+    }
+
+    /**
+     * Gets a transformer that always throws an exception.
+     * This could be useful during testing as a placeholder.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @return the transformer
+     * @see ExceptionTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; exceptionTransformer() {
+<span class="fc" id="L189">        return ExceptionTransformer.exceptionTransformer();</span>
+    }
+
+    /**
+     * Create a new Transformer that calls one of two transformers depending
+     * on the specified predicate.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param predicate  the predicate to switch on
+     * @param trueTransformer  the transformer called if the predicate is true
+     * @param falseTransformer  the transformer called if the predicate is false
+     * @return the transformer
+     * @throws NullPointerException if either the predicate or transformer is null
+     * @see IfTransformer
+     * @since 4.1
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; ifTransformer(final Predicate&lt;? super I&gt; predicate,
+                                                         final Transformer&lt;? super I, ? extends O&gt; trueTransformer,
+                                                         final Transformer&lt;? super I, ? extends O&gt; falseTransformer) {
+<span class="fc" id="L209">        return IfTransformer.ifTransformer(predicate, trueTransformer, falseTransformer);</span>
+    }
+
+    /**
+     * Create a new Transformer that calls the transformer if the predicate is true,
+     * otherwise the input object is returned unchanged.
+     *
+     * @param &lt;T&gt;  the input / output type
+     * @param predicate  the predicate to switch on
+     * @param trueTransformer  the transformer called if the predicate is true
+     * @return the transformer
+     * @throws NullPointerException if either the predicate or transformer is null
+     * @see IfTransformer
+     * @since 4.1
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; ifTransformer(final Predicate&lt;? super T&gt; predicate,
+                                                      final Transformer&lt;? super T, ? extends T&gt; trueTransformer) {
+<span class="fc" id="L226">        return IfTransformer.ifTransformer(predicate, trueTransformer);</span>
+    }
+
+    /**
+     * Gets a Transformer that expects an input Class object that it will instantiate.
+     *
+     * @param &lt;T&gt;  the output type
+     * @return the transformer
+     * @see InstantiateTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;Class&lt;? extends T&gt;, T&gt; instantiateTransformer() {
+<span class="fc" id="L237">        return InstantiateTransformer.instantiateTransformer();</span>
+    }
+
+    /**
+     * Creates a Transformer that expects an input Class object that it will
+     * instantiate. The constructor used is determined by the arguments specified
+     * to this method.
+     *
+     * @param &lt;T&gt;  the output type
+     * @param paramTypes  parameter types for the constructor, can be null
+     * @param args  the arguments to pass to the constructor, can be null
+     * @return the transformer
+     * @throws IllegalArgumentException if the paramTypes and args don't match
+     * @see InstantiateTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;Class&lt;? extends T&gt;, T&gt; instantiateTransformer(
+            final Class&lt;?&gt;[] paramTypes, final Object[] args) {
+<span class="fc" id="L254">        return InstantiateTransformer.instantiateTransformer(paramTypes, args);</span>
+    }
+
+    /**
+     * Gets a Transformer that invokes a method on the input object.
+     * The method must have no parameters. If the input object is {@code null},
+     * {@code null} is returned.
+     *
+     * &lt;p&gt;
+     * For example, {@code TransformerUtils.invokerTransformer(&quot;getName&quot;);}
+     * will call the {@code getName} method on the input object to
+     * determine the transformer result.
+     * &lt;/p&gt;
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param methodName  the method name to call on the input object, may not be null
+     * @return the transformer
+     * @throws NullPointerException if the methodName is null.
+     * @see InvokerTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; invokerTransformer(final String methodName) {
+<span class="fc" id="L276">        return InvokerTransformer.invokerTransformer(methodName, null, null);</span>
+    }
+
+    /**
+     * Gets a Transformer that invokes a method on the input object.
+     * The method parameters are specified. If the input object is {@code null},
+     * {@code null} is returned.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param methodName  the name of the method
+     * @param paramTypes  the parameter types
+     * @param args  the arguments
+     * @return the transformer
+     * @throws NullPointerException if the method name is null
+     * @throws IllegalArgumentException if the paramTypes and args don't match
+     * @see InvokerTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; invokerTransformer(final String methodName, final Class&lt;?&gt;[] paramTypes,
+                                                              final Object[] args) {
+<span class="fc" id="L296">        return InvokerTransformer.invokerTransformer(methodName, paramTypes, args);</span>
+    }
+
+    /**
+     * Creates a Transformer that uses the passed in Map to transform the input
+     * object (as a simple lookup).
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param map  the map to use to transform the objects
+     * @return the transformer, or {@link ConstantTransformer#nullTransformer()} if the
+     *   {@code map} is {@code null}
+     * @see MapTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; mapTransformer(final Map&lt;? super I, ? extends O&gt; map) {
+<span class="fc" id="L311">        return MapTransformer.mapTransformer(map);</span>
+    }
+
+    /**
+     * Gets a transformer that returns the input object.
+     * The input object should be immutable to maintain the
+     * contract of Transformer (although this is not checked).
+     *
+     * @param &lt;T&gt;  the input/output type
+     * @return the transformer
+     * @see NOPTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; nopTransformer() {
+<span class="fc" id="L324">        return NOPTransformer.nopTransformer();</span>
+    }
+
+    /**
+     * Gets a transformer that always returns null.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @return the transformer
+     * @see ConstantTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; nullTransformer() {
+<span class="fc" id="L336">        return ConstantTransformer.nullTransformer();</span>
+    }
+
+    /**
+     * Gets a transformer that returns a {@link String}
+     * representation of the input object. This is achieved via the
+     * {@code toString} method, {@code null} returns 'null'.
+     *
+     * @param &lt;T&gt;  the input type
+     * @return the transformer
+     * @see StringValueTransformer
+     */
+    public static &lt;T&gt; Transformer&lt;T, String&gt; stringValueTransformer() {
+<span class="fc" id="L349">        return StringValueTransformer.stringValueTransformer();</span>
+    }
+
+    /**
+     * Create a new Transformer that uses the input object as a key to find the
+     * transformer to call.
+     * &lt;p&gt;
+     * The Map consists of object keys and Transformer values. A transformer
+     * is called if the input object equals the key. If there is no match, the
+     * default transformer is called. The default transformer is set in the map
+     * using a null key. If no default is set, null will be returned in a default case.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param objectsAndTransformers  a map of objects to transformers
+     * @return the transformer
+     * @throws NullPointerException if the map is null
+     * @throws NullPointerException if any transformer in the map is null
+     * @see SwitchTransformer
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; switchMapTransformer(
+            final Map&lt;I, Transformer&lt;I, O&gt;&gt; objectsAndTransformers) {
+
+<span class="fc" id="L373">        Objects.requireNonNull(objectsAndTransformers, &quot;objectsAndTransformers&quot;);</span>
+<span class="fc" id="L374">        final Transformer&lt;? super I, ? extends O&gt; def = objectsAndTransformers.remove(null);</span>
+<span class="fc" id="L375">        final int size = objectsAndTransformers.size();</span>
+<span class="fc" id="L376">        final Transformer&lt;? super I, ? extends O&gt;[] trs = new Transformer[size];</span>
+<span class="fc" id="L377">        final Predicate&lt;I&gt;[] preds = new Predicate[size];</span>
+<span class="fc" id="L378">        int i = 0;</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        for (final Map.Entry&lt;I, Transformer&lt;I, O&gt;&gt; entry : objectsAndTransformers.entrySet()) {</span>
+<span class="fc" id="L380">            preds[i] = EqualPredicate.&lt;I&gt;equalPredicate(entry.getKey());</span>
+<span class="fc" id="L381">            trs[i++] = entry.getValue();</span>
+<span class="fc" id="L382">        }</span>
+<span class="fc" id="L383">        return switchTransformer(preds, trs, def);</span>
+    }
+
+    /**
+     * Create a new Transformer that calls one of the transformers depending
+     * on the predicates.
+     * &lt;p&gt;
+     * The Map consists of Predicate keys and Transformer values. A transformer
+     * is called if its matching predicate returns true. Each predicate is evaluated
+     * until one returns true. If no predicates evaluate to true, the default
+     * transformer is called. The default transformer is set in the map with a
+     * null key. If no default transformer is set, null will be returned in a default
+     * case. The ordering is that of the iterator() method on the entryset collection
+     * of the map.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param predicatesAndTransformers  a map of predicates to transformers
+     * @return the transformer
+     * @throws NullPointerException if the map is null
+     * @throws NullPointerException if any transformer in the map is null
+     * @throws ClassCastException  if the map elements are of the wrong type
+     * @see SwitchTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; switchTransformer(
+            final Map&lt;Predicate&lt;I&gt;, Transformer&lt;I, O&gt;&gt; predicatesAndTransformers) {
+<span class="fc" id="L409">        return SwitchTransformer.switchTransformer(predicatesAndTransformers);</span>
+    }
+
+    /**
+     * Create a new Transformer that calls one of two transformers depending
+     * on the specified predicate.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param predicate  the predicate to switch on
+     * @param trueTransformer  the transformer called if the predicate is true
+     * @param falseTransformer  the transformer called if the predicate is false
+     * @return the transformer
+     * @throws NullPointerException if either the predicate or transformer is null
+     * @see SwitchTransformer
+     * @deprecated as of 4.1, use {@link #ifTransformer(Predicate, Transformer, Transformer)}
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Deprecated
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; switchTransformer(final Predicate&lt;? super I&gt; predicate,
+            final Transformer&lt;? super I, ? extends O&gt; trueTransformer,
+            final Transformer&lt;? super I, ? extends O&gt; falseTransformer) {
+<span class="fc" id="L431">        return SwitchTransformer.switchTransformer(new Predicate[] { predicate },</span>
+                                                   new Transformer[] { trueTransformer }, falseTransformer);
+    }
+
+    /**
+     * Create a new Transformer that calls one of the transformers depending
+     * on the predicates. The transformer at array location 0 is called if the
+     * predicate at array location 0 returned true. Each predicate is evaluated
+     * until one returns true. If no predicates evaluate to true, null is returned.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param predicates  an array of predicates to check
+     * @param transformers  an array of transformers to call
+     * @return the transformer
+     * @throws NullPointerException if either array is null
+     * @throws NullPointerException if any element in the arrays is null
+     * @throws IllegalArgumentException if the arrays have different sizes
+     * @see SwitchTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; switchTransformer(final Predicate&lt;? super I&gt;[] predicates,
+            final Transformer&lt;? super I, ? extends O&gt;[] transformers) {
+<span class="fc" id="L453">        return SwitchTransformer.switchTransformer(predicates, transformers, null);</span>
+    }
+
+    /**
+     * Create a new Transformer that calls one of the transformers depending
+     * on the predicates. The transformer at array location 0 is called if the
+     * predicate at array location 0 returned true. Each predicate is evaluated
+     * until one returns true. If no predicates evaluate to true, the default
+     * transformer is called. If the default transformer is null, null is returned.
+     *
+     * @param &lt;I&gt;  the input type
+     * @param &lt;O&gt;  the output type
+     * @param predicates  an array of predicates to check
+     * @param transformers  an array of transformers to call
+     * @param defaultTransformer  the default to call if no predicate matches, null means return null
+     * @return the transformer
+     * @throws NullPointerException if either array is null
+     * @throws NullPointerException if any element in the arrays is null
+     * @throws IllegalArgumentException if the arrays have different sizes
+     * @see SwitchTransformer
+     */
+    public static &lt;I, O&gt; Transformer&lt;I, O&gt; switchTransformer(final Predicate&lt;? super I&gt;[] predicates,
+            final Transformer&lt;? super I, ? extends O&gt;[] transformers,
+            final Transformer&lt;? super I, ? extends O&gt; defaultTransformer) {
+<span class="fc" id="L477">        return SwitchTransformer.switchTransformer(predicates, transformers, defaultTransformer);</span>
+    }
+
+    /**
+     * This class is not normally instantiated.
+     */
+    private TransformerUtils() {
+        // empty
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

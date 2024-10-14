@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LangCollectors.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.stream</a> &gt; <span class="el_source">LangCollectors.java</span></div><h1>LangCollectors.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.stream;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.function.BiConsumer;
+import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * Implementations of {@link Collector} that implement various reduction operations.
+ * &lt;p&gt;
+ * This class is called {@code LangCollectors} instead of {@code Collectors} to avoid clashes with {@link Collectors}.
+ * &lt;/p&gt;
+ *
+ * @since 3.13.0
+ */
+public final class LangCollectors {
+
+    /**
+     * Simple implementation class for {@code Collector}.
+     *
+     * @param &lt;T&gt; the type of elements to be collected
+     * @param &lt;R&gt; the type of the result
+     */
+    private static final class SimpleCollector&lt;T, A, R&gt; implements Collector&lt;T, A, R&gt; {
+
+        private final BiConsumer&lt;A, T&gt; accumulator;
+        private final Set&lt;Characteristics&gt; characteristics;
+        private final BinaryOperator&lt;A&gt; combiner;
+        private final Function&lt;A, R&gt; finisher;
+        private final Supplier&lt;A&gt; supplier;
+
+        private SimpleCollector(final Supplier&lt;A&gt; supplier, final BiConsumer&lt;A, T&gt; accumulator, final BinaryOperator&lt;A&gt; combiner, final Function&lt;A, R&gt; finisher,
+<span class="fc" id="L60">            final Set&lt;Characteristics&gt; characteristics) {</span>
+<span class="fc" id="L61">            this.supplier = supplier;</span>
+<span class="fc" id="L62">            this.accumulator = accumulator;</span>
+<span class="fc" id="L63">            this.combiner = combiner;</span>
+<span class="fc" id="L64">            this.finisher = finisher;</span>
+<span class="fc" id="L65">            this.characteristics = characteristics;</span>
+<span class="fc" id="L66">        }</span>
+
+        @Override
+        public BiConsumer&lt;A, T&gt; accumulator() {
+<span class="fc" id="L70">            return accumulator;</span>
+        }
+
+        @Override
+        public Set&lt;Characteristics&gt; characteristics() {
+<span class="fc" id="L75">            return characteristics;</span>
+        }
+
+        @Override
+        public BinaryOperator&lt;A&gt; combiner() {
+<span class="fc" id="L80">            return combiner;</span>
+        }
+
+        @Override
+        public Function&lt;A, R&gt; finisher() {
+<span class="fc" id="L85">            return finisher;</span>
+        }
+
+        @Override
+        public Supplier&lt;A&gt; supplier() {
+<span class="fc" id="L90">            return supplier;</span>
+        }
+    }
+
+<span class="fc" id="L94">    private static final Set&lt;Collector.Characteristics&gt; CH_NOID = Collections.emptySet();</span>
+
+    /**
+     * Delegates to {@link Stream#collect(Collector)} for a Stream on the given array.
+     *
+     * @param &lt;T&gt;       The type of the array elements.
+     * @param &lt;R&gt;       the type of the result.
+     * @param &lt;A&gt;       the intermediate accumulation type of the {@code Collector}.
+     * @param collector the {@code Collector} describing the reduction.
+     * @param array     The array, assumed to be unmodified during use.
+     * @return the result of the reduction
+     * @see Stream#collect(Collector)
+     * @see Arrays#stream(Object[])
+     * @see Collectors
+     * @since 3.16.0
+     */
+    public static &lt;T, R, A&gt; R collect(final Collector&lt;? super T, A, R&gt; collector, final T... array) {
+<span class="fc" id="L111">        return Arrays.stream(array).collect(collector);</span>
+    }
+
+    /**
+     * Returns a {@code Collector} that concatenates the input elements, separated by the specified delimiter, in encounter order.
+     * &lt;p&gt;
+     * This is a variation of {@link Collectors#joining()} that works with any element class, not just {@code CharSequence}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * For example:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * Stream.of(Long.valueOf(1), Long.valueOf(2), Long.valueOf(3))
+     *    .collect(LangCollectors.joining())
+     * returns &quot;123&quot;
+     * &lt;/pre&gt;
+     *
+     * @return A {@code Collector} which concatenates Object elements, separated by the specified delimiter, in encounter order.
+     */
+    public static Collector&lt;Object, ?, String&gt; joining() {
+<span class="fc" id="L132">        return new SimpleCollector&lt;&gt;(StringBuilder::new, StringBuilder::append, StringBuilder::append, StringBuilder::toString, CH_NOID);</span>
+    }
+
+    /**
+     * Returns a {@code Collector} that concatenates the input elements, separated by the specified delimiter, in encounter order.
+     * &lt;p&gt;
+     * This is a variation of {@link Collectors#joining(CharSequence)} that works with any element class, not just {@code CharSequence}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * For example:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * Stream.of(Long.valueOf(1), Long.valueOf(2), Long.valueOf(3))
+     *   .collect(LangCollectors.joining(&quot;-&quot;))
+     * returns &quot;1-2-3&quot;
+     * &lt;/pre&gt;
+     *
+     * @param delimiter the delimiter to be used between each element.
+     * @return A {@code Collector} which concatenates Object elements, separated by the specified delimiter, in encounter order.
+     */
+    public static Collector&lt;Object, ?, String&gt; joining(final CharSequence delimiter) {
+<span class="fc" id="L154">        return joining(delimiter, StringUtils.EMPTY, StringUtils.EMPTY);</span>
+    }
+
+    /**
+     * Returns a {@code Collector} that concatenates the input elements, separated by the specified delimiter, with the
+     * specified prefix and suffix, in encounter order.
+     * &lt;p&gt;
+     * This is a variation of {@link Collectors#joining(CharSequence, CharSequence, CharSequence)} that works with any
+     * element class, not just {@code CharSequence}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * For example:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * Stream.of(Long.valueOf(1), Long.valueOf(2), Long.valueOf(3))
+     *   .collect(LangCollectors.joining(&quot;-&quot;, &quot;[&quot;, &quot;]&quot;))
+     * returns &quot;[1-2-3]&quot;
+     * &lt;/pre&gt;
+     *
+     * @param delimiter the delimiter to be used between each element
+     * @param prefix the sequence of characters to be used at the beginning of the joined result
+     * @param suffix the sequence of characters to be used at the end of the joined result
+     * @return A {@code Collector} which concatenates CharSequence elements, separated by the specified delimiter, in
+     *         encounter order
+     */
+    public static Collector&lt;Object, ?, String&gt; joining(final CharSequence delimiter, final CharSequence prefix, final CharSequence suffix) {
+<span class="fc" id="L181">        return joining(delimiter, prefix, suffix, Objects::toString);</span>
+    }
+
+    /**
+     * Returns a {@code Collector} that concatenates the input elements, separated by the specified delimiter, with the specified prefix and suffix, in
+     * encounter order.
+     * &lt;p&gt;
+     * This is a variation of {@link Collectors#joining(CharSequence, CharSequence, CharSequence)} that works with any element class, not just
+     * {@code CharSequence}.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * For example:
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;{@code
+     * Stream.of(Long.valueOf(1), null, Long.valueOf(3))
+     *   .collect(LangCollectors.joining(&quot;-&quot;, &quot;[&quot;, &quot;]&quot;, o -&gt; Objects.toString(o, &quot;NUL&quot;)))
+     * returns &quot;[1-NUL-3]&quot;
+     * }&lt;/pre&gt;
+     *
+     * @param delimiter the delimiter to be used between each element
+     * @param prefix    the sequence of characters to be used at the beginning of the joined result
+     * @param suffix    the sequence of characters to be used at the end of the joined result
+     * @param toString  A function that takes an Object and returns a non-null String.
+     * @return A {@code Collector} which concatenates CharSequence elements, separated by the specified delimiter, in encounter order
+     */
+    public static Collector&lt;Object, ?, String&gt; joining(final CharSequence delimiter, final CharSequence prefix, final CharSequence suffix,
+        final Function&lt;Object, String&gt; toString) {
+<span class="fc" id="L209">        return new SimpleCollector&lt;&gt;(() -&gt; new StringJoiner(delimiter, prefix, suffix), (a, t) -&gt; a.add(toString.apply(t)), StringJoiner::merge,</span>
+            StringJoiner::toString, CH_NOID);
+    }
+
+    private LangCollectors() {
+        // No instance
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

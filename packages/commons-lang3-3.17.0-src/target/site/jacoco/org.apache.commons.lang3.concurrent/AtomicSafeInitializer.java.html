@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AtomicSafeInitializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.concurrent</a> &gt; <span class="el_source">AtomicSafeInitializer.java</span></div><h1>AtomicSafeInitializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.concurrent;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.commons.lang3.function.FailableConsumer;
+import org.apache.commons.lang3.function.FailableSupplier;
+
+/**
+ * A specialized {@link ConcurrentInitializer} implementation which is similar
+ * to {@link AtomicInitializer}, but ensures that the {@link #initialize()}
+ * method is called only once.
+ *
+ * &lt;p&gt;
+ * As {@link AtomicInitializer} this class is based on atomic variables, so it
+ * can create an object under concurrent access without synchronization.
+ * However, it implements an additional check to guarantee that the
+ * {@link #initialize()} method which actually creates the object cannot be
+ * called multiple times.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Because of this additional check this implementation is slightly less
+ * efficient than {@link AtomicInitializer}, but if the object creation in the
+ * {@code initialize()} method is expensive or if multiple invocations of
+ * {@code initialize()} are problematic, it is the better alternative.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * From its semantics this class has the same properties as
+ * {@link LazyInitializer}. It is a &amp;quot;save&amp;quot; implementation of the lazy
+ * initializer pattern. Comparing both classes in terms of efficiency is
+ * difficult because which one is faster depends on multiple factors. Because
+ * {@link AtomicSafeInitializer} does not use synchronization at all it probably
+ * outruns {@link LazyInitializer}, at least under low or moderate concurrent
+ * access. Developers should run their own benchmarks on the expected target
+ * platform to decide which implementation is suitable for their specific use
+ * case.
+ * &lt;/p&gt;
+ *
+ * @since 3.0
+ * @param &lt;T&gt; the type of the object managed by this initializer class
+ */
+public class AtomicSafeInitializer&lt;T&gt; extends AbstractConcurrentInitializer&lt;T, ConcurrentException&gt; {
+
+    /**
+     * Builds a new instance.
+     *
+     * @param &lt;T&gt; the type of the object managed by the initializer.
+     * @param &lt;I&gt; the type of the initializer managed by this builder.
+     * @since 3.14.0
+     */
+    public static class Builder&lt;I extends AtomicSafeInitializer&lt;T&gt;, T&gt; extends AbstractBuilder&lt;I, T, Builder&lt;I, T&gt;, ConcurrentException&gt; {
+
+        /**
+         * Constructs a new instance.
+         */
+<span class="fc" id="L71">        public Builder() {</span>
+            // empty
+<span class="fc" id="L73">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public I get() {
+<span class="fc" id="L78">            return (I) new AtomicSafeInitializer(getInitializer(), getCloser());</span>
+        }
+
+    }
+
+<span class="fc" id="L83">    private static final Object NO_INIT = new Object();</span>
+
+    /**
+     * Creates a new builder.
+     *
+     * @param &lt;T&gt; the type of object to build.
+     * @return a new builder.
+     * @since 3.14.0
+     */
+    public static &lt;T&gt; Builder&lt;AtomicSafeInitializer&lt;T&gt;, T&gt; builder() {
+<span class="fc" id="L93">        return new Builder&lt;&gt;();</span>
+    }
+
+    /** A guard which ensures that initialize() is called only once. */
+<span class="fc" id="L97">    private final AtomicReference&lt;AtomicSafeInitializer&lt;T&gt;&gt; factory = new AtomicReference&lt;&gt;();</span>
+
+    /** Holds the reference to the managed object. */
+<span class="fc" id="L100">    private final AtomicReference&lt;T&gt; reference = new AtomicReference&lt;&gt;(getNoInit());</span>
+
+    /**
+     * Constructs a new instance.
+     */
+<span class="fc" id="L105">    public AtomicSafeInitializer() {</span>
+        // empty
+<span class="fc" id="L107">    }</span>
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param initializer the initializer supplier called by {@link #initialize()}.
+     * @param closer the closer consumer called by {@link #close()}.
+     */
+    private AtomicSafeInitializer(final FailableSupplier&lt;T, ConcurrentException&gt; initializer, final FailableConsumer&lt;T, ConcurrentException&gt; closer) {
+<span class="fc" id="L116">        super(initializer, closer);</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Gets (and initialize, if not initialized yet) the required object
+     *
+     * @return lazily initialized object
+     * @throws ConcurrentException if the initialization of the object causes an
+     * exception
+     */
+    @Override
+    public final T get() throws ConcurrentException {
+        T result;
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        while ((result = reference.get()) == getNoInit()) {</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (factory.compareAndSet(null, this)) {</span>
+<span class="fc" id="L132">                reference.set(initialize());</span>
+            }
+        }
+
+<span class="fc" id="L136">        return result;</span>
+    }
+
+    /** Gets the internal no-init object cast for this instance. */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private T getNoInit() {
+<span class="fc" id="L142">        return (T) NO_INIT;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected ConcurrentException getTypedException(final Exception e) {
+<span class="fc" id="L150">        return new ConcurrentException(e);</span>
+    }
+
+    /**
+     * Tests whether this instance is initialized. Once initialized, always returns true.
+     *
+     * @return whether this instance is initialized. Once initialized, always returns true.
+     * @since 3.14.0
+     */
+    @Override
+    public boolean isInitialized() {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        return reference.get() != NO_INIT;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

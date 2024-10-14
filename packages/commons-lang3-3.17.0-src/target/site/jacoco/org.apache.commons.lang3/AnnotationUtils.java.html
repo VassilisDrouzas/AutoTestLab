@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnnotationUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">AnnotationUtils.java</span></div><h1>AnnotationUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
+import org.apache.commons.lang3.exception.UncheckedException;
+
+/**
+ * Helper methods for working with {@link Annotation} instances.
+ *
+ * &lt;p&gt;This class contains various utility methods that make working with
+ * annotations simpler.&lt;/p&gt;
+ *
+ * &lt;p&gt;{@link Annotation} instances are always proxy objects; unfortunately
+ * dynamic proxies cannot be depended upon to know how to implement certain
+ * methods in the same manner as would be done by &quot;natural&quot; {@link Annotation}s.
+ * The methods presented in this class can be used to avoid that possibility. It
+ * is of course also possible for dynamic proxies to actually delegate their
+ * e.g. {@link Annotation#equals(Object)}/{@link Annotation#hashCode()}/
+ * {@link Annotation#toString()} implementations to {@link AnnotationUtils}.&lt;/p&gt;
+ *
+ * &lt;p&gt;#ThreadSafe#&lt;/p&gt;
+ *
+ * @since 3.0
+ */
+public class AnnotationUtils {
+
+    /**
+     * A style that prints annotations as recommended.
+     */
+<span class="fc" id="L50">    private static final ToStringStyle TO_STRING_STYLE = new ToStringStyle() {</span>
+        /** Serialization version */
+        private static final long serialVersionUID = 1L;
+
+        {
+<span class="fc" id="L55">            setDefaultFullDetail(true);</span>
+<span class="fc" id="L56">            setArrayContentDetail(true);</span>
+<span class="fc" id="L57">            setUseClassName(true);</span>
+<span class="fc" id="L58">            setUseShortClassName(true);</span>
+<span class="fc" id="L59">            setUseIdentityHashCode(false);</span>
+<span class="fc" id="L60">            setContentStart(&quot;(&quot;);</span>
+<span class="fc" id="L61">            setContentEnd(&quot;)&quot;);</span>
+<span class="fc" id="L62">            setFieldSeparator(&quot;, &quot;);</span>
+<span class="fc" id="L63">            setArrayStart(&quot;[&quot;);</span>
+<span class="fc" id="L64">            setArrayEnd(&quot;]&quot;);</span>
+<span class="fc" id="L65">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        protected void appendDetail(final StringBuffer buffer, final String fieldName, Object value) {
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (value instanceof Annotation) {</span>
+<span class="nc" id="L73">                value = AnnotationUtils.toString((Annotation) value);</span>
+            }
+<span class="fc" id="L75">            super.appendDetail(buffer, fieldName, value);</span>
+<span class="fc" id="L76">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        protected String getShortClassName(final Class&lt;?&gt; cls) {
+            // formatter:off
+<span class="fc" id="L84">            return ClassUtils.getAllInterfaces(cls).stream().filter(Annotation.class::isAssignableFrom).findFirst()</span>
+<span class="fc" id="L85">                .map(iface -&gt; &quot;@&quot; + iface.getName())</span>
+<span class="fc" id="L86">                .orElse(StringUtils.EMPTY);</span>
+            // formatter:on
+        }
+
+    };
+
+    /**
+     * Helper method for comparing two arrays of annotations.
+     *
+     * @param a1 the first array
+     * @param a2 the second array
+     * @return a flag whether these arrays are equal
+     */
+    private static boolean annotationArrayMemberEquals(final Annotation[] a1, final Annotation[] a2) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (a1.length != a2.length) {</span>
+<span class="fc" id="L101">            return false;</span>
+        }
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (int i = 0; i &lt; a1.length; i++) {</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (!equals(a1[i], a2[i])) {</span>
+<span class="nc" id="L105">                return false;</span>
+            }
+        }
+<span class="fc" id="L108">        return true;</span>
+    }
+
+    /**
+     * Helper method for comparing two objects of an array type.
+     *
+     * @param componentType the component type of the array
+     * @param o1 the first object
+     * @param o2 the second object
+     * @return a flag whether these objects are equal
+     */
+    private static boolean arrayMemberEquals(final Class&lt;?&gt; componentType, final Object o1, final Object o2) {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (componentType.isAnnotation()) {</span>
+<span class="fc" id="L121">            return annotationArrayMemberEquals((Annotation[]) o1, (Annotation[]) o2);</span>
+        }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (componentType.equals(Byte.TYPE)) {</span>
+<span class="fc" id="L124">            return Arrays.equals((byte[]) o1, (byte[]) o2);</span>
+        }
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (componentType.equals(Short.TYPE)) {</span>
+<span class="fc" id="L127">            return Arrays.equals((short[]) o1, (short[]) o2);</span>
+        }
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (componentType.equals(Integer.TYPE)) {</span>
+<span class="fc" id="L130">            return Arrays.equals((int[]) o1, (int[]) o2);</span>
+        }
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (componentType.equals(Character.TYPE)) {</span>
+<span class="fc" id="L133">            return Arrays.equals((char[]) o1, (char[]) o2);</span>
+        }
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (componentType.equals(Long.TYPE)) {</span>
+<span class="fc" id="L136">            return Arrays.equals((long[]) o1, (long[]) o2);</span>
+        }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (componentType.equals(Float.TYPE)) {</span>
+<span class="fc" id="L139">            return Arrays.equals((float[]) o1, (float[]) o2);</span>
+        }
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (componentType.equals(Double.TYPE)) {</span>
+<span class="fc" id="L142">            return Arrays.equals((double[]) o1, (double[]) o2);</span>
+        }
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (componentType.equals(Boolean.TYPE)) {</span>
+<span class="fc" id="L145">            return Arrays.equals((boolean[]) o1, (boolean[]) o2);</span>
+        }
+<span class="fc" id="L147">        return Arrays.equals((Object[]) o1, (Object[]) o2);</span>
+    }
+
+    /**
+     * Helper method for generating a hash code for an array.
+     *
+     * @param componentType the component type of the array
+     * @param o the array
+     * @return a hash code for the specified array
+     */
+    private static int arrayMemberHash(final Class&lt;?&gt; componentType, final Object o) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (componentType.equals(Byte.TYPE)) {</span>
+<span class="fc" id="L159">            return Arrays.hashCode((byte[]) o);</span>
+        }
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (componentType.equals(Short.TYPE)) {</span>
+<span class="fc" id="L162">            return Arrays.hashCode((short[]) o);</span>
+        }
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (componentType.equals(Integer.TYPE)) {</span>
+<span class="fc" id="L165">            return Arrays.hashCode((int[]) o);</span>
+        }
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (componentType.equals(Character.TYPE)) {</span>
+<span class="fc" id="L168">            return Arrays.hashCode((char[]) o);</span>
+        }
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (componentType.equals(Long.TYPE)) {</span>
+<span class="fc" id="L171">            return Arrays.hashCode((long[]) o);</span>
+        }
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (componentType.equals(Float.TYPE)) {</span>
+<span class="fc" id="L174">            return Arrays.hashCode((float[]) o);</span>
+        }
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (componentType.equals(Double.TYPE)) {</span>
+<span class="fc" id="L177">            return Arrays.hashCode((double[]) o);</span>
+        }
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (componentType.equals(Boolean.TYPE)) {</span>
+<span class="fc" id="L180">            return Arrays.hashCode((boolean[]) o);</span>
+        }
+<span class="fc" id="L182">        return Arrays.hashCode((Object[]) o);</span>
+    }
+
+    /**
+     * Checks if two annotations are equal using the criteria for equality
+     * presented in the {@link Annotation#equals(Object)} API docs.
+     *
+     * @param a1 the first Annotation to compare, {@code null} returns
+     * {@code false} unless both are {@code null}
+     * @param a2 the second Annotation to compare, {@code null} returns
+     * {@code false} unless both are {@code null}
+     * @return {@code true} if the two annotations are {@code equal} or both
+     * {@code null}
+     */
+    public static boolean equals(final Annotation a1, final Annotation a2) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (a1 == a2) {</span>
+<span class="fc" id="L198">            return true;</span>
+        }
+<span class="fc bfc" id="L200" title="All 4 branches covered.">        if (a1 == null || a2 == null) {</span>
+<span class="fc" id="L201">            return false;</span>
+        }
+<span class="fc" id="L203">        final Class&lt;? extends Annotation&gt; type1 = a1.annotationType();</span>
+<span class="fc" id="L204">        final Class&lt;? extends Annotation&gt; type2 = a2.annotationType();</span>
+<span class="fc" id="L205">        Validate.notNull(type1, &quot;Annotation %s with null annotationType()&quot;, a1);</span>
+<span class="fc" id="L206">        Validate.notNull(type2, &quot;Annotation %s with null annotationType()&quot;, a2);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        if (!type1.equals(type2)) {</span>
+<span class="fc" id="L208">            return false;</span>
+        }
+        try {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            for (final Method m : type1.getDeclaredMethods()) {</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                if (m.getParameterTypes().length == 0</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">                        &amp;&amp; isValidAnnotationMemberType(m.getReturnType())) {</span>
+<span class="fc" id="L214">                    final Object v1 = m.invoke(a1);</span>
+<span class="fc" id="L215">                    final Object v2 = m.invoke(a2);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                    if (!memberEquals(m.getReturnType(), v1, v2)) {</span>
+<span class="fc" id="L217">                        return false;</span>
+                    }
+                }
+            }
+<span class="nc" id="L221">        } catch (final ReflectiveOperationException ex) {</span>
+<span class="nc" id="L222">            return false;</span>
+<span class="fc" id="L223">        }</span>
+<span class="fc" id="L224">        return true;</span>
+    }
+
+    /**
+     * Generate a hash code for the given annotation using the algorithm
+     * presented in the {@link Annotation#hashCode()} API docs.
+     *
+     * @param a the Annotation for a hash code calculation is desired, not
+     * {@code null}
+     * @return the calculated hash code
+     * @throws RuntimeException if an {@link Exception} is encountered during
+     * annotation member access
+     * @throws IllegalStateException if an annotation method invocation returns
+     * {@code null}
+     */
+    public static int hashCode(final Annotation a) {
+<span class="fc" id="L240">        int result = 0;</span>
+<span class="fc" id="L241">        final Class&lt;? extends Annotation&gt; type = a.annotationType();</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        for (final Method m : type.getDeclaredMethods()) {</span>
+            try {
+<span class="fc" id="L244">                final Object value = m.invoke(a);</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                if (value == null) {</span>
+<span class="nc" id="L246">                    throw new IllegalStateException(String.format(&quot;Annotation method %s returned null&quot;, m));</span>
+                }
+<span class="fc" id="L248">                result += hashMember(m.getName(), value);</span>
+<span class="nc" id="L249">            } catch (final ReflectiveOperationException ex) {</span>
+<span class="nc" id="L250">                throw new UncheckedException(ex);</span>
+<span class="fc" id="L251">            }</span>
+        }
+<span class="fc" id="L253">        return result;</span>
+    }
+
+    //besides modularity, this has the advantage of autoboxing primitives:
+    /**
+     * Helper method for generating a hash code for a member of an annotation.
+     *
+     * @param name the name of the member
+     * @param value the value of the member
+     * @return a hash code for this member
+     */
+    private static int hashMember(final String name, final Object value) {
+<span class="fc" id="L265">        final int part1 = name.hashCode() * 127;</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (ObjectUtils.isArray(value)) {</span>
+<span class="fc" id="L267">            return part1 ^ arrayMemberHash(value.getClass().getComponentType(), value);</span>
+        }
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (value instanceof Annotation) {</span>
+<span class="fc" id="L270">            return part1 ^ hashCode((Annotation) value);</span>
+        }
+<span class="fc" id="L272">        return part1 ^ value.hashCode();</span>
+    }
+
+    /**
+     * Checks if the specified type is permitted as an annotation member.
+     *
+     * &lt;p&gt;The Java language specification only permits certain types to be used
+     * in annotations. These include {@link String}, {@link Class}, primitive
+     * types, {@link Annotation}, {@link Enum}, and single-dimensional arrays of
+     * these types.&lt;/p&gt;
+     *
+     * @param type the type to check, {@code null}
+     * @return {@code true} if the type is a valid type to use in an annotation
+     */
+    public static boolean isValidAnnotationMemberType(Class&lt;?&gt; type) {
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L288">            return false;</span>
+        }
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        if (type.isArray()) {</span>
+<span class="fc" id="L291">            type = type.getComponentType();</span>
+        }
+<span class="fc bfc" id="L293" title="All 6 branches covered.">        return type.isPrimitive() || type.isEnum() || type.isAnnotation()</span>
+<span class="fc bfc" id="L294" title="All 4 branches covered.">                || String.class.equals(type) || Class.class.equals(type);</span>
+    }
+
+    /**
+     * Helper method for checking whether two objects of the given type are
+     * equal. This method is used to compare the parameters of two annotation
+     * instances.
+     *
+     * @param type the type of the objects to be compared
+     * @param o1 the first object
+     * @param o2 the second object
+     * @return a flag whether these objects are equal
+     */
+    private static boolean memberEquals(final Class&lt;?&gt; type, final Object o1, final Object o2) {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (o1 == o2) {</span>
+<span class="fc" id="L309">            return true;</span>
+        }
+<span class="pc bpc" id="L311" title="2 of 4 branches missed.">        if (o1 == null || o2 == null) {</span>
+<span class="nc" id="L312">            return false;</span>
+        }
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (type.isArray()) {</span>
+<span class="fc" id="L315">            return arrayMemberEquals(type.getComponentType(), o1, o2);</span>
+        }
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (type.isAnnotation()) {</span>
+<span class="fc" id="L318">            return equals((Annotation) o1, (Annotation) o2);</span>
+        }
+<span class="fc" id="L320">        return o1.equals(o2);</span>
+    }
+
+    /**
+     * Generate a string representation of an Annotation, as suggested by
+     * {@link Annotation#toString()}.
+     *
+     * @param a the annotation of which a string representation is desired
+     * @return the standard string representation of an annotation, not
+     * {@code null}
+     */
+    public static String toString(final Annotation a) {
+<span class="fc" id="L332">        final ToStringBuilder builder = new ToStringBuilder(a, TO_STRING_STYLE);</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        for (final Method m : a.annotationType().getDeclaredMethods()) {</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">            if (m.getParameterTypes().length &gt; 0) {</span>
+<span class="nc" id="L335">                continue; // wtf?</span>
+            }
+            try {
+<span class="fc" id="L338">                builder.append(m.getName(), m.invoke(a));</span>
+<span class="nc" id="L339">            } catch (final ReflectiveOperationException ex) {</span>
+<span class="nc" id="L340">                throw new UncheckedException(ex);</span>
+<span class="fc" id="L341">            }</span>
+        }
+<span class="fc" id="L343">        return builder.build();</span>
+    }
+
+    /**
+     * {@link AnnotationUtils} instances should NOT be constructed in
+     * standard programming. Instead, the class should be used statically.
+     *
+     * &lt;p&gt;This constructor is public to permit tools that require a JavaBean
+     * instance to operate.&lt;/p&gt;
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="nc" id="L355">    public AnnotationUtils() {</span>
+        // empty
+<span class="nc" id="L357">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

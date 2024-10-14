@@ -1,0 +1,800 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractHierarchicalConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">AbstractHierarchicalConfiguration.java</span></div><h1>AbstractHierarchicalConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.Stack;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.event.ConfigurationEvent;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.sync.NoOpSynchronizer;
+import org.apache.commons.configuration2.tree.ConfigurationNodeVisitorAdapter;
+import org.apache.commons.configuration2.tree.DefaultExpressionEngine;
+import org.apache.commons.configuration2.tree.ExpressionEngine;
+import org.apache.commons.configuration2.tree.NodeAddData;
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.configuration2.tree.NodeKeyResolver;
+import org.apache.commons.configuration2.tree.NodeModel;
+import org.apache.commons.configuration2.tree.NodeTreeWalker;
+import org.apache.commons.configuration2.tree.NodeUpdateData;
+import org.apache.commons.configuration2.tree.QueryResult;
+
+/**
+ * &lt;p&gt;
+ * A specialized configuration class that extends its base class by the ability of keeping more structure in the stored
+ * properties.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are some sources of configuration data that cannot be stored very well in a {@code BaseConfiguration} object
+ * because then their structure is lost. This is for instance true for XML documents. This class can deal with such
+ * structured configuration sources by storing the properties in a tree-like organization. The exact storage structure
+ * of the underlying data does not matter for the configuration instance; it uses a {@link NodeModel} object for
+ * accessing it.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The hierarchical organization allows for a more sophisticated access to single properties. As an example consider the
+ * following XML document:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * &amp;lt;database&amp;gt;
+ *   &amp;lt;tables&amp;gt;
+ *     &amp;lt;table&amp;gt;
+ *       &amp;lt;name&amp;gt;users&amp;lt;/name&amp;gt;
+ *       &amp;lt;fields&amp;gt;
+ *         &amp;lt;field&amp;gt;
+ *           &amp;lt;name&amp;gt;lid&amp;lt;/name&amp;gt;
+ *           &amp;lt;type&amp;gt;long&amp;lt;/name&amp;gt;
+ *         &amp;lt;/field&amp;gt;
+ *         &amp;lt;field&amp;gt;
+ *           &amp;lt;name&amp;gt;usrName&amp;lt;/name&amp;gt;
+ *           &amp;lt;type&amp;gt;java.lang.String&amp;lt;/type&amp;gt;
+ *         &amp;lt;/field&amp;gt;
+ *        ...
+ *       &amp;lt;/fields&amp;gt;
+ *     &amp;lt;/table&amp;gt;
+ *     &amp;lt;table&amp;gt;
+ *       &amp;lt;name&amp;gt;documents&amp;lt;/name&amp;gt;
+ *       &amp;lt;fields&amp;gt;
+ *         &amp;lt;field&amp;gt;
+ *           &amp;lt;name&amp;gt;docid&amp;lt;/name&amp;gt;
+ *           &amp;lt;type&amp;gt;long&amp;lt;/type&amp;gt;
+ *         &amp;lt;/field&amp;gt;
+ *         ...
+ *       &amp;lt;/fields&amp;gt;
+ *     &amp;lt;/table&amp;gt;
+ *     ...
+ *   &amp;lt;/tables&amp;gt;
+ * &amp;lt;/database&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * If this document is parsed and stored in a hierarchical configuration object (which can be done by one of the sub
+ * classes), there are enhanced possibilities of accessing properties. Per default, the keys for querying information
+ * can contain indices that select a specific element if there are multiple hits.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For instance the key {@code tables.table(0).name} can be used to find out the name of the first table. In opposite
+ * {@code tables.table.name} would return a collection with the names of all available tables. Similarly the key
+ * {@code tables.table(1).fields.field.name} returns a collection with the names of all fields of the second table. If
+ * another index is added after the {@code field} element, a single field can be accessed:
+ * {@code tables.table(1).fields.field(0).name}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There is a {@code getMaxIndex()} method that returns the maximum allowed index that can be added to a given property
+ * key. This method can be used to iterate over all values defined for a certain property.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Since the 1.3 release of &lt;em&gt;Commons Configuration&lt;/em&gt; hierarchical configurations support an &lt;em&gt;expression
+ * engine&lt;/em&gt;. This expression engine is responsible for evaluating the passed in configuration keys and map them to
+ * the stored properties. The examples above are valid for the default expression engine, which is used when a new
+ * {@code AbstractHierarchicalConfiguration} instance is created. With the {@code setExpressionEngine()} method a
+ * different expression engine can be set. For instance with
+ * {@link org.apache.commons.configuration2.tree.xpath.XPathExpressionEngine} there is an expression engine available
+ * that supports configuration keys in XPATH syntax.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * In addition to the events common for all configuration classes, hierarchical configurations support some more events
+ * that correspond to some specific methods and features. For those events specific event type constants in
+ * {@code ConfigurationEvent} exist:
+ * &lt;/p&gt;
+ * &lt;dl&gt;
+ * &lt;dt&gt;&lt;em&gt;ADD_NODES&lt;/em&gt;&lt;/dt&gt;
+ * &lt;dd&gt;The {@code addNodes()} method was called; the event object contains the key, to which the nodes were added, and a
+ * collection with the new nodes as value.&lt;/dd&gt;
+ * &lt;dt&gt;&lt;em&gt;CLEAR_TREE&lt;/em&gt;&lt;/dt&gt;
+ * &lt;dd&gt;The {@code clearTree()} method was called; the event object stores the key of the removed sub tree.&lt;/dd&gt;
+ * &lt;dt&gt;&lt;em&gt;SUBNODE_CHANGED&lt;/em&gt;&lt;/dt&gt;
+ * &lt;dd&gt;A {@code SubnodeConfiguration} that was created from this configuration has been changed. The value property of
+ * the event object contains the original event object as it was sent by the subnode configuration.&lt;/dd&gt;
+ * &lt;/dl&gt;
+ * &lt;p&gt;
+ * Whether an {@code AbstractHierarchicalConfiguration} object is thread-safe or not depends on the underlying
+ * {@code NodeModel} and the {@link org.apache.commons.configuration2.sync.Synchronizer Synchronizer} it is associated
+ * with. Some {@code NodeModel} implementations are inherently thread-safe; they do not require a special
+ * {@code Synchronizer}. (Per default, a dummy {@code Synchronizer} is used which is not thread-safe!) The methods for
+ * querying or updating configuration data invoke this {@code Synchronizer} accordingly. When accessing the
+ * configuration's root node directly, the client application is responsible for proper synchronization. This is
+ * achieved by calling the methods {@link #lock(org.apache.commons.configuration2.sync.LockMode) lock()}, and
+ * {@link #unlock(org.apache.commons.configuration2.sync.LockMode) unlock()} with a proper
+ * {@link org.apache.commons.configuration2.sync.LockMode LockMode} argument. In any case, it is recommended to not
+ * access the root node directly, but to use corresponding methods for querying or updating configuration data instead.
+ * Direct manipulations of a configuration's node structure circumvent many internal mechanisms and thus can cause
+ * undesired effects. For concrete subclasses dealing with specific node structures, this situation may be different.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ * @param &lt;T&gt; the type of the nodes managed by this hierarchical configuration
+ */
+public abstract class AbstractHierarchicalConfiguration&lt;T&gt; extends AbstractConfiguration
+    implements Cloneable, NodeKeyResolver&lt;T&gt;, HierarchicalConfiguration&lt;T&gt; {
+
+    /**
+     * A specialized visitor that fills a list with keys that are defined in a node hierarchy.
+     */
+    private final class DefinedKeysVisitor extends ConfigurationNodeVisitorAdapter&lt;T&gt; {
+
+        /** Stores the list to be filled. */
+        private final Set&lt;String&gt; keyList;
+
+        /** A stack with the keys of the already processed nodes. */
+        private final Stack&lt;String&gt; parentKeys;
+
+        /**
+         * Default constructor.
+         */
+<span class="fc" id="L171">        public DefinedKeysVisitor() {</span>
+<span class="fc" id="L172">            keyList = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L173">            parentKeys = new Stack&lt;&gt;();</span>
+<span class="fc" id="L174">        }</span>
+
+        /**
+         * Creates a new {@code DefinedKeysVisitor} instance and sets the prefix for the keys to fetch.
+         *
+         * @param prefix the prefix
+         */
+        public DefinedKeysVisitor(final String prefix) {
+<span class="fc" id="L182">            this();</span>
+<span class="fc" id="L183">            parentKeys.push(prefix);</span>
+<span class="fc" id="L184">        }</span>
+
+        /**
+         * Gets the list with all defined keys.
+         *
+         * @return the list with the defined keys
+         */
+        public Set&lt;String&gt; getKeyList() {
+<span class="fc" id="L192">            return keyList;</span>
+        }
+
+        /**
+         * Appends all attribute keys of the current node.
+         *
+         * @param parentKey the parent key
+         * @param node the current node
+         * @param handler the {@code NodeHandler}
+         */
+        public void handleAttributeKeys(final String parentKey, final T node, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L203">            handler.getAttributes(node).forEach(attr -&gt; keyList.add(getExpressionEngine().attributeKey(parentKey, attr)));</span>
+<span class="fc" id="L204">        }</span>
+
+        /**
+         * {@inheritDoc} This implementation removes this node's key from the stack.
+         */
+        @Override
+        public void visitAfterChildren(final T node, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L211">            parentKeys.pop();</span>
+<span class="fc" id="L212">        }</span>
+
+        /**
+         * {@inheritDoc} If this node has a value, its key is added to the internal list.
+         */
+        @Override
+        public void visitBeforeChildren(final T node, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            final String parentKey = parentKeys.isEmpty() ? null : parentKeys.peek();</span>
+<span class="fc" id="L220">            final String key = getExpressionEngine().nodeKey(node, parentKey, handler);</span>
+<span class="fc" id="L221">            parentKeys.push(key);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (handler.getValue(node) != null) {</span>
+<span class="fc" id="L223">                keyList.add(key);</span>
+            }
+<span class="fc" id="L225">            handleAttributeKeys(key, node, handler);</span>
+<span class="fc" id="L226">        }</span>
+    }
+
+    /**
+     * A specialized visitor that checks if a node is defined. &amp;quot;Defined&amp;quot; in this terms means that the node or at
+     * least one of its sub nodes is associated with a value.
+     *
+     * @param &lt;T&gt; the type of the nodes managed by this hierarchical configuration
+     */
+    private static final class DefinedVisitor&lt;T&gt; extends ConfigurationNodeVisitorAdapter&lt;T&gt; {
+
+        /** Stores the defined flag. */
+        private boolean defined;
+
+        /**
+         * Returns the defined flag.
+         *
+         * @return the defined flag
+         */
+        public boolean isDefined() {
+<span class="fc" id="L246">            return defined;</span>
+        }
+
+        /**
+         * Checks if iteration should be stopped. This can be done if the first defined node is found.
+         *
+         * @return a flag if iteration should be stopped
+         */
+        @Override
+        public boolean terminate() {
+<span class="fc" id="L256">            return isDefined();</span>
+        }
+
+        /**
+         * Visits the node. Checks if a value is defined.
+         *
+         * @param node the actual node
+         */
+        @Override
+        public void visitBeforeChildren(final T node, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L266" title="All 4 branches covered.">            defined = handler.getValue(node) != null || !handler.getAttributes(node).isEmpty();</span>
+<span class="fc" id="L267">        }</span>
+    }
+
+    /** The model for managing the data stored in this configuration. */
+    private NodeModel&lt;T&gt; nodeModel;
+
+    /** Stores the expression engine for this instance. */
+    private ExpressionEngine expressionEngine;
+
+    /**
+     * Creates a new instance of {@code AbstractHierarchicalConfiguration} and sets the {@code NodeModel} to be used.
+     *
+     * @param nodeModel the {@code NodeModel}
+     */
+<span class="fc" id="L281">    protected AbstractHierarchicalConfiguration(final NodeModel&lt;T&gt; nodeModel) {</span>
+<span class="fc" id="L282">        this.nodeModel = nodeModel;</span>
+<span class="fc" id="L283">    }</span>
+
+    /**
+     * Adds a collection of nodes at the specified position of the configuration tree. This method works similar to
+     * {@code addProperty()}, but instead of a single property a whole collection of nodes can be added - and thus complete
+     * configuration sub trees. E.g. with this method it is possible to add parts of another
+     * {@code BaseHierarchicalConfiguration} object to this object. If the passed in key refers to an existing and unique
+     * node, the new nodes are added to this node. Otherwise a new node will be created at the specified position in the
+     * hierarchy. Implementation node: This method performs some book-keeping and then delegates to
+     * {@code addNodesInternal()}.
+     *
+     * @param key the key where the nodes are to be added; can be &lt;b&gt;null&lt;/b&gt;, then they are added to the root node
+     * @param nodes a collection with the {@code Node} objects to be added
+     */
+    @Override
+    public final void addNodes(final String key, final Collection&lt;? extends T&gt; nodes) {
+<span class="pc bpc" id="L299" title="1 of 4 branches missed.">        if (nodes == null || nodes.isEmpty()) {</span>
+<span class="fc" id="L300">            return;</span>
+        }
+
+<span class="fc" id="L303">        beginWrite(false);</span>
+        try {
+<span class="fc" id="L305">            fireEvent(ConfigurationEvent.ADD_NODES, key, nodes, true);</span>
+<span class="fc" id="L306">            addNodesInternal(key, nodes);</span>
+<span class="fc" id="L307">            fireEvent(ConfigurationEvent.ADD_NODES, key, nodes, false);</span>
+        } finally {
+<span class="fc" id="L309">            endWrite();</span>
+        }
+<span class="fc" id="L311">    }</span>
+
+    /**
+     * Actually adds a collection of new nodes to this configuration. This method is called by {@code addNodes()}. It can be
+     * overridden by subclasses that need to adapt this operation.
+     *
+     * @param key the key where the nodes are to be added; can be &lt;b&gt;null&lt;/b&gt;, then they are added to the root node
+     * @param nodes a collection with the {@code Node} objects to be added
+     * @since 2.0
+     */
+    protected void addNodesInternal(final String key, final Collection&lt;? extends T&gt; nodes) {
+<span class="fc" id="L322">        getModel().addNodes(key, nodes, this);</span>
+<span class="fc" id="L323">    }</span>
+
+    /**
+     * {@inheritDoc} This method is not called in the normal way (via {@code addProperty()} for hierarchical configurations
+     * because all values to be added for the property have to be passed to the model in a single step. However, to allow
+     * derived classes to add an arbitrary value as an object, a special implementation is provided here. The passed in
+     * object is not parsed as a list, but passed directly as only value to the model.
+     */
+    @Override
+    protected void addPropertyDirect(final String key, final Object value) {
+<span class="fc" id="L333">        addPropertyToModel(key, Collections.singleton(value));</span>
+<span class="fc" id="L334">    }</span>
+
+    /**
+     * Adds the property with the specified key. This task will be delegated to the associated {@code ExpressionEngine}, so
+     * the passed in key must match the requirements of this implementation.
+     *
+     * @param key the key of the new property
+     * @param obj the value of the new property
+     */
+    @Override
+    protected void addPropertyInternal(final String key, final Object obj) {
+<span class="fc" id="L345">        addPropertyToModel(key, getListDelimiterHandler().parse(obj));</span>
+<span class="fc" id="L346">    }</span>
+
+    /**
+     * Helper method for executing an add property operation on the model.
+     *
+     * @param key the key of the new property
+     * @param values the values to be added for this property
+     */
+    private void addPropertyToModel(final String key, final Iterable&lt;?&gt; values) {
+<span class="fc" id="L355">        getModel().addProperty(key, values, this);</span>
+<span class="fc" id="L356">    }</span>
+
+    /**
+     * Clears this configuration. This is a more efficient implementation than the one inherited from the base class. It
+     * delegates to the node model.
+     */
+    @Override
+    protected void clearInternal() {
+<span class="fc" id="L364">        getModel().clear(this);</span>
+<span class="fc" id="L365">    }</span>
+
+    /**
+     * Removes the property with the given key. Properties with names that start with the given key (i.e. properties below
+     * the specified key in the hierarchy) won't be affected. This implementation delegates to the node+ model.
+     *
+     * @param key the key of the property to be removed
+     */
+    @Override
+    protected void clearPropertyDirect(final String key) {
+<span class="fc" id="L375">        getModel().clearProperty(key, this);</span>
+<span class="fc" id="L376">    }</span>
+
+    /**
+     * Removes all values of the property with the given name and of keys that start with this name. So if there is a
+     * property with the key &amp;quot;foo&amp;quot; and a property with the key &amp;quot;foo.bar&amp;quot;, a call of
+     * {@code clearTree(&quot;foo&quot;)} would remove both properties.
+     *
+     * @param key the key of the property to be removed
+     */
+    @Override
+    public final void clearTree(final String key) {
+<span class="fc" id="L387">        beginWrite(false);</span>
+        try {
+<span class="fc" id="L389">            fireEvent(ConfigurationEvent.CLEAR_TREE, key, null, true);</span>
+<span class="fc" id="L390">            fireEvent(ConfigurationEvent.CLEAR_TREE, key, clearTreeInternal(key), false);</span>
+        } finally {
+<span class="fc" id="L392">            endWrite();</span>
+        }
+<span class="fc" id="L394">    }</span>
+
+    /**
+     * Actually clears the tree of elements referenced by the given key. This method is called by {@code clearTree()}.
+     * Subclasses that need to adapt this operation can override this method. This base implementation delegates to the node
+     * model.
+     *
+     * @param key the key of the property to be removed
+     * @return an object with information about the nodes that have been removed (this is needed for firing a meaningful
+     *         event of type CLEAR_TREE)
+     * @since 2.0
+     */
+    protected Object clearTreeInternal(final String key) {
+<span class="fc" id="L407">        return getModel().clearTree(key, this);</span>
+    }
+
+    /**
+     * Creates a copy of this object. This new configuration object will contain copies of all nodes in the same structure.
+     * Registered event listeners won't be cloned; so they are not registered at the returned copy.
+     *
+     * @return the copy
+     * @since 1.2
+     */
+    @Override
+    public Object clone() {
+<span class="fc" id="L419">        beginRead(false);</span>
+        try {
+            @SuppressWarnings(&quot;unchecked&quot;) // clone returns the same type
+<span class="fc" id="L422">            final AbstractHierarchicalConfiguration&lt;T&gt; copy = (AbstractHierarchicalConfiguration&lt;T&gt;) super.clone();</span>
+<span class="fc" id="L423">            copy.setSynchronizer(NoOpSynchronizer.INSTANCE);</span>
+<span class="fc" id="L424">            copy.cloneInterpolator(this);</span>
+<span class="fc" id="L425">            copy.setSynchronizer(ConfigurationUtils.cloneSynchronizer(getSynchronizer()));</span>
+<span class="fc" id="L426">            copy.nodeModel = cloneNodeModel();</span>
+
+<span class="fc" id="L428">            return copy;</span>
+<span class="nc" id="L429">        } catch (final CloneNotSupportedException cex) {</span>
+            // should not happen
+<span class="nc" id="L431">            throw new ConfigurationRuntimeException(cex);</span>
+        } finally {
+<span class="fc" id="L433">            endRead();</span>
+        }
+    }
+
+    /**
+     * Creates a clone of the node model. This method is called by {@code clone()}.
+     *
+     * @return the clone of the {@code NodeModel}
+     * @since 2.0
+     */
+    protected abstract NodeModel&lt;T&gt; cloneNodeModel();
+
+    /**
+     * Checks if the specified key is contained in this configuration. Note that for this configuration the term
+     * &amp;quot;contained&amp;quot; means that the key has an associated value. If there is a node for this key that has no value
+     * but children (either defined or undefined), this method will still return &lt;b&gt;false &lt;/b&gt;.
+     *
+     * @param key the key to be checked
+     * @return a flag if this key is contained in this configuration
+     */
+    @Override
+    protected boolean containsKeyInternal(final String key) {
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        return getPropertyInternal(key) != null;</span>
+    }
+
+    /**
+     * Tests whether this configuration contains one or more matches to this value. This operation stops at first
+     * match but may be more expensive than the containsKey method.
+     * @since 2.11.0
+     */
+    @Override
+    protected boolean containsValueInternal(final Object value) {
+<span class="fc" id="L465">        return contains(getKeys(), value);</span>
+    }
+
+    /**
+     * Helper method for resolving the specified key.
+     *
+     * @param key the key
+     * @return a list with all results selected by this key
+     */
+    protected List&lt;QueryResult&lt;T&gt;&gt; fetchNodeList(final String key) {
+<span class="fc" id="L475">        final NodeHandler&lt;T&gt; nodeHandler = getModel().getNodeHandler();</span>
+<span class="fc" id="L476">        return resolveKey(nodeHandler.getRootNode(), key, nodeHandler);</span>
+    }
+
+    /**
+     * Gets the expression engine used by this configuration. This method will never return &lt;b&gt;null&lt;/b&gt;; if no specific
+     * expression engine was set, the default expression engine will be returned.
+     *
+     * @return the current expression engine
+     * @since 1.3
+     */
+    @Override
+    public ExpressionEngine getExpressionEngine() {
+<span class="fc bfc" id="L488" title="All 2 branches covered.">        return expressionEngine != null ? expressionEngine : DefaultExpressionEngine.INSTANCE;</span>
+    }
+
+    /**
+     * Gets an iterator with all keys defined in this configuration. Note that the keys returned by this method will not
+     * contain any indices. This means that some structure will be lost.
+     *
+     * @return an iterator with the defined keys in this configuration
+     */
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal() {
+<span class="fc" id="L499">        return visitDefinedKeys().getKeyList().iterator();</span>
+    }
+
+    /**
+     * Gets an iterator with all keys defined in this configuration that start with the given prefix. The returned keys
+     * will not contain any indices. This implementation tries to locate a node whose key is the same as the passed in
+     * prefix. Then the subtree of this node is traversed, and the keys of all nodes encountered (including attributes) are
+     * added to the result set.
+     *
+     * @param prefix the prefix of the keys to start with
+     * @return an iterator with the found keys
+     */
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal(final String prefix) {
+<span class="fc" id="L513">        final DefinedKeysVisitor visitor = new DefinedKeysVisitor(prefix);</span>
+<span class="fc bfc" id="L514" title="All 2 branches covered.">        if (containsKey(prefix)) {</span>
+            // explicitly add the prefix
+<span class="fc" id="L516">            visitor.getKeyList().add(prefix);</span>
+        }
+
+<span class="fc" id="L519">        final List&lt;QueryResult&lt;T&gt;&gt; results = fetchNodeList(prefix);</span>
+<span class="fc" id="L520">        final NodeHandler&lt;T&gt; handler = getModel().getNodeHandler();</span>
+
+<span class="fc" id="L522">        results.forEach(result -&gt; {</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">            if (!result.isAttributeResult()) {</span>
+<span class="fc" id="L524">                handler.getChildren(result.getNode()).forEach(c -&gt; NodeTreeWalker.INSTANCE.walkDFS(c, visitor, handler));</span>
+<span class="fc" id="L525">                visitor.handleAttributeKeys(prefix, result.getNode(), handler);</span>
+            }
+<span class="fc" id="L527">        });</span>
+
+<span class="fc" id="L529">        return visitor.getKeyList().iterator();</span>
+    }
+
+    /**
+     * Gets the maximum defined index for the given key. This is useful if there are multiple values for this key. They
+     * can then be addressed separately by specifying indices from 0 to the return value of this method. If the passed in
+     * key is not contained in this configuration, result is -1.
+     *
+     * @param key the key to be checked
+     * @return the maximum defined index for this key
+     */
+    @Override
+    public final int getMaxIndex(final String key) {
+<span class="fc" id="L542">        beginRead(false);</span>
+        try {
+<span class="fc" id="L544">            return getMaxIndexInternal(key);</span>
+        } finally {
+<span class="fc" id="L546">            endRead();</span>
+        }
+    }
+
+    /**
+     * Actually retrieves the maximum defined index for the given key. This method is called by {@code getMaxIndex()}.
+     * Subclasses that need to adapt this operation have to override this method.
+     *
+     * @param key the key to be checked
+     * @return the maximum defined index for this key
+     * @since 2.0
+     */
+    protected int getMaxIndexInternal(final String key) {
+<span class="fc" id="L559">        return fetchNodeList(key).size() - 1;</span>
+    }
+
+    /**
+     * Gets the {@code NodeModel} used by this configuration. This method is intended for internal use only. Access to
+     * the model is granted without any synchronization. This is in contrast to the &amp;quot;official&amp;quot;
+     * {@code getNodeModel()} method which is guarded by the configuration's {@code Synchronizer}.
+     *
+     * @return the node model
+     */
+    protected NodeModel&lt;T&gt; getModel() {
+<span class="fc" id="L570">        return nodeModel;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation returns the configuration's {@code NodeModel}. It is guarded by the current
+     * {@code Synchronizer}.
+     */
+    @Override
+    public NodeModel&lt;T&gt; getNodeModel() {
+<span class="fc" id="L579">        beginRead(false);</span>
+        try {
+<span class="fc" id="L581">            return getModel();</span>
+        } finally {
+<span class="fc" id="L583">            endRead();</span>
+        }
+    }
+
+    /**
+     * Fetches the specified property. This task is delegated to the associated expression engine.
+     *
+     * @param key the key to be looked up
+     * @return the found value
+     */
+    @Override
+    protected Object getPropertyInternal(final String key) {
+<span class="fc" id="L595">        final List&lt;QueryResult&lt;T&gt;&gt; results = fetchNodeList(key);</span>
+
+<span class="fc bfc" id="L597" title="All 2 branches covered.">        if (results.isEmpty()) {</span>
+<span class="fc" id="L598">            return null;</span>
+        }
+<span class="fc" id="L600">        final NodeHandler&lt;T&gt; handler = getModel().getNodeHandler();</span>
+<span class="fc" id="L601">        final List&lt;Object&gt; list = results.stream().map(r -&gt; valueFromResult(r, handler)).filter(Objects::nonNull).collect(Collectors.toList());</span>
+
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (list.size() &lt; 1) {</span>
+<span class="fc" id="L604">            return null;</span>
+        }
+<span class="fc bfc" id="L606" title="All 2 branches covered.">        return list.size() == 1 ? list.get(0) : list;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation handles synchronization and delegates to {@code getRootElementNameInternal()}.
+     */
+    @Override
+    public final String getRootElementName() {
+<span class="fc" id="L614">        beginRead(false);</span>
+        try {
+<span class="fc" id="L616">            return getRootElementNameInternal();</span>
+        } finally {
+<span class="fc" id="L618">            endRead();</span>
+        }
+    }
+
+    /**
+     * Actually obtains the name of the root element. This method is called by {@code getRootElementName()}. It just returns
+     * the name of the root node. Subclasses that treat the root element name differently can override this method.
+     *
+     * @return the name of this configuration's root element
+     */
+    protected String getRootElementNameInternal() {
+<span class="fc" id="L629">        final NodeHandler&lt;T&gt; nodeHandler = getModel().getNodeHandler();</span>
+<span class="fc" id="L630">        return nodeHandler.nodeName(nodeHandler.getRootNode());</span>
+    }
+
+    /**
+     * Checks if this configuration is empty. Empty means that there are no keys with any values, though there can be some
+     * (empty) nodes.
+     *
+     * @return a flag if this configuration is empty
+     */
+    @Override
+    protected boolean isEmptyInternal() {
+<span class="fc bfc" id="L641" title="All 2 branches covered.">        return !nodeDefined(getModel().getNodeHandler().getRootNode());</span>
+    }
+
+    /**
+     * Checks if the specified node is defined.
+     *
+     * @param node the node to be checked
+     * @return a flag if this node is defined
+     */
+    protected boolean nodeDefined(final T node) {
+<span class="fc" id="L651">        final DefinedVisitor&lt;T&gt; visitor = new DefinedVisitor&lt;&gt;();</span>
+<span class="fc" id="L652">        NodeTreeWalker.INSTANCE.walkBFS(node, visitor, getModel().getNodeHandler());</span>
+<span class="fc" id="L653">        return visitor.isDefined();</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation uses the expression engine to generate a canonical key for the passed in node. For
+     * this purpose, the path to the root node has to be traversed. The cache is used to store and access keys for nodes
+     * encountered on the path.
+     */
+    @Override
+    public String nodeKey(final T node, final Map&lt;T, String&gt; cache, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L663">        final List&lt;T&gt; paths = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L664">        T currentNode = node;</span>
+<span class="fc" id="L665">        String key = cache.get(node);</span>
+<span class="fc bfc" id="L666" title="All 4 branches covered.">        while (key == null &amp;&amp; currentNode != null) {</span>
+<span class="fc" id="L667">            paths.add(0, currentNode);</span>
+<span class="fc" id="L668">            currentNode = handler.getParent(currentNode);</span>
+<span class="fc" id="L669">            key = cache.get(currentNode);</span>
+        }
+
+<span class="fc bfc" id="L672" title="All 2 branches covered.">        for (final T n : paths) {</span>
+<span class="fc" id="L673">            final String currentKey = getExpressionEngine().canonicalKey(n, key, handler);</span>
+<span class="fc" id="L674">            cache.put(n, currentKey);</span>
+<span class="fc" id="L675">            key = currentKey;</span>
+<span class="fc" id="L676">        }</span>
+
+<span class="fc" id="L678">        return key;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation delegates to the expression engine.
+     */
+    @Override
+    public NodeAddData&lt;T&gt; resolveAddKey(final T root, final String key, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L686">        return getExpressionEngine().prepareAdd(root, key, handler);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation delegates to the expression engine.
+     */
+    @Override
+    public List&lt;QueryResult&lt;T&gt;&gt; resolveKey(final T root, final String key, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L694">        return getExpressionEngine().query(root, key, handler);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation delegates to {@code resolveKey()} and then filters out attribute results.
+     */
+    @Override
+    public List&lt;T&gt; resolveNodeKey(final T root, final String key, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L702" title="All 2 branches covered.">        return resolveKey(root, key, handler).stream().filter(r -&gt; !r.isAttributeResult()).map(QueryResult::getNode)</span>
+<span class="fc" id="L703">            .collect(Collectors.toCollection(LinkedList::new));</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation executes a query for the given key and constructs a {@code NodeUpdateData} object
+     * based on the results. It determines which nodes need to be changed and whether new ones need to be added or existing
+     * ones need to be removed.
+     */
+    @Override
+    public NodeUpdateData&lt;T&gt; resolveUpdateKey(final T root, final String key, final Object newValue, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L713">        final Iterator&lt;QueryResult&lt;T&gt;&gt; itNodes = fetchNodeList(key).iterator();</span>
+<span class="fc" id="L714">        final Iterator&lt;?&gt; itValues = getListDelimiterHandler().parse(newValue).iterator();</span>
+<span class="fc" id="L715">        final Map&lt;QueryResult&lt;T&gt;, Object&gt; changedValues = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L716">        Collection&lt;Object&gt; additionalValues = null;</span>
+<span class="fc" id="L717">        Collection&lt;QueryResult&lt;T&gt;&gt; removedItems = null;</span>
+
+<span class="fc bfc" id="L719" title="All 4 branches covered.">        while (itNodes.hasNext() &amp;&amp; itValues.hasNext()) {</span>
+<span class="fc" id="L720">            changedValues.put(itNodes.next(), itValues.next());</span>
+        }
+
+        // Add additional nodes if necessary
+<span class="fc bfc" id="L724" title="All 2 branches covered.">        if (itValues.hasNext()) {</span>
+<span class="fc" id="L725">            additionalValues = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L726">            itValues.forEachRemaining(additionalValues::add);</span>
+        }
+
+        // Remove remaining nodes
+<span class="fc bfc" id="L730" title="All 2 branches covered.">        if (itNodes.hasNext()) {</span>
+<span class="fc" id="L731">            removedItems = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L732">            itNodes.forEachRemaining(removedItems::add);</span>
+        }
+
+<span class="fc" id="L735">        return new NodeUpdateData&lt;&gt;(changedValues, additionalValues, removedItems, key);</span>
+    }
+
+    /**
+     * Sets the expression engine to be used by this configuration. All property keys this configuration has to deal with
+     * will be interpreted by this engine.
+     *
+     * @param expressionEngine the new expression engine; can be &lt;b&gt;null&lt;/b&gt;, then the default expression engine will be
+     *        used
+     * @since 1.3
+     */
+    @Override
+    public void setExpressionEngine(final ExpressionEngine expressionEngine) {
+<span class="fc" id="L748">        this.expressionEngine = expressionEngine;</span>
+<span class="fc" id="L749">    }</span>
+
+    /**
+     * Sets the value of the specified property.
+     *
+     * @param key the key of the property to set
+     * @param value the new value of this property
+     */
+    @Override
+    protected void setPropertyInternal(final String key, final Object value) {
+<span class="fc" id="L759">        getModel().setProperty(key, value, this);</span>
+<span class="fc" id="L760">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation is slightly more efficient than the default implementation. It does not iterate
+     * over the key set, but directly queries its size after it has been constructed. Note that constructing the key set is
+     * still an O(n) operation.
+     */
+    @Override
+    protected int sizeInternal() {
+<span class="fc" id="L769">        return visitDefinedKeys().getKeyList().size();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L774">        return super.toString() + &quot;(&quot; + getRootElementNameInternal() + &quot;)&quot;;</span>
+    }
+
+    /**
+     * Extracts the value from a query result.
+     *
+     * @param result the {@code QueryResult}
+     * @param handler the {@code NodeHandler}
+     * @return the value of this result (may be &lt;b&gt;null&lt;/b&gt;)
+     */
+    private Object valueFromResult(final QueryResult&lt;T&gt; result, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L785" title="All 2 branches covered.">        return result.isAttributeResult() ? result.getAttributeValue(handler) : handler.getValue(result.getNode());</span>
+    }
+
+    /**
+     * Creates a {@code DefinedKeysVisitor} and visits all defined keys with it.
+     *
+     * @return the visitor after all keys have been visited
+     */
+    private DefinedKeysVisitor visitDefinedKeys() {
+<span class="fc" id="L794">        final DefinedKeysVisitor visitor = new DefinedKeysVisitor();</span>
+<span class="fc" id="L795">        final NodeHandler&lt;T&gt; nodeHandler = getModel().getNodeHandler();</span>
+<span class="fc" id="L796">        NodeTreeWalker.INSTANCE.walkDFS(nodeHandler.getRootNode(), visitor, nodeHandler);</span>
+<span class="fc" id="L797">        return visitor;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

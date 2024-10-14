@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TrackedNodeModel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">TrackedNodeModel.java</span></div><h1>TrackedNodeModel.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * &lt;p&gt;
+ * A specialized {@code NodeModel} implementation that uses a tracked node managed by an {@link InMemoryNodeModel}
+ * object as root node.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Models of this type are useful when working on specific sub trees of a nodes structure. This is the case for instance
+ * for a {@code SubnodeConfiguration}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this class is constructed with an {@link InMemoryNodeModelSupport} object providing a reference to the
+ * underlying {@code InMemoryNodeModel} and the {@link NodeSelector} pointing to the tracked node acting as this model's
+ * root node. The {@code NodeModel} operations are implemented by delegating to the wrapped {@code InMemoryNodeModel}
+ * object specifying the selector to the tracked node as target root node for the update transaction. Note that the
+ * tracked node can become detached at any time. This situation is handled transparently by the implementation of
+ * {@code InMemoryNodeModel}. The reason for using an {@code InMemoryNodeModelSupport} object rather than an
+ * {@code InMemoryNodeModel} directly is that this additional layer of indirection can be used for performing special
+ * initializations on the model before it is returned to the {@code TrackedNodeModel} object. This is needed by some
+ * dynamic configuration implementations, e.g. by {@code CombinedConfiguration}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If the tracked node acting as root node is exclusively used by this model, it should be released when this model is
+ * no longer needed. This can be done manually by calling the {@link #close()} method. It is also possible to pass a
+ * value of &lt;strong&gt;true&lt;/strong&gt; to the {@code untrackOnFinalize} argument of the constructor. This causes
+ * {@code close()} to be called automatically if this object gets claimed by the garbage collector.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * As {@code InMemoryNodeModel}, this class is thread-safe.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class TrackedNodeModel implements NodeModel&lt;ImmutableNode&gt; {
+    /** Stores the underlying parent model. */
+    private final InMemoryNodeModelSupport parentModelSupport;
+
+    /** The selector for the managed tracked node. */
+    private final NodeSelector selector;
+
+    /**
+     * A flag whether the tracked not should be released when this object is finalized.
+     */
+    private final boolean releaseTrackedNodeOnFinalize;
+
+    /** A flag whether this model has already been closed. */
+    private final AtomicBoolean closed;
+
+    /**
+     * Creates a new instance of {@code TrackedNodeModel} and initializes it with the given underlying model and the
+     * selector to the root node. The boolean argument controls whether the associated tracked node should be released when
+     * this object gets finalized. This allows the underlying model to free some resources. If used as model within a
+     * {@code SubnodeConfiguration}, there is typically no way to discard the model explicitly. Therefore, it makes sense to
+     * do this automatically on finalization.
+     *
+     * @param modelSupport the underlying {@code InMemoryNodeModelSupport} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param sel the selector to the root node of this model (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param untrackOnFinalize a flag whether the tracked node should be released on finalization
+     * @throws IllegalArgumentException if a required parameter is missing
+     */
+<span class="fc" id="L82">    public TrackedNodeModel(final InMemoryNodeModelSupport modelSupport, final NodeSelector sel, final boolean untrackOnFinalize) {</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (modelSupport == null) {</span>
+<span class="fc" id="L84">            throw new IllegalArgumentException(&quot;Underlying model support must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (sel == null) {</span>
+<span class="fc" id="L87">            throw new IllegalArgumentException(&quot;Selector must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L90">        parentModelSupport = modelSupport;</span>
+<span class="fc" id="L91">        selector = sel;</span>
+<span class="fc" id="L92">        releaseTrackedNodeOnFinalize = untrackOnFinalize;</span>
+<span class="fc" id="L93">        closed = new AtomicBoolean();</span>
+<span class="fc" id="L94">    }</span>
+
+    @Override
+    public void addNodes(final String key, final Collection&lt;? extends ImmutableNode&gt; nodes, final NodeKeyResolver&lt;ImmutableNode&gt; resolver) {
+<span class="fc" id="L98">        getParentModel().addNodes(key, getSelector(), nodes, resolver);</span>
+<span class="fc" id="L99">    }</span>
+
+    @Override
+    public void addProperty(final String key, final Iterable&lt;?&gt; values, final NodeKeyResolver&lt;ImmutableNode&gt; resolver) {
+<span class="fc" id="L103">        getParentModel().addProperty(key, getSelector(), values, resolver);</span>
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation clears the sub tree spanned by the associate tracked node. This has the side effect
+     * that this in any case becomes detached.
+     *
+     * @param resolver the {@code NodeKeyResolver}.
+     */
+    @Override
+    public void clear(final NodeKeyResolver&lt;ImmutableNode&gt; resolver) {
+<span class="fc" id="L114">        getParentModel().clearTree(null, getSelector(), resolver);</span>
+<span class="fc" id="L115">    }</span>
+
+    @Override
+    public void clearProperty(final String key, final NodeKeyResolver&lt;ImmutableNode&gt; resolver) {
+<span class="fc" id="L119">        getParentModel().clearProperty(key, getSelector(), resolver);</span>
+<span class="fc" id="L120">    }</span>
+
+    @Override
+    public List&lt;QueryResult&lt;ImmutableNode&gt;&gt; clearTree(final String key, final NodeKeyResolver&lt;ImmutableNode&gt; resolver) {
+<span class="fc" id="L124">        return getParentModel().clearTree(key, getSelector(), resolver);</span>
+    }
+
+    /**
+     * Closes this model. This causes the tracked node this model is based upon to be released (i.e.
+     * {@link InMemoryNodeModel#untrackNode(NodeSelector)} is called). This method should be called when this model is no
+     * longer needed. This implementation is idempotent; it is safe to call {@code close()} multiple times - only the first
+     * invocation has an effect. After this method has been called this model can no longer be used because there is no
+     * guarantee that the node can still be accessed from the parent model.
+     */
+    public void close() {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (closed.compareAndSet(false, true)) {</span>
+<span class="fc" id="L136">            getParentModel().untrackNode(getSelector());</span>
+        }
+<span class="fc" id="L138">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation calls {@code close()} if the {@code untrackOnFinalize} flag was set when this
+     * instance was constructed. While this is not 100 percent reliable, it is better than keeping the tracked node hanging
+     * around. Note that it is not a problem if {@code close()} already had been invoked manually because this method is
+     * idempotent.
+     *
+     * @see #close()
+     */
+    @Override
+    protected void finalize() throws Throwable {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (isReleaseTrackedNodeOnFinalize()) {</span>
+<span class="fc" id="L151">            close();</span>
+        }
+<span class="fc" id="L153">        super.finalize();</span>
+<span class="fc" id="L154">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation returns the tracked node instance acting as root node of this model.
+     */
+    @Override
+    public ImmutableNode getInMemoryRepresentation() {
+<span class="fc" id="L161">        return getNodeHandler().getRootNode();</span>
+    }
+
+    @Override
+    public NodeHandler&lt;ImmutableNode&gt; getNodeHandler() {
+<span class="fc" id="L166">        return getParentModel().getTrackedNodeHandler(getSelector());</span>
+    }
+
+    /**
+     * Gets the parent model. Operations on this model are delegated to this parent model specifying the selector to the
+     * tracked node.
+     *
+     * @return the parent model
+     */
+    public InMemoryNodeModel getParentModel() {
+<span class="fc" id="L176">        return getParentModelSupport().getNodeModel();</span>
+    }
+
+    /**
+     * Gets the {@code InMemoryNodeModelSupport} object which is used to gain access to the underlying node model.
+     *
+     * @return the associated {@code InMemoryNodeModelSupport} object
+     */
+    public InMemoryNodeModelSupport getParentModelSupport() {
+<span class="fc" id="L185">        return parentModelSupport;</span>
+    }
+
+    /**
+     * Gets the {@code NodeSelector} pointing to the tracked node managed by this model.
+     *
+     * @return the tracked node selector
+     */
+    public NodeSelector getSelector() {
+<span class="fc" id="L194">        return selector;</span>
+    }
+
+    /**
+     * Returns the flag whether the managed tracked node is to be released when this object gets finalized. This method
+     * returns the value of the corresponding flag passed to the constructor. If result is true, the underlying model is
+     * asked to untrack the managed node when this object is claimed by the GC.
+     *
+     * @return a flag whether the managed tracked node should be released when this object dies
+     * @see InMemoryNodeModel#untrackNode(NodeSelector)
+     */
+    public boolean isReleaseTrackedNodeOnFinalize() {
+<span class="fc" id="L206">        return releaseTrackedNodeOnFinalize;</span>
+    }
+
+    @Override
+    public void setProperty(final String key, final Object value, final NodeKeyResolver&lt;ImmutableNode&gt; resolver) {
+<span class="fc" id="L211">        getParentModel().setProperty(key, getSelector(), value, resolver);</span>
+<span class="fc" id="L212">    }</span>
+
+    @Override
+    public void setRootNode(final ImmutableNode newRoot) {
+<span class="fc" id="L216">        getParentModel().replaceTrackedNode(getSelector(), newRoot);</span>
+<span class="fc" id="L217">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

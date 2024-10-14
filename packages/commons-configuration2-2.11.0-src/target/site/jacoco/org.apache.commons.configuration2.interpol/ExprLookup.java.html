@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExprLookup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.interpol</a> &gt; <span class="el_source">ExprLookup.java</span></div><h1>ExprLookup.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.interpol;
+
+import java.util.ArrayList;
+import java.util.Objects;
+
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.io.ConfigurationLogger;
+import org.apache.commons.jexl2.Expression;
+import org.apache.commons.jexl2.JexlContext;
+import org.apache.commons.jexl2.JexlEngine;
+import org.apache.commons.jexl2.MapContext;
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringSubstitutor;
+import org.apache.commons.text.lookup.StringLookup;
+
+/**
+ * Lookup that allows expressions to be evaluated.
+ *
+ * &lt;pre&gt;
+ * ExprLookup.Variables vars = new ExprLookup.Variables();
+ * vars.add(new ExprLookup.Variable(&quot;String&quot;, org.apache.commons.lang.StringUtils.class));
+ * vars.add(new ExprLookup.Variable(&quot;Util&quot;, new Utility(&quot;Hello&quot;)));
+ * vars.add(new ExprLookup.Variable(&quot;System&quot;, &quot;Class:java.lang.System&quot;));
+ * XMLConfiguration config = new XMLConfiguration(TEST_FILE);
+ * config.setLogger(log);
+ * ExprLookup lookup = new ExprLookup(vars);
+ * lookup.setConfiguration(config);
+ * String str = lookup.lookup(&quot;'$[element] ' + String.trimToEmpty('$[space.description]')&quot;);
+ * &lt;/pre&gt;
+ *
+ * In the example above TEST_FILE contains xml that looks like:
+ *
+ * &lt;pre&gt;
+ * &amp;lt;configuration&amp;gt;
+ *   &amp;lt;element&amp;gt;value&amp;lt;/element&amp;gt;
+ *   &amp;lt;space xml:space=&quot;preserve&quot;&amp;gt;
+ *     &amp;lt;description xml:space=&quot;default&quot;&amp;gt;     Some text      &amp;lt;/description&amp;gt;
+ *   &amp;lt;/space&amp;gt;
+ * &amp;lt;/configuration&amp;gt;
+ * &lt;/pre&gt;
+ *
+ * The result will be &quot;value Some text&quot;.
+ *
+ * This lookup uses Apache Commons Jexl and requires that the dependency be added to any projects which use this.
+ *
+ * @since 1.7
+ */
+public class ExprLookup implements Lookup {
+    /**
+     * The key and corresponding object that will be made available to the JexlContext for use in expressions.
+     */
+    public static class Variable {
+        /** The name to be used in expressions */
+        private String key;
+
+        /** The object to be accessed in expressions */
+        private Object value;
+
+<span class="nc" id="L76">        public Variable() {</span>
+<span class="nc" id="L77">        }</span>
+
+<span class="fc" id="L79">        public Variable(final String name, final Object value) {</span>
+<span class="fc" id="L80">            setName(name);</span>
+<span class="fc" id="L81">            setValue(value);</span>
+<span class="fc" id="L82">        }</span>
+
+        public String getName() {
+<span class="fc" id="L85">            return key;</span>
+        }
+
+        public Object getValue() {
+<span class="fc" id="L89">            return value;</span>
+        }
+
+        public void setName(final String name) {
+<span class="fc" id="L93">            this.key = name;</span>
+<span class="fc" id="L94">        }</span>
+
+        public void setValue(final Object value) throws ConfigurationRuntimeException {
+            try {
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                if (!(value instanceof String)) {</span>
+<span class="fc" id="L99">                    this.value = value;</span>
+<span class="fc" id="L100">                    return;</span>
+                }
+<span class="fc" id="L102">                final String val = (String) value;</span>
+<span class="fc" id="L103">                final String name = StringUtils.removeStartIgnoreCase(val, CLASS);</span>
+<span class="fc" id="L104">                final Class&lt;?&gt; clazz = ClassUtils.getClass(name);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                if (name.length() == val.length()) {</span>
+<span class="nc" id="L106">                    this.value = clazz.getConstructor().newInstance();</span>
+                } else {
+<span class="fc" id="L108">                    this.value = clazz;</span>
+                }
+<span class="nc" id="L110">            } catch (final Exception e) {</span>
+<span class="nc" id="L111">                throw new ConfigurationRuntimeException(&quot;Unable to create &quot; + value, e);</span>
+<span class="fc" id="L112">            }</span>
+
+<span class="fc" id="L114">        }</span>
+    }
+
+    /**
+     * List wrapper used to allow the Variables list to be created as beans in DefaultConfigurationBuilder.
+     */
+    public static class Variables extends ArrayList&lt;Variable&gt; {
+        /**
+         * The serial version UID.
+         */
+        private static final long serialVersionUID = 20111205L;
+
+        /**
+         * Creates a new empty instance of {@code Variables}.
+         */
+<span class="fc" id="L129">        public Variables() {</span>
+<span class="fc" id="L130">        }</span>
+
+        /**
+         * Creates a new instance of {@code Variables} and copies the content of the given object.
+         *
+         * @param vars the {@code Variables} object to be copied
+         */
+        public Variables(final Variables vars) {
+<span class="fc" id="L138">            super(vars);</span>
+<span class="fc" id="L139">        }</span>
+
+        public Variable getVariable() {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            return !isEmpty() ? get(size() - 1) : null;</span>
+        }
+
+    }
+
+    /** Prefix to identify a Java Class object */
+    private static final String CLASS = &quot;Class:&quot;;
+
+    /** The default prefix for subordinate lookup expressions */
+    private static final String DEFAULT_PREFIX = &quot;$[&quot;;
+
+    /** The default suffix for subordinate lookup expressions */
+    private static final String DEFAULT_SUFFIX = &quot;]&quot;;
+
+    /** The ConfigurationInterpolator used by this object. */
+    private ConfigurationInterpolator interpolator;
+
+    /** The StringSubstitutor for performing replace operations. */
+    private StringSubstitutor substitutor;
+
+    /** The logger used by this instance. */
+    private ConfigurationLogger logger;
+
+    /** The engine. */
+<span class="pc" id="L166">    private final JexlEngine engine = new JexlEngine();</span>
+
+    /** The variables maintained by this object. */
+    private Variables variables;
+
+    /** The String to use to start subordinate lookup expressions */
+<span class="pc" id="L172">    private String prefixMatcher = DEFAULT_PREFIX;</span>
+
+    /** The String to use to terminate subordinate lookup expressions */
+<span class="pc" id="L175">    private String suffixMatcher = DEFAULT_SUFFIX;</span>
+
+    /**
+     * The default constructor. Will get used when the Lookup is constructed via configuration.
+     */
+<span class="nc" id="L180">    public ExprLookup() {</span>
+<span class="nc" id="L181">    }</span>
+
+    /**
+     * Constructor for use by applications.
+     *
+     * @param list The list of objects to be accessible in expressions.
+     */
+<span class="fc" id="L188">    public ExprLookup(final Variables list) {</span>
+<span class="fc" id="L189">        setVariables(list);</span>
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * Constructor for use by applications.
+     *
+     * @param list The list of objects to be accessible in expressions.
+     * @param prefix The prefix to use for subordinate lookups.
+     * @param suffix The suffix to use for subordinate lookups.
+     */
+    public ExprLookup(final Variables list, final String prefix, final String suffix) {
+<span class="nc" id="L200">        this(list);</span>
+<span class="nc" id="L201">        setVariablePrefixMatcher(prefix);</span>
+<span class="nc" id="L202">        setVariableSuffixMatcher(suffix);</span>
+<span class="nc" id="L203">    }</span>
+
+    /**
+     * Creates a new {@code JexlContext} and initializes it with the variables managed by this Lookup object.
+     *
+     * @return the newly created context
+     */
+    private JexlContext createContext() {
+<span class="fc" id="L211">        final JexlContext ctx = new MapContext();</span>
+<span class="fc" id="L212">        initializeContext(ctx);</span>
+<span class="fc" id="L213">        return ctx;</span>
+    }
+
+    /**
+     * Gets the {@code ConfigurationInterpolator} used by this object.
+     *
+     * @return the {@code ConfigurationInterpolator}
+     * @since 2.0
+     */
+    public ConfigurationInterpolator getInterpolator() {
+<span class="nc" id="L223">        return interpolator;</span>
+    }
+
+    /**
+     * Gets the logger used by this object.
+     *
+     * @return the {@code Log}
+     * @since 2.0
+     */
+    public ConfigurationLogger getLogger() {
+<span class="nc" id="L233">        return logger;</span>
+    }
+
+    /**
+     * Gets the list of Variables that are accessible within expressions. This method returns a copy of the variables
+     * managed by this lookup; so modifying this object has no impact on this lookup.
+     *
+     * @return the List of Variables that are accessible within expressions.
+     */
+    public Variables getVariables() {
+<span class="fc" id="L243">        return new Variables(variables);</span>
+    }
+
+    /**
+     * Initializes the specified context with the variables managed by this Lookup object.
+     *
+     * @param ctx the context to be initialized
+     */
+    private void initializeContext(final JexlContext ctx) {
+<span class="fc" id="L252">        variables.forEach(var -&gt; ctx.set(var.getName(), var.getValue()));</span>
+<span class="fc" id="L253">    }</span>
+
+    /**
+     * Creates a {@code StringSubstitutor} object which uses the passed in {@code ConfigurationInterpolator} as lookup
+     * object.
+     *
+     * @param ip the {@code ConfigurationInterpolator} to be used
+     */
+    private void installSubstitutor(final ConfigurationInterpolator ip) {
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (ip == null) {</span>
+<span class="nc" id="L263">            substitutor = null;</span>
+        } else {
+<span class="fc" id="L265">            final StringLookup variableResolver = key -&gt; Objects.toString(ip.resolve(key), null);</span>
+<span class="fc" id="L266">            substitutor = new StringSubstitutor(variableResolver, prefixMatcher, suffixMatcher, StringSubstitutor.DEFAULT_ESCAPE);</span>
+        }
+<span class="fc" id="L268">    }</span>
+
+    /**
+     * Evaluates the expression.
+     *
+     * @param var The expression.
+     * @return The String result of the expression.
+     */
+    @Override
+    public String lookup(final String var) {
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (substitutor == null) {</span>
+<span class="fc" id="L279">            return var;</span>
+        }
+
+<span class="fc" id="L282">        String result = substitutor.replace(var);</span>
+        try {
+<span class="fc" id="L284">            final Expression exp = engine.createExpression(result);</span>
+<span class="fc" id="L285">            final Object exprResult = exp.evaluate(createContext());</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            result = exprResult != null ? String.valueOf(exprResult) : null;</span>
+<span class="nc" id="L287">        } catch (final Exception e) {</span>
+<span class="nc" id="L288">            final ConfigurationLogger l = getLogger();</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">            if (l != null) {</span>
+<span class="nc" id="L290">                l.debug(&quot;Error encountered evaluating &quot; + result + &quot;: &quot; + e);</span>
+            }
+<span class="fc" id="L292">        }</span>
+
+<span class="fc" id="L294">        return result;</span>
+    }
+
+    /**
+     * Sets the {@code ConfigurationInterpolator} to be used by this object.
+     *
+     * @param interpolator the {@code ConfigurationInterpolator} (may be &lt;b&gt;null&lt;/b&gt;)
+     * @since 2.0
+     */
+    public void setInterpolator(final ConfigurationInterpolator interpolator) {
+<span class="fc" id="L304">        this.interpolator = interpolator;</span>
+<span class="fc" id="L305">        installSubstitutor(interpolator);</span>
+<span class="fc" id="L306">    }</span>
+
+    /**
+     * Sets the logger to be used by this object. If no logger is passed in, no log output is generated.
+     *
+     * @param logger the {@code Log}
+     * @since 2.0
+     */
+    public void setLogger(final ConfigurationLogger logger) {
+<span class="fc" id="L315">        this.logger = logger;</span>
+<span class="fc" id="L316">    }</span>
+
+    /**
+     * Sets the prefix to use to identify subordinate expressions. This cannot be the same as the prefix used for the primary
+     * expression.
+     *
+     * @param prefix The String identifying the beginning of the expression.
+     */
+    public void setVariablePrefixMatcher(final String prefix) {
+<span class="nc" id="L325">        prefixMatcher = prefix;</span>
+<span class="nc" id="L326">    }</span>
+
+    /**
+     * Add the Variables that will be accessible within expressions.
+     *
+     * @param list The list of Variables.
+     */
+    public void setVariables(final Variables list) {
+<span class="fc" id="L334">        variables = new Variables(list);</span>
+<span class="fc" id="L335">    }</span>
+
+    /**
+     * Sets the suffix to use to identify subordinate expressions. This cannot be the same as the suffix used for the primary
+     * expression.
+     *
+     * @param suffix The String identifying the end of the expression.
+     */
+    public void setVariableSuffixMatcher(final String suffix) {
+<span class="nc" id="L344">        suffixMatcher = suffix;</span>
+<span class="nc" id="L345">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

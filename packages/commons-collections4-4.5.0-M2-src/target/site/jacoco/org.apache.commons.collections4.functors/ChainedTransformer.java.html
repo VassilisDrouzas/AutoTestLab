@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChainedTransformer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.functors</a> &gt; <span class="el_source">ChainedTransformer.java</span></div><h1>ChainedTransformer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.functors;
+
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.Objects;
+
+import org.apache.commons.collections4.Transformer;
+
+/**
+ * Transformer implementation that chains the specified transformers together.
+ * &lt;p&gt;
+ * The input object is passed to the first transformer. The transformed result
+ * is passed to the second transformer and so on.
+ * &lt;/p&gt;
+ *
+ * @since 3.0
+ */
+public class ChainedTransformer&lt;T&gt; implements Transformer&lt;T, T&gt;, Serializable {
+
+<span class="fc" id="L36">    private static final Transformer[] EMPTY_TRANSFORMER_ARRAY = {};</span>
+
+    /** Serial version UID */
+    private static final long serialVersionUID = 3514945074733160196L;
+
+    /**
+     * Create a new Transformer that calls each transformer in turn, passing the
+     * result into the next transformer. The ordering is that of the iterator()
+     * method on the collection.
+     *
+     * @param &lt;T&gt;  the object type
+     * @param transformers  a collection of transformers to chain
+     * @return the {@code chained} transformer
+     * @throws NullPointerException if the transformers collection is null
+     * @throws NullPointerException if any transformer in the collection is null
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; chainedTransformer(
+            final Collection&lt;? extends Transformer&lt;? super T, ? extends T&gt;&gt; transformers) {
+<span class="fc" id="L54">        Objects.requireNonNull(transformers, &quot;transformers&quot;);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (transformers.isEmpty()) {</span>
+<span class="fc" id="L56">            return NOPTransformer.&lt;T&gt;nopTransformer();</span>
+        }
+        // convert to array like this to guarantee iterator() ordering
+<span class="fc" id="L59">        final Transformer&lt;T, T&gt;[] cmds = transformers.toArray(EMPTY_TRANSFORMER_ARRAY);</span>
+<span class="fc" id="L60">        FunctorUtils.validate(cmds);</span>
+<span class="fc" id="L61">        return new ChainedTransformer&lt;&gt;(false, cmds);</span>
+    }
+
+    /**
+     * Factory method that performs validation and copies the parameter array.
+     *
+     * @param &lt;T&gt;  the object type
+     * @param transformers  the transformers to chain, copied, no nulls
+     * @return the {@code chained} transformer
+     * @throws NullPointerException if the transformers array is null
+     * @throws NullPointerException if any transformer in the array is null
+     */
+    public static &lt;T&gt; Transformer&lt;T, T&gt; chainedTransformer(final Transformer&lt;? super T, ? extends T&gt;... transformers) {
+<span class="fc" id="L74">        FunctorUtils.validate(transformers);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (transformers.length == 0) {</span>
+<span class="fc" id="L76">            return NOPTransformer.&lt;T&gt;nopTransformer();</span>
+        }
+<span class="fc" id="L78">        return new ChainedTransformer&lt;&gt;(transformers);</span>
+    }
+
+    /** The transformers to call in turn */
+    private final Transformer&lt;? super T, ? extends T&gt;[] iTransformers;
+
+    /**
+     * Hidden constructor for the use by the static factory methods.
+     *
+     * @param clone  if {@code true} the input argument will be cloned
+     * @param transformers  the transformers to chain, no nulls
+     */
+<span class="fc" id="L90">    private ChainedTransformer(final boolean clone, final Transformer&lt;? super T, ? extends T&gt;[] transformers) {</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        iTransformers = clone ? FunctorUtils.copy(transformers) : transformers;</span>
+<span class="fc" id="L92">    }</span>
+
+    /**
+     * Constructor that performs no validation.
+     * Use {@code chainedTransformer} if you want that.
+     *
+     * @param transformers  the transformers to chain, copied, no nulls
+     */
+    public ChainedTransformer(final Transformer&lt;? super T, ? extends T&gt;... transformers) {
+<span class="fc" id="L101">        this(true, transformers);</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * Gets the transformers.
+     *
+     * @return a copy of the transformers
+     * @since 3.1
+     */
+    public Transformer&lt;? super T, ? extends T&gt;[] getTransformers() {
+<span class="nc" id="L111">        return FunctorUtils.&lt;T, T&gt;copy(iTransformers);</span>
+    }
+
+    /**
+     * Transforms the input to result via each decorated transformer
+     *
+     * @param object  the input object passed to the first transformer
+     * @return the transformed result
+     */
+    @Override
+    public T transform(T object) {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (final Transformer&lt;? super T, ? extends T&gt; iTransformer : iTransformers) {</span>
+<span class="fc" id="L123">            object = iTransformer.transform(object);</span>
+        }
+<span class="fc" id="L125">        return object;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

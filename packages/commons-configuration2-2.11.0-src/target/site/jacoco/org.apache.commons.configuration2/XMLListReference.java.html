@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XMLListReference.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">XMLListReference.java</span></div><h1>XMLListReference.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.commons.configuration2.convert.ListDelimiterHandler;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.commons.configuration2.tree.ReferenceNodeHandler;
+import org.apache.commons.lang3.StringUtils;
+import org.w3c.dom.Element;
+
+/**
+ * &lt;p&gt;
+ * An internal class implementing list handling functionality for {@link XMLConfiguration}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When an XML document is loaded list properties defined as a string with multiple values separated by the list
+ * delimiter are split into multiple configuration nodes. When the configuration is saved the original format should be
+ * kept if possible. This class implements functionality to achieve this. Instances are used as references associated
+ * with configuration nodes so that the original format can be restored when the configuration is saved.
+ * &lt;/p&gt;
+ */
+final class XMLListReference {
+    /**
+     * Assigns an instance of this class as reference to the specified configuration node. This reference acts as a marker
+     * indicating that this node is subject to extended list handling.
+     *
+     * @param refs the mapping for node references
+     * @param node the affected configuration node
+     * @param elem the current XML element
+     */
+    public static void assignListReference(final Map&lt;ImmutableNode, Object&gt; refs, final ImmutableNode node, final Element elem) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (refs != null) {</span>
+<span class="fc" id="L52">            refs.put(node, new XMLListReference(elem));</span>
+        }
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Checks whether the specified node has an associated list reference. This marks the node as part of a list.
+     *
+     * @param node the node to be checked
+     * @param handler the reference handler
+     * @return a flag whether this node has a list reference
+     */
+    private static boolean hasListReference(final ImmutableNode node, final ReferenceNodeHandler handler) {
+<span class="fc" id="L64">        return handler.getReference(node) instanceof XMLListReference;</span>
+    }
+
+    /**
+     * Checks whether the specified node is the first node of a list. This is needed because all items of the list are
+     * collected and stored as value of the first list node. Note: This method requires that the passed in node is a list
+     * node, so {@link #isListNode(ImmutableNode, ReferenceNodeHandler)} must have returned &lt;strong&gt;true&lt;/strong&gt; for it.
+     *
+     * @param node the configuration node
+     * @param handler the reference node handler
+     * @return a flag whether this is the first node of a list
+     */
+    public static boolean isFirstListItem(final ImmutableNode node, final ReferenceNodeHandler handler) {
+<span class="fc" id="L77">        final ImmutableNode parent = handler.getParent(node);</span>
+<span class="fc" id="L78">        ImmutableNode firstItem = null;</span>
+<span class="fc" id="L79">        int idx = 0;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        while (firstItem == null) {</span>
+<span class="fc" id="L81">            final ImmutableNode child = handler.getChild(parent, idx);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            if (nameEquals(node, child)) {</span>
+<span class="fc" id="L83">                firstItem = child;</span>
+            }
+<span class="fc" id="L85">            idx++;</span>
+<span class="fc" id="L86">        }</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        return firstItem == node;</span>
+    }
+
+    /**
+     * Checks whether the specified configuration node has to be taken into account for list handling. This is the case if
+     * the node's parent has at least one child node with the same name which has a special list reference assigned. (Note
+     * that the passed in node does not necessarily have such a reference; if it has been added at a later point in time, it
+     * also has to become an item of the list.)
+     *
+     * @param node the configuration node
+     * @param handler the reference node handler
+     * @return a flag whether this node is relevant for list handling
+     */
+    public static boolean isListNode(final ImmutableNode node, final ReferenceNodeHandler handler) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (hasListReference(node, handler)) {</span>
+<span class="fc" id="L102">            return true;</span>
+        }
+
+<span class="fc" id="L105">        final ImmutableNode parent = handler.getParent(node);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (parent != null) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (int i = 0; i &lt; handler.getChildrenCount(parent, null); i++) {</span>
+<span class="fc" id="L108">                final ImmutableNode child = handler.getChild(parent, i);</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">                if (hasListReference(child, handler) &amp;&amp; nameEquals(node, child)) {</span>
+<span class="fc" id="L110">                    return true;</span>
+                }
+            }
+        }
+<span class="fc" id="L114">        return false;</span>
+    }
+
+    /**
+     * Constructs the concatenated string value of all items comprising the list the specified node belongs to. This method
+     * is called when saving an {@link XMLConfiguration}. Then configuration nodes created for list items have to be
+     * collected again and transformed into a string defining all list elements.
+     *
+     * @param node the configuration node
+     * @param nodeHandler the reference node handler
+     * @param delimiterHandler the list delimiter handler of the configuration
+     * @return a string with all values of the current list
+     * @throws ConfigurationRuntimeException if the list delimiter handler does not support the transformation of list items
+     *         to a string
+     */
+    public static String listValue(final ImmutableNode node, final ReferenceNodeHandler nodeHandler, final ListDelimiterHandler delimiterHandler) {
+        // cannot be null if the current node is a list node
+<span class="fc" id="L131">        final ImmutableNode parent = nodeHandler.getParent(node);</span>
+<span class="fc" id="L132">        final List&lt;ImmutableNode&gt; items = nodeHandler.getChildren(parent, node.getNodeName());</span>
+<span class="fc" id="L133">        final List&lt;Object&gt; values = items.stream().map(ImmutableNode::getValue).collect(Collectors.toList());</span>
+        try {
+<span class="fc" id="L135">            return String.valueOf(delimiterHandler.escapeList(values, ListDelimiterHandler.NOOP_TRANSFORMER));</span>
+<span class="fc" id="L136">        } catch (final UnsupportedOperationException e) {</span>
+<span class="fc" id="L137">            throw new ConfigurationRuntimeException(&quot;List handling not supported by &quot; + &quot;the current ListDelimiterHandler! Make sure that the same delimiter &quot;</span>
+                    + &quot;handler is used for loading and saving the configuration.&quot;, e);
+        }
+    }
+
+    /**
+     * Helper method for comparing the names of two nodes.
+     *
+     * @param n1 node 1
+     * @param n2 node 2
+     * @return a flag whether these nodes have equal names
+     */
+    private static boolean nameEquals(final ImmutableNode n1, final ImmutableNode n2) {
+<span class="fc" id="L150">        return StringUtils.equals(n2.getNodeName(), n1.getNodeName());</span>
+    }
+
+    /** The wrapped XML element. */
+    private final Element element;
+
+    /**
+     * Private constructor. No instances can be created from other classes.
+     *
+     * @param e the associated element
+     */
+<span class="fc" id="L161">    private XMLListReference(final Element e) {</span>
+<span class="fc" id="L162">        element = e;</span>
+<span class="fc" id="L163">    }</span>
+
+    /**
+     * Gets the associated element.
+     *
+     * @return the associated XML element
+     */
+    public Element getElement() {
+<span class="fc" id="L171">        return element;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

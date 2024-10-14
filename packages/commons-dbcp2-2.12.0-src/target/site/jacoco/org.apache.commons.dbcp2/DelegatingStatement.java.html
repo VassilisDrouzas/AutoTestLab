@@ -1,0 +1,816 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DelegatingStatement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">DelegatingStatement.java</span></div><h1>DelegatingStatement.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLWarning;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * A base delegating implementation of {@link Statement}.
+ * &lt;p&gt;
+ * All of the methods from the {@link Statement} interface simply check to see that the {@link Statement} is active, and
+ * call the corresponding method on the &quot;delegate&quot; provided in my constructor.
+ * &lt;p&gt;
+ * Extends AbandonedTrace to implement Statement tracking and logging of code which created the Statement. Tracking the
+ * Statement ensures that the Connection which created it can close any open Statement's on Connection close.
+ *
+ * @since 2.0
+ */
+public class DelegatingStatement extends AbandonedTrace implements Statement {
+
+    /** My delegate. */
+    private Statement statement;
+
+    /** The connection that created me. **/
+    private DelegatingConnection&lt;?&gt; connection;
+
+    private boolean closed;
+
+    /**
+     * Create a wrapper for the Statement which traces this Statement to the Connection which created it and the code
+     * which created it.
+     *
+     * @param statement
+     *            the {@link Statement} to delegate all calls to.
+     * @param connection
+     *            the {@link DelegatingConnection} that created this statement.
+     */
+    public DelegatingStatement(final DelegatingConnection&lt;?&gt; connection, final Statement statement) {
+<span class="fc" id="L58">        super(connection);</span>
+<span class="fc" id="L59">        this.statement = statement;</span>
+<span class="fc" id="L60">        this.connection = connection;</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     *
+     * @throws SQLException
+     *             thrown by the delegating statement.
+     * @since 2.4.0 made public, was protected in 2.3.0.
+     */
+    public void activate() throws SQLException {
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (statement instanceof DelegatingStatement) {</span>
+<span class="nc" id="L71">            ((DelegatingStatement) statement).activate();</span>
+        }
+<span class="fc" id="L73">    }</span>
+
+    @Override
+    public void addBatch(final String sql) throws SQLException {
+<span class="fc" id="L77">        checkOpen();</span>
+        try {
+<span class="fc" id="L79">            statement.addBatch(sql);</span>
+<span class="nc" id="L80">        } catch (final SQLException e) {</span>
+<span class="nc" id="L81">            handleException(e);</span>
+<span class="fc" id="L82">        }</span>
+<span class="fc" id="L83">    }</span>
+
+    @Override
+    public void cancel() throws SQLException {
+<span class="fc" id="L87">        checkOpen();</span>
+        try {
+<span class="fc" id="L89">            statement.cancel();</span>
+<span class="nc" id="L90">        } catch (final SQLException e) {</span>
+<span class="nc" id="L91">            handleException(e);</span>
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">    }</span>
+
+    protected void checkOpen() throws SQLException {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (isClosed()) {</span>
+<span class="fc" id="L97">            throw new SQLException(this.getClass().getName() + &quot; with address: \&quot;&quot; + this.toString() + &quot;\&quot; is closed.&quot;);</span>
+        }
+<span class="fc" id="L99">    }</span>
+
+    @Override
+    public void clearBatch() throws SQLException {
+<span class="fc" id="L103">        checkOpen();</span>
+        try {
+<span class="fc" id="L105">            statement.clearBatch();</span>
+<span class="nc" id="L106">        } catch (final SQLException e) {</span>
+<span class="nc" id="L107">            handleException(e);</span>
+<span class="fc" id="L108">        }</span>
+<span class="fc" id="L109">    }</span>
+
+    @Override
+    public void clearWarnings() throws SQLException {
+<span class="fc" id="L113">        checkOpen();</span>
+        try {
+<span class="fc" id="L115">            statement.clearWarnings();</span>
+<span class="nc" id="L116">        } catch (final SQLException e) {</span>
+<span class="nc" id="L117">            handleException(e);</span>
+<span class="fc" id="L118">        }</span>
+<span class="fc" id="L119">    }</span>
+
+    /**
+     * Close this DelegatingStatement, and close any ResultSets that were not explicitly closed.
+     */
+    @Override
+    public void close() throws SQLException {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (isClosed()) {</span>
+<span class="fc" id="L127">            return;</span>
+        }
+<span class="fc" id="L129">        final List&lt;Exception&gt; thrownList = new ArrayList&lt;&gt;();</span>
+        try {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (connection != null) {</span>
+<span class="fc" id="L132">                connection.removeTrace(this);</span>
+<span class="fc" id="L133">                connection = null;</span>
+            }
+
+            // The JDBC spec requires that a statement close any open
+            // ResultSet's when it is closed.
+            // FIXME The PreparedStatement we're wrapping should handle this for us.
+            // See bug 17301 for what could happen when ResultSets are closed twice.
+<span class="fc" id="L140">            final List&lt;AbandonedTrace&gt; traceList = getTrace();</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (traceList != null) {</span>
+<span class="fc" id="L142">                traceList.forEach(trace -&gt; trace.close(e -&gt; {</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                    if (connection != null) {</span>
+                        // Does not rethrow e.
+<span class="nc" id="L145">                        connection.handleExceptionNoThrow(e);</span>
+                    }
+<span class="fc" id="L147">                    thrownList.add(e);</span>
+<span class="fc" id="L148">                }));</span>
+<span class="fc" id="L149">                clearTrace();</span>
+            }
+<span class="fc" id="L151">            Utils.close(statement, e -&gt; {</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                if (connection != null) {</span>
+                    // Does not rethrow e.
+<span class="nc" id="L154">                    connection.handleExceptionNoThrow(e);</span>
+                }
+<span class="fc" id="L156">                thrownList.add(e);</span>
+<span class="fc" id="L157">            });</span>
+        } finally {
+<span class="fc" id="L159">            closed = true;</span>
+<span class="fc" id="L160">            statement = null;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (!thrownList.isEmpty()) {</span>
+<span class="fc" id="L162">                throw new SQLExceptionList(thrownList);</span>
+            }
+        }
+<span class="fc" id="L165">    }</span>
+
+    @Override
+    public void closeOnCompletion() throws SQLException {
+<span class="fc" id="L169">        checkOpen();</span>
+        try {
+<span class="fc" id="L171">            Jdbc41Bridge.closeOnCompletion(statement);</span>
+<span class="nc" id="L172">        } catch (final SQLException e) {</span>
+<span class="nc" id="L173">            handleException(e);</span>
+<span class="fc" id="L174">        }</span>
+<span class="fc" id="L175">    }</span>
+
+    @Override
+    public boolean execute(final String sql) throws SQLException {
+<span class="fc" id="L179">        checkOpen();</span>
+<span class="fc" id="L180">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L182">            return statement.execute(sql);</span>
+<span class="nc" id="L183">        } catch (final SQLException e) {</span>
+<span class="nc" id="L184">            handleException(e);</span>
+<span class="nc" id="L185">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean execute(final String sql, final int autoGeneratedKeys) throws SQLException {
+<span class="fc" id="L191">        checkOpen();</span>
+<span class="fc" id="L192">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L194">            return statement.execute(sql, autoGeneratedKeys);</span>
+<span class="nc" id="L195">        } catch (final SQLException e) {</span>
+<span class="nc" id="L196">            handleException(e);</span>
+<span class="nc" id="L197">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean execute(final String sql, final int[] columnIndexes) throws SQLException {
+<span class="fc" id="L203">        checkOpen();</span>
+<span class="fc" id="L204">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L206">            return statement.execute(sql, columnIndexes);</span>
+<span class="nc" id="L207">        } catch (final SQLException e) {</span>
+<span class="nc" id="L208">            handleException(e);</span>
+<span class="nc" id="L209">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean execute(final String sql, final String[] columnNames) throws SQLException {
+<span class="fc" id="L215">        checkOpen();</span>
+<span class="fc" id="L216">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L218">            return statement.execute(sql, columnNames);</span>
+<span class="nc" id="L219">        } catch (final SQLException e) {</span>
+<span class="nc" id="L220">            handleException(e);</span>
+<span class="nc" id="L221">            return false;</span>
+        }
+    }
+
+    @Override
+    public int[] executeBatch() throws SQLException {
+<span class="fc" id="L227">        checkOpen();</span>
+<span class="fc" id="L228">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L230">            return statement.executeBatch();</span>
+<span class="nc" id="L231">        } catch (final SQLException e) {</span>
+<span class="nc" id="L232">            handleException(e);</span>
+<span class="nc" id="L233">            throw new AssertionError();</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long[] executeLargeBatch() throws SQLException {
+<span class="fc" id="L242">        checkOpen();</span>
+<span class="fc" id="L243">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L245">            return statement.executeLargeBatch();</span>
+<span class="nc" id="L246">        } catch (final SQLException e) {</span>
+<span class="nc" id="L247">            handleException(e);</span>
+<span class="nc" id="L248">            return null;</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long executeLargeUpdate(final String sql) throws SQLException {
+<span class="fc" id="L257">        checkOpen();</span>
+<span class="fc" id="L258">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L260">            return statement.executeLargeUpdate(sql);</span>
+<span class="nc" id="L261">        } catch (final SQLException e) {</span>
+<span class="nc" id="L262">            handleException(e);</span>
+<span class="nc" id="L263">            return 0;</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long executeLargeUpdate(final String sql, final int autoGeneratedKeys) throws SQLException {
+<span class="fc" id="L272">        checkOpen();</span>
+<span class="fc" id="L273">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L275">            return statement.executeLargeUpdate(sql, autoGeneratedKeys);</span>
+<span class="nc" id="L276">        } catch (final SQLException e) {</span>
+<span class="nc" id="L277">            handleException(e);</span>
+<span class="nc" id="L278">            return 0;</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long executeLargeUpdate(final String sql, final int[] columnIndexes) throws SQLException {
+<span class="fc" id="L287">        checkOpen();</span>
+<span class="fc" id="L288">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L290">            return statement.executeLargeUpdate(sql, columnIndexes);</span>
+<span class="nc" id="L291">        } catch (final SQLException e) {</span>
+<span class="nc" id="L292">            handleException(e);</span>
+<span class="nc" id="L293">            return 0;</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long executeLargeUpdate(final String sql, final String[] columnNames) throws SQLException {
+<span class="fc" id="L302">        checkOpen();</span>
+<span class="fc" id="L303">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L305">            return statement.executeLargeUpdate(sql, columnNames);</span>
+<span class="nc" id="L306">        } catch (final SQLException e) {</span>
+<span class="nc" id="L307">            handleException(e);</span>
+<span class="nc" id="L308">            return 0;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;resource&quot;) // Caller is responsible for closing the resource.
+    @Override
+    public ResultSet executeQuery(final String sql) throws SQLException {
+<span class="fc" id="L315">        checkOpen();</span>
+<span class="fc" id="L316">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L318">            return DelegatingResultSet.wrapResultSet(this, statement.executeQuery(sql));</span>
+<span class="nc" id="L319">        } catch (final SQLException e) {</span>
+<span class="nc" id="L320">            handleException(e);</span>
+<span class="nc" id="L321">            throw new AssertionError();</span>
+        }
+    }
+
+    @Override
+    public int executeUpdate(final String sql) throws SQLException {
+<span class="fc" id="L327">        checkOpen();</span>
+<span class="fc" id="L328">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L330">            return statement.executeUpdate(sql);</span>
+<span class="nc" id="L331">        } catch (final SQLException e) {</span>
+<span class="nc" id="L332">            handleException(e);</span>
+<span class="nc" id="L333">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int executeUpdate(final String sql, final int autoGeneratedKeys) throws SQLException {
+<span class="fc" id="L339">        checkOpen();</span>
+<span class="fc" id="L340">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L342">            return statement.executeUpdate(sql, autoGeneratedKeys);</span>
+<span class="nc" id="L343">        } catch (final SQLException e) {</span>
+<span class="nc" id="L344">            handleException(e);</span>
+<span class="nc" id="L345">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int executeUpdate(final String sql, final int[] columnIndexes) throws SQLException {
+<span class="fc" id="L351">        checkOpen();</span>
+<span class="fc" id="L352">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L354">            return statement.executeUpdate(sql, columnIndexes);</span>
+<span class="nc" id="L355">        } catch (final SQLException e) {</span>
+<span class="nc" id="L356">            handleException(e);</span>
+<span class="nc" id="L357">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int executeUpdate(final String sql, final String[] columnNames) throws SQLException {
+<span class="fc" id="L363">        checkOpen();</span>
+<span class="fc" id="L364">        setLastUsedInParent();</span>
+        try {
+<span class="fc" id="L366">            return statement.executeUpdate(sql, columnNames);</span>
+<span class="nc" id="L367">        } catch (final SQLException e) {</span>
+<span class="nc" id="L368">            handleException(e);</span>
+<span class="nc" id="L369">            return 0;</span>
+        }
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        // This is required because of statement pooling. The poolable
+        // statements will always be strongly held by the statement pool. If the
+        // delegating statements that wrap the poolable statement are not
+        // strongly held they will be garbage collected but at that point the
+        // poolable statements need to be returned to the pool else there will
+        // be a leak of statements from the pool. Closing this statement will
+        // close all the wrapped statements and return any poolable statements
+        // to the pool.
+<span class="fc" id="L383">        close();</span>
+<span class="fc" id="L384">        super.finalize();</span>
+<span class="fc" id="L385">    }</span>
+
+    @Override
+    public Connection getConnection() throws SQLException {
+<span class="fc" id="L389">        checkOpen();</span>
+<span class="fc" id="L390">        return getConnectionInternal(); // return the delegating connection that created this</span>
+    }
+
+    protected DelegatingConnection&lt;?&gt; getConnectionInternal() {
+<span class="fc" id="L394">        return connection;</span>
+    }
+
+    /**
+     * Returns my underlying {@link Statement}.
+     *
+     * @return my underlying {@link Statement}.
+     * @see #getInnermostDelegate
+     */
+    public Statement getDelegate() {
+<span class="fc" id="L404">        return statement;</span>
+    }
+
+    @Override
+    public int getFetchDirection() throws SQLException {
+<span class="fc" id="L409">        checkOpen();</span>
+        try {
+<span class="fc" id="L411">            return statement.getFetchDirection();</span>
+<span class="nc" id="L412">        } catch (final SQLException e) {</span>
+<span class="nc" id="L413">            handleException(e);</span>
+<span class="nc" id="L414">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getFetchSize() throws SQLException {
+<span class="fc" id="L420">        checkOpen();</span>
+        try {
+<span class="fc" id="L422">            return statement.getFetchSize();</span>
+<span class="nc" id="L423">        } catch (final SQLException e) {</span>
+<span class="nc" id="L424">            handleException(e);</span>
+<span class="nc" id="L425">            return 0;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;resource&quot;) // Caller is responsible for closing the resource.
+    @Override
+    public ResultSet getGeneratedKeys() throws SQLException {
+<span class="fc" id="L432">        checkOpen();</span>
+        try {
+<span class="fc" id="L434">            return DelegatingResultSet.wrapResultSet(this, statement.getGeneratedKeys());</span>
+<span class="nc" id="L435">        } catch (final SQLException e) {</span>
+<span class="nc" id="L436">            handleException(e);</span>
+<span class="nc" id="L437">            throw new AssertionError();</span>
+        }
+    }
+
+    /**
+     * If my underlying {@link Statement} is not a {@code DelegatingStatement}, returns it, otherwise recursively
+     * invokes this method on my delegate.
+     * &lt;p&gt;
+     * Hence this method will return the first delegate that is not a {@code DelegatingStatement} or {@code null} when
+     * no non-{@code DelegatingStatement} delegate can be found by traversing this chain.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This method is useful when you may have nested {@code DelegatingStatement}s, and you want to make sure to obtain
+     * a &quot;genuine&quot; {@link Statement}.
+     * &lt;/p&gt;
+     *
+     * @return The innermost delegate, may return null.
+     * @see #getDelegate
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    public Statement getInnermostDelegate() {
+<span class="fc" id="L458">        Statement stmt = statement;</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        while (stmt instanceof DelegatingStatement) {</span>
+<span class="fc" id="L460">            stmt = ((DelegatingStatement) stmt).getDelegate();</span>
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">            if (this == stmt) {</span>
+<span class="nc" id="L462">                return null;</span>
+            }
+        }
+<span class="fc" id="L465">        return stmt;</span>
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long getLargeMaxRows() throws SQLException {
+<span class="fc" id="L473">        checkOpen();</span>
+        try {
+<span class="fc" id="L475">            return statement.getLargeMaxRows();</span>
+<span class="nc" id="L476">        } catch (final SQLException e) {</span>
+<span class="nc" id="L477">            handleException(e);</span>
+<span class="nc" id="L478">            return 0;</span>
+        }
+    }
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public long getLargeUpdateCount() throws SQLException {
+<span class="fc" id="L487">        checkOpen();</span>
+        try {
+<span class="fc" id="L489">            return statement.getLargeUpdateCount();</span>
+<span class="nc" id="L490">        } catch (final SQLException e) {</span>
+<span class="nc" id="L491">            handleException(e);</span>
+<span class="nc" id="L492">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getMaxFieldSize() throws SQLException {
+<span class="fc" id="L498">        checkOpen();</span>
+        try {
+<span class="fc" id="L500">            return statement.getMaxFieldSize();</span>
+<span class="nc" id="L501">        } catch (final SQLException e) {</span>
+<span class="nc" id="L502">            handleException(e);</span>
+<span class="nc" id="L503">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getMaxRows() throws SQLException {
+<span class="fc" id="L509">        checkOpen();</span>
+        try {
+<span class="fc" id="L511">            return statement.getMaxRows();</span>
+<span class="nc" id="L512">        } catch (final SQLException e) {</span>
+<span class="nc" id="L513">            handleException(e);</span>
+<span class="nc" id="L514">            return 0;</span>
+        }
+    }
+
+    @Override
+    public boolean getMoreResults() throws SQLException {
+<span class="fc" id="L520">        checkOpen();</span>
+        try {
+<span class="fc" id="L522">            return statement.getMoreResults();</span>
+<span class="nc" id="L523">        } catch (final SQLException e) {</span>
+<span class="nc" id="L524">            handleException(e);</span>
+<span class="nc" id="L525">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean getMoreResults(final int current) throws SQLException {
+<span class="fc" id="L531">        checkOpen();</span>
+        try {
+<span class="fc" id="L533">            return statement.getMoreResults(current);</span>
+<span class="nc" id="L534">        } catch (final SQLException e) {</span>
+<span class="nc" id="L535">            handleException(e);</span>
+<span class="nc" id="L536">            return false;</span>
+        }
+    }
+
+    @Override
+    public int getQueryTimeout() throws SQLException {
+<span class="fc" id="L542">        checkOpen();</span>
+        try {
+<span class="fc" id="L544">            return statement.getQueryTimeout();</span>
+<span class="nc" id="L545">        } catch (final SQLException e) {</span>
+<span class="nc" id="L546">            handleException(e);</span>
+<span class="nc" id="L547">            return 0;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;resource&quot;) // Caller is responsible for closing the resource.
+    @Override
+    public ResultSet getResultSet() throws SQLException {
+<span class="fc" id="L554">        checkOpen();</span>
+        try {
+<span class="fc" id="L556">            return DelegatingResultSet.wrapResultSet(this, statement.getResultSet());</span>
+<span class="nc" id="L557">        } catch (final SQLException e) {</span>
+<span class="nc" id="L558">            handleException(e);</span>
+<span class="nc" id="L559">            throw new AssertionError();</span>
+        }
+    }
+
+    @Override
+    public int getResultSetConcurrency() throws SQLException {
+<span class="fc" id="L565">        checkOpen();</span>
+        try {
+<span class="fc" id="L567">            return statement.getResultSetConcurrency();</span>
+<span class="nc" id="L568">        } catch (final SQLException e) {</span>
+<span class="nc" id="L569">            handleException(e);</span>
+<span class="nc" id="L570">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getResultSetHoldability() throws SQLException {
+<span class="fc" id="L576">        checkOpen();</span>
+        try {
+<span class="fc" id="L578">            return statement.getResultSetHoldability();</span>
+<span class="nc" id="L579">        } catch (final SQLException e) {</span>
+<span class="nc" id="L580">            handleException(e);</span>
+<span class="nc" id="L581">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getResultSetType() throws SQLException {
+<span class="fc" id="L587">        checkOpen();</span>
+        try {
+<span class="fc" id="L589">            return statement.getResultSetType();</span>
+<span class="nc" id="L590">        } catch (final SQLException e) {</span>
+<span class="nc" id="L591">            handleException(e);</span>
+<span class="nc" id="L592">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getUpdateCount() throws SQLException {
+<span class="fc" id="L598">        checkOpen();</span>
+        try {
+<span class="fc" id="L600">            return statement.getUpdateCount();</span>
+<span class="nc" id="L601">        } catch (final SQLException e) {</span>
+<span class="nc" id="L602">            handleException(e);</span>
+<span class="nc" id="L603">            return 0;</span>
+        }
+    }
+
+    @Override
+    public SQLWarning getWarnings() throws SQLException {
+<span class="fc" id="L609">        checkOpen();</span>
+        try {
+<span class="fc" id="L611">            return statement.getWarnings();</span>
+<span class="nc" id="L612">        } catch (final SQLException e) {</span>
+<span class="nc" id="L613">            handleException(e);</span>
+<span class="nc" id="L614">            throw new AssertionError();</span>
+        }
+    }
+
+    protected void handleException(final SQLException e) throws SQLException {
+<span class="nc bnc" id="L619" title="All 2 branches missed.">        if (connection == null) {</span>
+<span class="nc" id="L620">            throw e;</span>
+        }
+<span class="nc" id="L622">        connection.handleException(e);</span>
+<span class="nc" id="L623">    }</span>
+
+    /*
+     * Note: This method was protected prior to JDBC 4.
+     */
+    @Override
+    public boolean isClosed() throws SQLException {
+<span class="fc" id="L630">        return closed;</span>
+    }
+
+    protected boolean isClosedInternal() {
+<span class="nc" id="L634">        return closed;</span>
+    }
+
+    @Override
+    public boolean isCloseOnCompletion() throws SQLException {
+<span class="fc" id="L639">        checkOpen();</span>
+        try {
+<span class="fc" id="L641">            return Jdbc41Bridge.isCloseOnCompletion(statement);</span>
+<span class="nc" id="L642">        } catch (final SQLException e) {</span>
+<span class="nc" id="L643">            handleException(e);</span>
+<span class="nc" id="L644">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isPoolable() throws SQLException {
+<span class="fc" id="L650">        checkOpen();</span>
+        try {
+<span class="fc" id="L652">            return statement.isPoolable();</span>
+<span class="nc" id="L653">        } catch (final SQLException e) {</span>
+<span class="nc" id="L654">            handleException(e);</span>
+<span class="nc" id="L655">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isWrapperFor(final Class&lt;?&gt; iface) throws SQLException {
+<span class="fc bfc" id="L661" title="All 2 branches covered.">        if (iface.isAssignableFrom(getClass())) {</span>
+<span class="fc" id="L662">            return true;</span>
+        }
+<span class="fc bfc" id="L664" title="All 2 branches covered.">        if (iface.isAssignableFrom(statement.getClass())) {</span>
+<span class="fc" id="L665">            return true;</span>
+        }
+<span class="fc" id="L667">        return statement.isWrapperFor(iface);</span>
+    }
+
+    /**
+     *
+     * @throws SQLException
+     *             thrown by the delegating statement.
+     * @since 2.4.0 made public, was protected in 2.3.0.
+     */
+    public void passivate() throws SQLException {
+<span class="pc bpc" id="L677" title="1 of 2 branches missed.">        if (statement instanceof DelegatingStatement) {</span>
+<span class="nc" id="L678">            ((DelegatingStatement) statement).passivate();</span>
+        }
+<span class="fc" id="L680">    }</span>
+
+    protected void setClosedInternal(final boolean closed) {
+<span class="fc" id="L683">        this.closed = closed;</span>
+<span class="fc" id="L684">    }</span>
+
+    @Override
+    public void setCursorName(final String name) throws SQLException {
+<span class="fc" id="L688">        checkOpen();</span>
+        try {
+<span class="fc" id="L690">            statement.setCursorName(name);</span>
+<span class="nc" id="L691">        } catch (final SQLException e) {</span>
+<span class="nc" id="L692">            handleException(e);</span>
+<span class="fc" id="L693">        }</span>
+<span class="fc" id="L694">    }</span>
+
+    /**
+     * Sets my delegate.
+     *
+     * @param statement
+     *            my delegate.
+     */
+    public void setDelegate(final Statement statement) {
+<span class="nc" id="L703">        this.statement = statement;</span>
+<span class="nc" id="L704">    }</span>
+
+    @Override
+    public void setEscapeProcessing(final boolean enable) throws SQLException {
+<span class="fc" id="L708">        checkOpen();</span>
+        try {
+<span class="fc" id="L710">            statement.setEscapeProcessing(enable);</span>
+<span class="nc" id="L711">        } catch (final SQLException e) {</span>
+<span class="nc" id="L712">            handleException(e);</span>
+<span class="fc" id="L713">        }</span>
+<span class="fc" id="L714">    }</span>
+
+    @Override
+    public void setFetchDirection(final int direction) throws SQLException {
+<span class="fc" id="L718">        checkOpen();</span>
+        try {
+<span class="fc" id="L720">            statement.setFetchDirection(direction);</span>
+<span class="nc" id="L721">        } catch (final SQLException e) {</span>
+<span class="nc" id="L722">            handleException(e);</span>
+<span class="fc" id="L723">        }</span>
+<span class="fc" id="L724">    }</span>
+
+    @Override
+    public void setFetchSize(final int rows) throws SQLException {
+<span class="fc" id="L728">        checkOpen();</span>
+        try {
+<span class="fc" id="L730">            statement.setFetchSize(rows);</span>
+<span class="nc" id="L731">        } catch (final SQLException e) {</span>
+<span class="nc" id="L732">            handleException(e);</span>
+<span class="fc" id="L733">        }</span>
+<span class="fc" id="L734">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void setLargeMaxRows(final long max) throws SQLException {
+<span class="fc" id="L741">        checkOpen();</span>
+        try {
+<span class="fc" id="L743">            statement.setLargeMaxRows(max);</span>
+<span class="nc" id="L744">        } catch (final SQLException e) {</span>
+<span class="nc" id="L745">            handleException(e);</span>
+<span class="fc" id="L746">        }</span>
+<span class="fc" id="L747">    }</span>
+
+    private void setLastUsedInParent() {
+<span class="pc bpc" id="L750" title="1 of 2 branches missed.">        if (connection != null) {</span>
+<span class="fc" id="L751">            connection.setLastUsed();</span>
+        }
+<span class="fc" id="L753">    }</span>
+
+    @Override
+    public void setMaxFieldSize(final int max) throws SQLException {
+<span class="fc" id="L757">        checkOpen();</span>
+        try {
+<span class="fc" id="L759">            statement.setMaxFieldSize(max);</span>
+<span class="nc" id="L760">        } catch (final SQLException e) {</span>
+<span class="nc" id="L761">            handleException(e);</span>
+<span class="fc" id="L762">        }</span>
+<span class="fc" id="L763">    }</span>
+
+    @Override
+    public void setMaxRows(final int max) throws SQLException {
+<span class="fc" id="L767">        checkOpen();</span>
+        try {
+<span class="fc" id="L769">            statement.setMaxRows(max);</span>
+<span class="nc" id="L770">        } catch (final SQLException e) {</span>
+<span class="nc" id="L771">            handleException(e);</span>
+<span class="fc" id="L772">        }</span>
+<span class="fc" id="L773">    }</span>
+
+    @Override
+    public void setPoolable(final boolean poolable) throws SQLException {
+<span class="fc" id="L777">        checkOpen();</span>
+        try {
+<span class="fc" id="L779">            statement.setPoolable(poolable);</span>
+<span class="nc" id="L780">        } catch (final SQLException e) {</span>
+<span class="nc" id="L781">            handleException(e);</span>
+<span class="fc" id="L782">        }</span>
+<span class="fc" id="L783">    }</span>
+
+    @Override
+    public void setQueryTimeout(final int seconds) throws SQLException {
+<span class="fc" id="L787">        checkOpen();</span>
+        try {
+<span class="fc" id="L789">            statement.setQueryTimeout(seconds);</span>
+<span class="nc" id="L790">        } catch (final SQLException e) {</span>
+<span class="nc" id="L791">            handleException(e);</span>
+<span class="fc" id="L792">        }</span>
+<span class="fc" id="L793">    }</span>
+
+    /**
+     * Returns a String representation of this object.
+     *
+     * @return String
+     */
+    @Override
+    public synchronized String toString() {
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">        return statement == null ? &quot;NULL&quot; : statement.toString();</span>
+    }
+
+    @Override
+    public &lt;T&gt; T unwrap(final Class&lt;T&gt; iface) throws SQLException {
+<span class="fc bfc" id="L807" title="All 2 branches covered.">        if (iface.isAssignableFrom(getClass())) {</span>
+<span class="fc" id="L808">            return iface.cast(this);</span>
+        }
+<span class="fc bfc" id="L810" title="All 2 branches covered.">        if (iface.isAssignableFrom(statement.getClass())) {</span>
+<span class="fc" id="L811">            return iface.cast(statement);</span>
+        }
+<span class="fc" id="L813">        return statement.unwrap(iface);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

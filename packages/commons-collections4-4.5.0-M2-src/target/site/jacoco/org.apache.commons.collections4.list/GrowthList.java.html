@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrowthList.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.list</a> &gt; <span class="el_source">GrowthList.java</span></div><h1>GrowthList.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.list;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * Decorates another {@code List} to make it seamlessly grow when
+ * indices larger than the list size are used on add and set,
+ * avoiding most IndexOutOfBoundsExceptions.
+ * &lt;p&gt;
+ * This class avoids errors by growing when a set or add method would
+ * normally throw an IndexOutOfBoundsException.
+ * Note that IndexOutOfBoundsException IS returned for invalid negative indices.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Trying to set or add to an index larger than the size will cause the list
+ * to grow (using {@code null} elements). Clearly, care must be taken
+ * not to use excessively large indices, as the internal list will grow to
+ * match.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Trying to use any method other than add or set with an invalid index will
+ * call the underlying list and probably result in an IndexOutOfBoundsException.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Take care when using this list with {@code null} values, as
+ * {@code null} is the value added when growing the list.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * All sub-lists will access the underlying list directly, and will throw
+ * IndexOutOfBoundsExceptions.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class differs from {@link LazyList} because here growth occurs on
+ * set and add, where {@code LazyList} grows on get. However, they
+ * can be used together by decorating twice.
+ * &lt;/p&gt;
+ *
+ * @see LazyList
+ * @since 3.2
+ */
+public class GrowthList&lt;E&gt; extends AbstractSerializableListDecorator&lt;E&gt; {
+
+    /** Serialization version */
+    private static final long serialVersionUID = -3620001881672L;
+
+    /**
+     * Factory method to create a growth list.
+     *
+     * @param &lt;E&gt; the type of the elements in the list
+     * @param list  the list to decorate, must not be null
+     * @return a new growth list
+     * @throws NullPointerException if list is null
+     * @since 4.0
+     */
+    public static &lt;E&gt; GrowthList&lt;E&gt; growthList(final List&lt;E&gt; list) {
+<span class="fc" id="L75">        return new GrowthList&lt;&gt;(list);</span>
+    }
+
+    /**
+     * Constructor that uses an ArrayList internally.
+     */
+    public GrowthList() {
+<span class="fc" id="L82">        super(new ArrayList&lt;&gt;());</span>
+<span class="fc" id="L83">    }</span>
+
+    /**
+     * Constructor that uses an ArrayList internally.
+     *
+     * @param initialCapacity  the initial capacity of the ArrayList
+     * @throws IllegalArgumentException if initial capacity is invalid
+     */
+    public GrowthList(final int initialCapacity) {
+<span class="fc" id="L92">        super(new ArrayList&lt;&gt;(initialCapacity));</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * Constructor that wraps (not copies).
+     *
+     * @param list  the list to decorate, must not be null
+     * @throws NullPointerException if list is null
+     */
+    protected GrowthList(final List&lt;E&gt; list) {
+<span class="fc" id="L102">        super(list);</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Decorate the add method to perform the growth behavior.
+     * &lt;p&gt;
+     * If the requested index is greater than the current size, the list will
+     * grow to the new size. Indices between the old size and the requested
+     * size will be filled with {@code null}.
+     * &lt;p&gt;
+     * If the index is less than the current size, the value will be added to
+     * the underlying list directly.
+     * If the index is less than zero, the underlying list is called, which
+     * will probably throw an IndexOutOfBoundsException.
+     *
+     * @param index  the index to add at
+     * @param element  the object to add at the specified index
+     * @throws UnsupportedOperationException if the underlying list doesn't implement set
+     * @throws ClassCastException if the underlying list rejects the element
+     * @throws IllegalArgumentException if the underlying list rejects the element
+     */
+    @Override
+    public void add(final int index, final E element) {
+<span class="fc" id="L125">        final int size = decorated().size();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (index &gt; size) {</span>
+<span class="fc" id="L127">            decorated().addAll(Collections.&lt;E&gt;nCopies(index - size, null));</span>
+        }
+<span class="fc" id="L129">        decorated().add(index, element);</span>
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * Decorate the addAll method to perform the growth behavior.
+     * &lt;p&gt;
+     * If the requested index is greater than the current size, the list will
+     * grow to the new size. Indices between the old size and the requested
+     * size will be filled with {@code null}.
+     * &lt;p&gt;
+     * If the index is less than the current size, the values will be added to
+     * the underlying list directly.
+     * If the index is less than zero, the underlying list is called, which
+     * will probably throw an IndexOutOfBoundsException.
+     *
+     * @param index  the index to add at
+     * @param coll  the collection to add at the specified index
+     * @return true if the list changed
+     * @throws UnsupportedOperationException if the underlying list doesn't implement set
+     * @throws ClassCastException if the underlying list rejects the element
+     * @throws IllegalArgumentException if the underlying list rejects the element
+     */
+    @Override
+    public boolean addAll(final int index, final Collection&lt;? extends E&gt; coll) {
+<span class="fc" id="L153">        final int size = decorated().size();</span>
+<span class="fc" id="L154">        boolean result = false;</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (index &gt; size) {</span>
+<span class="fc" id="L156">            decorated().addAll(Collections.&lt;E&gt;nCopies(index - size, null));</span>
+<span class="fc" id="L157">            result = true;</span>
+        }
+<span class="pc bpc" id="L159" title="3 of 4 branches missed.">        return decorated().addAll(index, coll) || result;</span>
+    }
+
+    /**
+     * Decorate the set method to perform the growth behavior.
+     * &lt;p&gt;
+     * If the requested index is greater than the current size, the list will
+     * grow to the new size. Indices between the old size and the requested
+     * size will be filled with {@code null}.
+     * &lt;p&gt;
+     * If the index is less than the current size, the value will be set onto
+     * the underlying list directly.
+     * If the index is less than zero, the underlying list is called, which
+     * will probably throw an IndexOutOfBoundsException.
+     *
+     * @param index  the index to set
+     * @param element  the object to set at the specified index
+     * @return the object previously at that index
+     * @throws UnsupportedOperationException if the underlying list doesn't implement set
+     * @throws ClassCastException if the underlying list rejects the element
+     * @throws IllegalArgumentException if the underlying list rejects the element
+     */
+    @Override
+    public E set(final int index, final E element) {
+<span class="fc" id="L183">        final int size = decorated().size();</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (index &gt;= size) {</span>
+<span class="fc" id="L185">            decorated().addAll(Collections.&lt;E&gt;nCopies(index - size + 1, null));</span>
+        }
+<span class="fc" id="L187">        return decorated().set(index, element);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

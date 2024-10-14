@@ -1,0 +1,2447 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractPatriciaTrie.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.trie</a> &gt; <span class="el_source">AbstractPatriciaTrie.java</span></div><h1>AbstractPatriciaTrie.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.trie;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.AbstractCollection;
+import java.util.AbstractMap;
+import java.util.AbstractSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.SortedMap;
+
+import org.apache.commons.collections4.OrderedMapIterator;
+import org.apache.commons.collections4.Trie;
+
+/**
+ * This class implements the base PATRICIA algorithm and everything that
+ * is related to the {@link Map} interface.
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 4.0
+ */
+public abstract class AbstractPatriciaTrie&lt;K, V&gt; extends AbstractBitwiseTrie&lt;K, V&gt; {
+
+    /**
+     * A range view of the {@link org.apache.commons.collections4.Trie}.
+     */
+<span class="fc" id="L52">    private abstract class AbstractRangeMap extends AbstractMap&lt;K, V&gt;</span>
+            implements SortedMap&lt;K, V&gt; {
+
+        /** The {@link #entrySet()} view. */
+        private transient volatile Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet;
+
+        @Override
+        public Comparator&lt;? super K&gt; comparator() {
+<span class="nc" id="L60">            return AbstractPatriciaTrie.this.comparator();</span>
+        }
+
+        @Override
+        public boolean containsKey(final Object key) {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (!inRange(castKey(key))) {</span>
+<span class="fc" id="L66">                return false;</span>
+            }
+
+<span class="fc" id="L69">            return AbstractPatriciaTrie.this.containsKey(key);</span>
+        }
+
+        /**
+         * Creates and returns an {@link #entrySet()} view of the {@link AbstractRangeMap}.
+         */
+        protected abstract Set&lt;Map.Entry&lt;K, V&gt;&gt; createEntrySet();
+
+        /**
+         * Creates and returns a sub-range view of the current {@link AbstractRangeMap}.
+         */
+        protected abstract SortedMap&lt;K, V&gt; createRangeMap(K fromKey, boolean fromInclusive,
+                                                          K toKey, boolean toInclusive);
+
+        @Override
+        public Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (entrySet == null) {</span>
+<span class="fc" id="L86">                entrySet = createEntrySet();</span>
+            }
+<span class="fc" id="L88">            return entrySet;</span>
+        }
+
+        @Override
+        public V get(final Object key) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (!inRange(castKey(key))) {</span>
+<span class="fc" id="L94">                return null;</span>
+            }
+
+<span class="fc" id="L97">            return AbstractPatriciaTrie.this.get(key);</span>
+        }
+
+        /**
+         * Returns the FROM Key.
+         */
+        protected abstract K getFromKey();
+
+        /**
+         * Returns the TO Key.
+         */
+        protected abstract K getToKey();
+
+        @Override
+        public SortedMap&lt;K, V&gt; headMap(final K toKey) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            if (!inRange2(toKey)) {</span>
+<span class="nc" id="L113">                throw new IllegalArgumentException(&quot;ToKey is out of range: &quot; + toKey);</span>
+            }
+<span class="nc" id="L115">            return createRangeMap(getFromKey(), isFromInclusive(), toKey, isToInclusive());</span>
+        }
+
+        /**
+         * Returns true if the provided key is in the FROM range of the {@link AbstractRangeMap}.
+         */
+        protected boolean inFromRange(final K key, final boolean forceInclusive) {
+<span class="nc" id="L122">            final K fromKey = getFromKey();</span>
+<span class="nc" id="L123">            final boolean fromInclusive = isFromInclusive();</span>
+
+<span class="nc" id="L125">            final int ret = getKeyAnalyzer().compare(key, fromKey);</span>
+<span class="nc bnc" id="L126" title="All 4 branches missed.">            if (fromInclusive || forceInclusive) {</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                return ret &gt;= 0;</span>
+            }
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            return ret &gt; 0;</span>
+        }
+
+        /**
+         * Returns true if the provided key is greater than TO and less than FROM.
+         */
+        protected boolean inRange(final K key) {
+<span class="nc" id="L136">            final K fromKey = getFromKey();</span>
+<span class="nc" id="L137">            final K toKey = getToKey();</span>
+
+<span class="nc bnc" id="L139" title="All 8 branches missed.">            return (fromKey == null || inFromRange(key, false)) &amp;&amp; (toKey == null || inToRange(key, false));</span>
+        }
+
+        /**
+         * This form allows the high endpoint (as well as all legit keys).
+         */
+        protected boolean inRange2(final K key) {
+<span class="nc" id="L146">            final K fromKey = getFromKey();</span>
+<span class="nc" id="L147">            final K toKey = getToKey();</span>
+
+<span class="nc bnc" id="L149" title="All 8 branches missed.">            return (fromKey == null || inFromRange(key, false)) &amp;&amp; (toKey == null || inToRange(key, true));</span>
+        }
+
+        /**
+         * Returns true if the provided key is in the TO range of the {@link AbstractRangeMap}.
+         */
+        protected boolean inToRange(final K key, final boolean forceInclusive) {
+<span class="nc" id="L156">            final K toKey = getToKey();</span>
+<span class="nc" id="L157">            final boolean toInclusive = isToInclusive();</span>
+
+<span class="nc" id="L159">            final int ret = getKeyAnalyzer().compare(key, toKey);</span>
+<span class="nc bnc" id="L160" title="All 4 branches missed.">            if (toInclusive || forceInclusive) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                return ret &lt;= 0;</span>
+            }
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            return ret &lt; 0;</span>
+        }
+
+        /**
+         * Whether or not the {@link #getFromKey()} is in the range.
+         */
+        protected abstract boolean isFromInclusive();
+
+        /**
+         * Whether or not the {@link #getToKey()} is in the range.
+         */
+        protected abstract boolean isToInclusive();
+
+        @Override
+        public V put(final K key, final V value) {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            if (!inRange(key)) {</span>
+<span class="nc" id="L179">                throw new IllegalArgumentException(&quot;Key is out of range: &quot; + key);</span>
+            }
+<span class="fc" id="L181">            return AbstractPatriciaTrie.this.put(key, value);</span>
+        }
+
+        @Override
+        public V remove(final Object key) {
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">            if (!inRange(castKey(key))) {</span>
+<span class="nc" id="L187">                return null;</span>
+            }
+
+<span class="fc" id="L190">            return AbstractPatriciaTrie.this.remove(key);</span>
+        }
+
+        @Override
+        public SortedMap&lt;K, V&gt; subMap(final K fromKey, final K toKey) {
+<span class="nc bnc" id="L195" title="All 2 branches missed.">            if (!inRange2(fromKey)) {</span>
+<span class="nc" id="L196">                throw new IllegalArgumentException(&quot;FromKey is out of range: &quot; + fromKey);</span>
+            }
+
+<span class="nc bnc" id="L199" title="All 2 branches missed.">            if (!inRange2(toKey)) {</span>
+<span class="nc" id="L200">                throw new IllegalArgumentException(&quot;ToKey is out of range: &quot; + toKey);</span>
+            }
+
+<span class="nc" id="L203">            return createRangeMap(fromKey, isFromInclusive(), toKey, isToInclusive());</span>
+        }
+
+        @Override
+        public SortedMap&lt;K, V&gt; tailMap(final K fromKey) {
+<span class="nc bnc" id="L208" title="All 2 branches missed.">            if (!inRange2(fromKey)) {</span>
+<span class="nc" id="L209">                throw new IllegalArgumentException(&quot;FromKey is out of range: &quot; + fromKey);</span>
+            }
+<span class="nc" id="L211">            return createRangeMap(fromKey, isFromInclusive(), getToKey(), isToInclusive());</span>
+        }
+    }
+
+    /**
+     * An iterator for the entries.
+     */
+    abstract class AbstractTrieIterator&lt;E&gt; implements Iterator&lt;E&gt; {
+
+        /** For fast-fail. */
+<span class="pc" id="L221">        protected int expectedModCount = AbstractPatriciaTrie.this.modCount;</span>
+
+        protected TrieEntry&lt;K, V&gt; next; // the next node to return
+        protected TrieEntry&lt;K, V&gt; current; // the current entry we're on
+
+        /**
+         * Starts iteration from the root.
+         */
+<span class="fc" id="L229">        protected AbstractTrieIterator() {</span>
+<span class="fc" id="L230">            next = AbstractPatriciaTrie.this.nextEntry(null);</span>
+<span class="fc" id="L231">        }</span>
+
+        /**
+         * Starts iteration at the given entry.
+         */
+<span class="nc" id="L236">        protected AbstractTrieIterator(final TrieEntry&lt;K, V&gt; firstEntry) {</span>
+<span class="nc" id="L237">            next = firstEntry;</span>
+<span class="nc" id="L238">        }</span>
+
+        /**
+         * @see PatriciaTrie#nextEntry(TrieEntry)
+         */
+        protected TrieEntry&lt;K, V&gt; findNext(final TrieEntry&lt;K, V&gt; prior) {
+<span class="fc" id="L244">            return AbstractPatriciaTrie.this.nextEntry(prior);</span>
+        }
+
+        @Override
+        public boolean hasNext() {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            return next != null;</span>
+        }
+
+        /**
+         * Returns the next {@link TrieEntry}.
+         */
+        protected TrieEntry&lt;K, V&gt; nextEntry() {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">            if (expectedModCount != AbstractPatriciaTrie.this.modCount) {</span>
+<span class="fc" id="L257">                throw new ConcurrentModificationException();</span>
+            }
+
+<span class="fc" id="L260">            final TrieEntry&lt;K, V&gt; e = next;</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">            if (e == null) {</span>
+<span class="nc" id="L262">                throw new NoSuchElementException();</span>
+            }
+
+<span class="fc" id="L265">            next = findNext(e);</span>
+<span class="fc" id="L266">            current = e;</span>
+<span class="fc" id="L267">            return e;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">            if (current == null) {</span>
+<span class="nc" id="L273">                throw new IllegalStateException();</span>
+            }
+
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">            if (expectedModCount != AbstractPatriciaTrie.this.modCount) {</span>
+<span class="nc" id="L277">                throw new ConcurrentModificationException();</span>
+            }
+
+<span class="fc" id="L280">            final TrieEntry&lt;K, V&gt; node = current;</span>
+<span class="fc" id="L281">            current = null;</span>
+<span class="fc" id="L282">            AbstractPatriciaTrie.this.removeEntry(node);</span>
+
+<span class="fc" id="L284">            expectedModCount = AbstractPatriciaTrie.this.modCount;</span>
+<span class="fc" id="L285">        }</span>
+    }
+
+    /**
+     * This is an entry set view of the {@link org.apache.commons.collections4.Trie} as returned by {@link Map#entrySet()}.
+     */
+<span class="fc" id="L291">    private final class EntrySet extends AbstractSet&lt;Map.Entry&lt;K, V&gt;&gt; {</span>
+
+        /**
+         * An {@link Iterator} that returns {@link Entry} Objects.
+         */
+<span class="fc" id="L296">        private final class EntryIterator extends AbstractTrieIterator&lt;Map.Entry&lt;K, V&gt;&gt; {</span>
+            @Override
+            public Map.Entry&lt;K, V&gt; next() {
+<span class="fc" id="L299">                return nextEntry();</span>
+            }
+        }
+
+        @Override
+        public void clear() {
+<span class="fc" id="L305">            AbstractPatriciaTrie.this.clear();</span>
+<span class="fc" id="L306">        }</span>
+
+        @Override
+        public boolean contains(final Object o) {
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">            if (!(o instanceof Map.Entry)) {</span>
+<span class="nc" id="L311">                return false;</span>
+            }
+
+<span class="fc" id="L314">            final TrieEntry&lt;K, V&gt; candidate = getEntry(((Map.Entry&lt;?, ?&gt;) o).getKey());</span>
+<span class="pc bpc" id="L315" title="1 of 4 branches missed.">            return candidate != null &amp;&amp; candidate.equals(o);</span>
+        }
+
+        @Override
+        public Iterator&lt;Map.Entry&lt;K, V&gt;&gt; iterator() {
+<span class="fc" id="L320">            return new EntryIterator();</span>
+        }
+
+        @Override
+        public boolean remove(final Object obj) {
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">            if (!(obj instanceof Map.Entry)) {</span>
+<span class="nc" id="L326">                return false;</span>
+            }
+<span class="fc bfc" id="L328" title="All 2 branches covered.">            if (!contains(obj)) {</span>
+<span class="fc" id="L329">                return false;</span>
+            }
+<span class="fc" id="L331">            final Map.Entry&lt;?, ?&gt; entry = (Map.Entry&lt;?, ?&gt;) obj;</span>
+<span class="fc" id="L332">            AbstractPatriciaTrie.this.remove(entry.getKey());</span>
+<span class="fc" id="L333">            return true;</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L338">            return AbstractPatriciaTrie.this.size();</span>
+        }
+    }
+    /**
+     * This is a key set view of the {@link org.apache.commons.collections4.Trie} as returned by {@link Map#keySet()}.
+     */
+<span class="fc" id="L344">    private final class KeySet extends AbstractSet&lt;K&gt; {</span>
+
+        /**
+         * An {@link Iterator} that returns Key Objects.
+         */
+<span class="fc" id="L349">        private final class KeyIterator extends AbstractTrieIterator&lt;K&gt; {</span>
+            @Override
+            public K next() {
+<span class="fc" id="L352">                return nextEntry().getKey();</span>
+            }
+        }
+
+        @Override
+        public void clear() {
+<span class="fc" id="L358">            AbstractPatriciaTrie.this.clear();</span>
+<span class="fc" id="L359">        }</span>
+
+        @Override
+        public boolean contains(final Object o) {
+<span class="fc" id="L363">            return containsKey(o);</span>
+        }
+
+        @Override
+        public Iterator&lt;K&gt; iterator() {
+<span class="fc" id="L368">            return new KeyIterator();</span>
+        }
+
+        @Override
+        public boolean remove(final Object o) {
+<span class="fc" id="L373">            final int size = size();</span>
+<span class="fc" id="L374">            AbstractPatriciaTrie.this.remove(o);</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">            return size != size();</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L380">            return AbstractPatriciaTrie.this.size();</span>
+        }
+    }
+    /**
+     * A prefix {@link RangeEntrySet} view of the {@link org.apache.commons.collections4.Trie}.
+     */
+    private final class PrefixRangeEntrySet extends RangeEntrySet {
+
+        /**
+         * An {@link Iterator} for iterating over a prefix search.
+         */
+        private final class EntryIterator extends AbstractTrieIterator&lt;Map.Entry&lt;K, V&gt;&gt; {
+
+            // values to reset the subtree if we remove it.
+            private final K prefix;
+            private final int offset;
+            private final int lengthInBits;
+            private boolean lastOne;
+
+            private TrieEntry&lt;K, V&gt; subtree; // the subtree to search within
+
+            /**
+             * Starts iteration at the given entry &amp;amp; search only
+             * within the given subtree.
+             */
+            EntryIterator(final TrieEntry&lt;K, V&gt; startScan, final K prefix,
+<span class="fc" id="L406">                    final int offset, final int lengthInBits) {</span>
+<span class="fc" id="L407">                subtree = startScan;</span>
+<span class="fc" id="L408">                next = AbstractPatriciaTrie.this.followLeft(startScan);</span>
+<span class="fc" id="L409">                this.prefix = prefix;</span>
+<span class="fc" id="L410">                this.offset = offset;</span>
+<span class="fc" id="L411">                this.lengthInBits = lengthInBits;</span>
+<span class="fc" id="L412">            }</span>
+
+            @Override
+            protected TrieEntry&lt;K, V&gt; findNext(final TrieEntry&lt;K, V&gt; prior) {
+<span class="fc" id="L416">                return AbstractPatriciaTrie.this.nextEntryInSubtree(prior, subtree);</span>
+            }
+
+            @Override
+            public Map.Entry&lt;K, V&gt; next() {
+<span class="fc" id="L421">                final Map.Entry&lt;K, V&gt; entry = nextEntry();</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">                if (lastOne) {</span>
+<span class="fc" id="L423">                    next = null;</span>
+                }
+<span class="fc" id="L425">                return entry;</span>
+            }
+
+            @Override
+            public void remove() {
+                // If the current entry we're removing is the subtree
+                // then we need to find a new subtree parent.
+<span class="fc" id="L432">                boolean needsFixing = false;</span>
+<span class="fc" id="L433">                final int bitIdx = subtree.bitIndex;</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">                if (current == subtree) {</span>
+<span class="fc" id="L435">                    needsFixing = true;</span>
+                }
+
+<span class="fc" id="L438">                super.remove();</span>
+
+                // If the subtree changed its bitIndex or we
+                // removed the old subtree, get a new one.
+<span class="pc bpc" id="L442" title="1 of 4 branches missed.">                if (bitIdx != subtree.bitIndex || needsFixing) {</span>
+<span class="fc" id="L443">                    subtree = subtree(prefix, offset, lengthInBits);</span>
+                }
+
+                // If the subtree's bitIndex is less than the
+                // length of our prefix, it's the last item
+                // in the prefix tree.
+<span class="fc bfc" id="L449" title="All 2 branches covered.">                if (lengthInBits &gt;= subtree.bitIndex) {</span>
+<span class="fc" id="L450">                    lastOne = true;</span>
+                }
+<span class="fc" id="L452">            }</span>
+        }
+
+        /**
+         * An {@link Iterator} that holds a single {@link TrieEntry}.
+         */
+        private final class SingletonIterator implements Iterator&lt;Map.Entry&lt;K, V&gt;&gt; {
+
+            private final TrieEntry&lt;K, V&gt; entry;
+
+            private int hit;
+
+<span class="fc" id="L464">            SingletonIterator(final TrieEntry&lt;K, V&gt; entry) {</span>
+<span class="fc" id="L465">                this.entry = entry;</span>
+<span class="fc" id="L466">            }</span>
+
+            @Override
+            public boolean hasNext() {
+<span class="fc bfc" id="L470" title="All 2 branches covered.">                return hit == 0;</span>
+            }
+
+            @Override
+            public Map.Entry&lt;K, V&gt; next() {
+<span class="pc bpc" id="L475" title="1 of 2 branches missed.">                if (hit != 0) {</span>
+<span class="nc" id="L476">                    throw new NoSuchElementException();</span>
+                }
+
+<span class="fc" id="L479">                ++hit;</span>
+<span class="fc" id="L480">                return entry;</span>
+            }
+
+            @Override
+            public void remove() {
+<span class="nc bnc" id="L485" title="All 2 branches missed.">                if (hit != 1) {</span>
+<span class="nc" id="L486">                    throw new IllegalStateException();</span>
+                }
+
+<span class="nc" id="L489">                ++hit;</span>
+<span class="nc" id="L490">                AbstractPatriciaTrie.this.removeEntry(entry);</span>
+<span class="nc" id="L491">            }</span>
+        }
+
+        private final PrefixRangeMap delegate;
+
+        private TrieEntry&lt;K, V&gt; prefixStart;
+
+        private int expectedModCount;
+
+        /**
+         * Creates a {@link PrefixRangeEntrySet}.
+         */
+<span class="fc" id="L503">        PrefixRangeEntrySet(final PrefixRangeMap delegate) {</span>
+<span class="fc" id="L504">            super(delegate);</span>
+<span class="fc" id="L505">            this.delegate = delegate;</span>
+<span class="fc" id="L506">        }</span>
+
+        @Override
+        public Iterator&lt;Map.Entry&lt;K, V&gt;&gt; iterator() {
+<span class="fc bfc" id="L510" title="All 2 branches covered.">            if (AbstractPatriciaTrie.this.modCount != expectedModCount) {</span>
+<span class="fc" id="L511">                prefixStart = subtree(delegate.prefix, delegate.offsetInBits, delegate.lengthInBits);</span>
+<span class="fc" id="L512">                expectedModCount = AbstractPatriciaTrie.this.modCount;</span>
+            }
+
+<span class="fc bfc" id="L515" title="All 2 branches covered.">            if (prefixStart == null) {</span>
+<span class="fc" id="L516">                final Set&lt;Map.Entry&lt;K, V&gt;&gt; empty = Collections.emptySet();</span>
+<span class="fc" id="L517">                return empty.iterator();</span>
+            }
+<span class="fc bfc" id="L519" title="All 2 branches covered.">            if (delegate.lengthInBits &gt; prefixStart.bitIndex) {</span>
+<span class="fc" id="L520">                return new SingletonIterator(prefixStart);</span>
+            }
+<span class="fc" id="L522">            return new EntryIterator(prefixStart, delegate.prefix, delegate.offsetInBits, delegate.lengthInBits);</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L527">            return delegate.fixup();</span>
+        }
+    }
+
+    /**
+     * A submap used for prefix views over the {@link org.apache.commons.collections4.Trie}.
+     */
+    private final class PrefixRangeMap extends AbstractRangeMap {
+
+        private final K prefix;
+
+        private final int offsetInBits;
+
+        private final int lengthInBits;
+
+        private K fromKey;
+
+        private K toKey;
+
+        private transient int expectedModCount;
+
+<span class="fc" id="L548">        private int size = -1;</span>
+
+        /**
+         * Creates a {@link PrefixRangeMap}.
+         */
+<span class="fc" id="L553">        private PrefixRangeMap(final K prefix, final int offsetInBits, final int lengthInBits) {</span>
+<span class="fc" id="L554">            this.prefix = prefix;</span>
+<span class="fc" id="L555">            this.offsetInBits = offsetInBits;</span>
+<span class="fc" id="L556">            this.lengthInBits = lengthInBits;</span>
+<span class="fc" id="L557">        }</span>
+
+        @Override
+        public void clear() {
+<span class="fc" id="L561">            final Iterator&lt;Map.Entry&lt;K, V&gt;&gt; it = AbstractPatriciaTrie.this.entrySet().iterator();</span>
+<span class="fc" id="L562">            final Set&lt;K&gt; currentKeys = keySet();</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc bfc" id="L564" title="All 2 branches covered.">                if (currentKeys.contains(it.next().getKey())) {</span>
+<span class="fc" id="L565">                    it.remove();</span>
+                }
+            }
+<span class="fc" id="L568">        }</span>
+
+        @Override
+        protected Set&lt;Map.Entry&lt;K, V&gt;&gt; createEntrySet() {
+<span class="fc" id="L572">            return new PrefixRangeEntrySet(this);</span>
+        }
+
+        @Override
+        protected SortedMap&lt;K, V&gt; createRangeMap(final K fromKey, final boolean fromInclusive,
+                                                 final K toKey, final boolean toInclusive) {
+<span class="nc" id="L578">            return new RangeEntryMap(fromKey, fromInclusive, toKey, toInclusive);</span>
+        }
+
+        @Override
+        public K firstKey() {
+<span class="fc" id="L583">            fixup();</span>
+
+<span class="fc" id="L585">            Map.Entry&lt;K, V&gt; e = null;</span>
+<span class="fc bfc" id="L586" title="All 2 branches covered.">            if (fromKey == null) {</span>
+<span class="fc" id="L587">                e = firstEntry();</span>
+            } else {
+<span class="fc" id="L589">                e = higherEntry(fromKey);</span>
+            }
+
+<span class="pc bpc" id="L592" title="1 of 2 branches missed.">            final K first = e != null ? e.getKey() : null;</span>
+<span class="pc bpc" id="L593" title="1 of 4 branches missed.">            if (e == null || !getKeyAnalyzer().isPrefix(prefix, offsetInBits, lengthInBits, first)) {</span>
+<span class="fc" id="L594">                throw new NoSuchElementException();</span>
+            }
+
+<span class="fc" id="L597">            return first;</span>
+        }
+
+        /**
+         * This method does two things. It determines the FROM
+         * and TO range of the {@link PrefixRangeMap} and the number
+         * of elements in the range. This method must be called every
+         * time the {@link org.apache.commons.collections4.Trie} has changed.
+         */
+        private int fixup() {
+            // The trie has changed since we last found our toKey / fromKey
+<span class="fc bfc" id="L608" title="All 4 branches covered.">            if (size == - 1 || AbstractPatriciaTrie.this.modCount != expectedModCount) {</span>
+<span class="fc" id="L609">                final Iterator&lt;Map.Entry&lt;K, V&gt;&gt; it = super.entrySet().iterator();</span>
+<span class="fc" id="L610">                size = 0;</span>
+
+<span class="fc" id="L612">                Map.Entry&lt;K, V&gt; entry = null;</span>
+<span class="fc bfc" id="L613" title="All 2 branches covered.">                if (it.hasNext()) {</span>
+<span class="fc" id="L614">                    entry = it.next();</span>
+<span class="fc" id="L615">                    size = 1;</span>
+                }
+
+<span class="fc bfc" id="L618" title="All 2 branches covered.">                fromKey = entry == null ? null : entry.getKey();</span>
+<span class="fc bfc" id="L619" title="All 2 branches covered.">                if (fromKey != null) {</span>
+<span class="fc" id="L620">                    final TrieEntry&lt;K, V&gt; prior = previousEntry((TrieEntry&lt;K, V&gt;) entry);</span>
+<span class="fc bfc" id="L621" title="All 2 branches covered.">                    fromKey = prior == null ? null : prior.getKey();</span>
+                }
+
+<span class="fc" id="L624">                toKey = fromKey;</span>
+
+<span class="fc bfc" id="L626" title="All 2 branches covered.">                while (it.hasNext()) {</span>
+<span class="fc" id="L627">                    ++size;</span>
+<span class="fc" id="L628">                    entry = it.next();</span>
+                }
+
+<span class="fc bfc" id="L631" title="All 2 branches covered.">                toKey = entry == null ? null : entry.getKey();</span>
+
+<span class="fc bfc" id="L633" title="All 2 branches covered.">                if (toKey != null) {</span>
+<span class="fc" id="L634">                    entry = nextEntry((TrieEntry&lt;K, V&gt;) entry);</span>
+<span class="fc bfc" id="L635" title="All 2 branches covered.">                    toKey = entry == null ? null : entry.getKey();</span>
+                }
+
+<span class="fc" id="L638">                expectedModCount = AbstractPatriciaTrie.this.modCount;</span>
+            }
+
+<span class="fc" id="L641">            return size;</span>
+        }
+
+        @Override
+        public K getFromKey() {
+<span class="nc" id="L646">            return fromKey;</span>
+        }
+
+        @Override
+        public K getToKey() {
+<span class="nc" id="L651">            return toKey;</span>
+        }
+
+        /**
+         * Returns true if the provided Key is in the FROM range of the {@link PrefixRangeMap}.
+         */
+        @Override
+        protected boolean inFromRange(final K key, final boolean forceInclusive) {
+<span class="nc" id="L659">            return getKeyAnalyzer().isPrefix(prefix, offsetInBits, lengthInBits, key);</span>
+        }
+
+        /**
+         * Returns true if this {@link PrefixRangeMap}'s key is a prefix of the provided key.
+         */
+        @Override
+        protected boolean inRange(final K key) {
+<span class="fc" id="L667">            return getKeyAnalyzer().isPrefix(prefix, offsetInBits, lengthInBits, key);</span>
+        }
+
+        /**
+         * Same as {@link #inRange(Object)}.
+         */
+        @Override
+        protected boolean inRange2(final K key) {
+<span class="nc" id="L675">            return inRange(key);</span>
+        }
+
+        /**
+         * Returns true if the provided Key is in the TO range of the {@link PrefixRangeMap}.
+         */
+        @Override
+        protected boolean inToRange(final K key, final boolean forceInclusive) {
+<span class="nc" id="L683">            return getKeyAnalyzer().isPrefix(prefix, offsetInBits, lengthInBits, key);</span>
+        }
+
+        @Override
+        public boolean isFromInclusive() {
+<span class="nc" id="L688">            return false;</span>
+        }
+
+        @Override
+        public boolean isToInclusive() {
+<span class="nc" id="L693">            return false;</span>
+        }
+
+        @Override
+        public K lastKey() {
+<span class="fc" id="L698">            fixup();</span>
+
+<span class="fc" id="L700">            Map.Entry&lt;K, V&gt; e = null;</span>
+<span class="fc bfc" id="L701" title="All 2 branches covered.">            if (toKey == null) {</span>
+<span class="fc" id="L702">                e = lastEntry();</span>
+            } else {
+<span class="fc" id="L704">                e = lowerEntry(toKey);</span>
+            }
+
+<span class="pc bpc" id="L707" title="1 of 2 branches missed.">            final K last = e != null ? e.getKey() : null;</span>
+<span class="pc bpc" id="L708" title="1 of 4 branches missed.">            if (e == null || !getKeyAnalyzer().isPrefix(prefix, offsetInBits, lengthInBits, last)) {</span>
+<span class="fc" id="L709">                throw new NoSuchElementException();</span>
+            }
+
+<span class="fc" id="L712">            return last;</span>
+        }
+    }
+
+    /**
+     * A {@link AbstractRangeMap} that deals with {@link Entry}s.
+     */
+    private final class RangeEntryMap extends AbstractRangeMap {
+
+        /** The key to start from, null if the beginning. */
+        private final K fromKey;
+
+        /** The key to end at, null if till the end. */
+        private final K toKey;
+
+        /** Whether or not the 'from' is inclusive. */
+        private final boolean fromInclusive;
+
+        /** Whether or not the 'to' is inclusive. */
+        private final boolean toInclusive;
+
+        /**
+         * Creates a {@link RangeEntryMap}.
+         */
+        protected RangeEntryMap(final K fromKey, final boolean fromInclusive,
+<span class="nc" id="L737">                                final K toKey, final boolean toInclusive) {</span>
+
+<span class="nc bnc" id="L739" title="All 4 branches missed.">            if (fromKey == null &amp;&amp; toKey == null) {</span>
+<span class="nc" id="L740">                throw new IllegalArgumentException(&quot;must have a from or to!&quot;);</span>
+            }
+
+<span class="nc bnc" id="L743" title="All 6 branches missed.">            if (fromKey != null &amp;&amp; toKey != null &amp;&amp; getKeyAnalyzer().compare(fromKey, toKey) &gt; 0) {</span>
+<span class="nc" id="L744">                throw new IllegalArgumentException(&quot;fromKey &gt; toKey&quot;);</span>
+            }
+
+<span class="nc" id="L747">            this.fromKey = fromKey;</span>
+<span class="nc" id="L748">            this.fromInclusive = fromInclusive;</span>
+<span class="nc" id="L749">            this.toKey = toKey;</span>
+<span class="nc" id="L750">            this.toInclusive = toInclusive;</span>
+<span class="nc" id="L751">        }</span>
+
+        /**
+         * Creates a {@link RangeEntryMap} with the fromKey included and
+         * the toKey excluded from the range.
+         */
+        protected RangeEntryMap(final K fromKey, final K toKey) {
+<span class="nc" id="L758">            this(fromKey, true, toKey, false);</span>
+<span class="nc" id="L759">        }</span>
+
+        @Override
+        protected Set&lt;Entry&lt;K, V&gt;&gt; createEntrySet() {
+<span class="nc" id="L763">            return new RangeEntrySet(this);</span>
+        }
+
+        @Override
+        protected SortedMap&lt;K, V&gt; createRangeMap(final K fromKey, final boolean fromInclusive,
+                                                 final K toKey, final boolean toInclusive) {
+<span class="nc" id="L769">            return new RangeEntryMap(fromKey, fromInclusive, toKey, toInclusive);</span>
+        }
+
+        @Override
+        public K firstKey() {
+<span class="nc" id="L774">            Map.Entry&lt;K, V&gt; e = null;</span>
+<span class="nc bnc" id="L775" title="All 2 branches missed.">            if (fromKey == null) {</span>
+<span class="nc" id="L776">                e = firstEntry();</span>
+            } else {
+<span class="nc bnc" id="L778" title="All 2 branches missed.">                if (fromInclusive) {</span>
+<span class="nc" id="L779">                    e = ceilingEntry(fromKey);</span>
+                } else {
+<span class="nc" id="L781">                    e = higherEntry(fromKey);</span>
+                }
+            }
+
+<span class="nc bnc" id="L785" title="All 2 branches missed.">            final K first = e != null ? e.getKey() : null;</span>
+<span class="nc bnc" id="L786" title="All 6 branches missed.">            if (e == null || toKey != null &amp;&amp; !inToRange(first, false)) {</span>
+<span class="nc" id="L787">                throw new NoSuchElementException();</span>
+            }
+<span class="nc" id="L789">            return first;</span>
+        }
+
+        @Override
+        public K getFromKey() {
+<span class="nc" id="L794">            return fromKey;</span>
+        }
+
+        @Override
+        public K getToKey() {
+<span class="nc" id="L799">            return toKey;</span>
+        }
+
+        @Override
+        public boolean isFromInclusive() {
+<span class="nc" id="L804">            return fromInclusive;</span>
+        }
+
+        @Override
+        public boolean isToInclusive() {
+<span class="nc" id="L809">            return toInclusive;</span>
+        }
+
+        @Override
+        public K lastKey() {
+            final Map.Entry&lt;K, V&gt; e;
+<span class="nc bnc" id="L815" title="All 2 branches missed.">            if (toKey == null) {</span>
+<span class="nc" id="L816">                e = lastEntry();</span>
+            } else {
+<span class="nc bnc" id="L818" title="All 2 branches missed.">                if (toInclusive) {</span>
+<span class="nc" id="L819">                    e = floorEntry(toKey);</span>
+                } else {
+<span class="nc" id="L821">                    e = lowerEntry(toKey);</span>
+                }
+            }
+
+<span class="nc bnc" id="L825" title="All 2 branches missed.">            final K last = e != null ? e.getKey() : null;</span>
+<span class="nc bnc" id="L826" title="All 6 branches missed.">            if (e == null || fromKey != null &amp;&amp; !inFromRange(last, false)) {</span>
+<span class="nc" id="L827">                throw new NoSuchElementException();</span>
+            }
+<span class="nc" id="L829">            return last;</span>
+        }
+    }
+
+    /**
+     * A {@link Set} view of a {@link AbstractRangeMap}.
+     */
+    private class RangeEntrySet extends AbstractSet&lt;Map.Entry&lt;K, V&gt;&gt; {
+
+        /**
+         * An {@link Iterator} for {@link RangeEntrySet}s.
+         */
+        private final class EntryIterator extends AbstractTrieIterator&lt;Map.Entry&lt;K, V&gt;&gt; {
+
+            private final K excludedKey;
+
+            /**
+             * Creates a {@link EntryIterator}.
+             */
+<span class="nc" id="L848">            private EntryIterator(final TrieEntry&lt;K, V&gt; first, final TrieEntry&lt;K, V&gt; last) {</span>
+<span class="nc" id="L849">                super(first);</span>
+<span class="nc bnc" id="L850" title="All 2 branches missed.">                this.excludedKey = last != null ? last.getKey() : null;</span>
+<span class="nc" id="L851">            }</span>
+
+            @Override
+            public boolean hasNext() {
+<span class="nc bnc" id="L855" title="All 4 branches missed.">                return next != null &amp;&amp; !compare(next.key, excludedKey);</span>
+            }
+
+            @Override
+            public Map.Entry&lt;K, V&gt; next() {
+<span class="nc bnc" id="L860" title="All 4 branches missed.">                if (next == null || compare(next.key, excludedKey)) {</span>
+<span class="nc" id="L861">                    throw new NoSuchElementException();</span>
+                }
+<span class="nc" id="L863">                return nextEntry();</span>
+            }
+        }
+
+        private final AbstractRangeMap delegate;
+
+<span class="fc" id="L869">        private transient int size = -1;</span>
+
+        private transient int expectedModCount;
+
+        /**
+         * Creates a {@link RangeEntrySet}.
+         */
+<span class="fc" id="L876">        RangeEntrySet(final AbstractRangeMap delegate) {</span>
+<span class="fc" id="L877">            this.delegate = Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+<span class="fc" id="L878">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public boolean contains(final Object o) {
+<span class="nc bnc" id="L883" title="All 2 branches missed.">            if (!(o instanceof Map.Entry)) {</span>
+<span class="nc" id="L884">                return false;</span>
+            }
+
+<span class="nc" id="L887">            final Map.Entry&lt;K, V&gt; entry = (Map.Entry&lt;K, V&gt;) o;</span>
+<span class="nc" id="L888">            final K key = entry.getKey();</span>
+<span class="nc bnc" id="L889" title="All 2 branches missed.">            if (!delegate.inRange(key)) {</span>
+<span class="nc" id="L890">                return false;</span>
+            }
+
+<span class="nc" id="L893">            final TrieEntry&lt;K, V&gt; node = getEntry(key);</span>
+<span class="nc bnc" id="L894" title="All 4 branches missed.">            return node != null &amp;&amp; compare(node.getValue(), entry.getValue());</span>
+        }
+
+        @Override
+        public boolean isEmpty() {
+<span class="nc bnc" id="L899" title="All 2 branches missed.">            return !iterator().hasNext();</span>
+        }
+
+        @Override
+        public Iterator&lt;Map.Entry&lt;K, V&gt;&gt; iterator() {
+<span class="nc" id="L904">            final K fromKey = delegate.getFromKey();</span>
+<span class="nc" id="L905">            final K toKey = delegate.getToKey();</span>
+
+<span class="nc" id="L907">            TrieEntry&lt;K, V&gt; first = null;</span>
+<span class="nc bnc" id="L908" title="All 2 branches missed.">            if (fromKey == null) {</span>
+<span class="nc" id="L909">                first = firstEntry();</span>
+            } else {
+<span class="nc" id="L911">                first = ceilingEntry(fromKey);</span>
+            }
+
+<span class="nc" id="L914">            TrieEntry&lt;K, V&gt; last = null;</span>
+<span class="nc bnc" id="L915" title="All 2 branches missed.">            if (toKey != null) {</span>
+<span class="nc" id="L916">                last = ceilingEntry(toKey);</span>
+            }
+
+<span class="nc" id="L919">            return new EntryIterator(first, last);</span>
+        }
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        @Override
+        public boolean remove(final Object o) {
+<span class="nc bnc" id="L925" title="All 2 branches missed.">            if (!(o instanceof Map.Entry)) {</span>
+<span class="nc" id="L926">                return false;</span>
+            }
+
+<span class="nc" id="L929">            final Map.Entry&lt;K, V&gt; entry = (Map.Entry&lt;K, V&gt;) o;</span>
+<span class="nc" id="L930">            final K key = entry.getKey();</span>
+<span class="nc bnc" id="L931" title="All 2 branches missed.">            if (!delegate.inRange(key)) {</span>
+<span class="nc" id="L932">                return false;</span>
+            }
+
+<span class="nc" id="L935">            final TrieEntry&lt;K, V&gt; node = getEntry(key);</span>
+<span class="nc bnc" id="L936" title="All 4 branches missed.">            if (node != null &amp;&amp; compare(node.getValue(), entry.getValue())) {</span>
+<span class="nc" id="L937">                removeEntry(node);</span>
+<span class="nc" id="L938">                return true;</span>
+            }
+<span class="nc" id="L940">            return false;</span>
+        }
+
+        @Override
+        public int size() {
+<span class="nc bnc" id="L945" title="All 4 branches missed.">            if (size == -1 || expectedModCount != AbstractPatriciaTrie.this.modCount) {</span>
+<span class="nc" id="L946">                size = 0;</span>
+
+<span class="nc bnc" id="L948" title="All 2 branches missed.">                for (final Iterator&lt;?&gt; it = iterator(); it.hasNext(); it.next()) {</span>
+<span class="nc" id="L949">                    ++size;</span>
+                }
+
+<span class="nc" id="L952">                expectedModCount = AbstractPatriciaTrie.this.modCount;</span>
+            }
+<span class="nc" id="L954">            return size;</span>
+        }
+    }
+
+    /**
+     * A {@link Reference} allows us to return something through a Method's
+     * argument list. An alternative would be to an Array with a length of
+     * one (1) but that leads to compiler warnings. Computationally and memory
+     * wise there's no difference (except for the need to load the
+     * {@link Reference} Class but that happens only once).
+     */
+    private static final class Reference&lt;E&gt; {
+
+        private E item;
+
+        public E get() {
+<span class="nc" id="L970">            return item;</span>
+        }
+
+        public void set(final E item) {
+<span class="nc" id="L974">            this.item = item;</span>
+<span class="nc" id="L975">        }</span>
+    }
+
+    /**
+     *  A {@link org.apache.commons.collections4.Trie} is a set of {@link TrieEntry} nodes.
+     */
+    protected static class TrieEntry&lt;K, V&gt; extends BasicEntry&lt;K, V&gt; {
+
+        private static final long serialVersionUID = 4596023148184140013L;
+
+        /** The index this entry is comparing. */
+        protected int bitIndex;
+
+        /** The parent of this entry. */
+        protected TrieEntry&lt;K, V&gt; parent;
+
+        /** The left child of this entry. */
+        protected TrieEntry&lt;K, V&gt; left;
+
+        /** The right child of this entry. */
+        protected TrieEntry&lt;K, V&gt; right;
+
+        /** The entry who uplinks to this entry. */
+        protected TrieEntry&lt;K, V&gt; predecessor;
+
+        public TrieEntry(final K key, final V value, final int bitIndex) {
+<span class="fc" id="L1001">            super(key, value);</span>
+
+<span class="fc" id="L1003">            this.bitIndex = bitIndex;</span>
+
+<span class="fc" id="L1005">            this.parent = null;</span>
+<span class="fc" id="L1006">            this.left = this;</span>
+<span class="fc" id="L1007">            this.right = null;</span>
+<span class="fc" id="L1008">            this.predecessor = this;</span>
+<span class="fc" id="L1009">        }</span>
+
+        /**
+         * Whether or not the entry is storing a key.
+         * Only the root can potentially be empty, all other
+         * nodes must have a key.
+         */
+        public boolean isEmpty() {
+<span class="fc bfc" id="L1017" title="All 2 branches covered.">            return key == null;</span>
+        }
+
+        /**
+         * Either the left or right child is a loopback.
+         */
+        public boolean isExternalNode() {
+<span class="pc bpc" id="L1024" title="1 of 2 branches missed.">            return !isInternalNode();</span>
+        }
+
+        /**
+         * Neither the left nor right child is a loopback.
+         */
+        public boolean isInternalNode() {
+<span class="fc bfc" id="L1031" title="All 4 branches covered.">            return left != this &amp;&amp; right != this;</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="fc" id="L1036">            final StringBuilder buffer = new StringBuilder();</span>
+
+<span class="pc bpc" id="L1038" title="1 of 2 branches missed.">            if (bitIndex == -1) {</span>
+<span class="nc" id="L1039">                buffer.append(&quot;RootEntry(&quot;);</span>
+            } else {
+<span class="fc" id="L1041">                buffer.append(&quot;Entry(&quot;);</span>
+            }
+
+<span class="fc" id="L1044">            buffer.append(&quot;key=&quot;).append(getKey()).append(&quot; [&quot;).append(bitIndex).append(&quot;], &quot;);</span>
+<span class="fc" id="L1045">            buffer.append(&quot;value=&quot;).append(getValue()).append(&quot;, &quot;);</span>
+            //buffer.append(&quot;bitIndex=&quot;).append(bitIndex).append(&quot;, &quot;);
+
+<span class="pc bpc" id="L1048" title="1 of 2 branches missed.">            if (parent != null) {</span>
+<span class="fc bfc" id="L1049" title="All 2 branches covered.">                if (parent.bitIndex == -1) {</span>
+<span class="fc" id="L1050">                    buffer.append(&quot;parent=&quot;).append(&quot;ROOT&quot;);</span>
+                } else {
+<span class="fc" id="L1052">                    buffer.append(&quot;parent=&quot;).append(parent.getKey()).append(&quot; [&quot;).append(parent.bitIndex).append(&quot;]&quot;);</span>
+                }
+            } else {
+<span class="nc" id="L1055">                buffer.append(&quot;parent=&quot;).append(&quot;null&quot;);</span>
+            }
+<span class="fc" id="L1057">            buffer.append(&quot;, &quot;);</span>
+
+<span class="pc bpc" id="L1059" title="1 of 2 branches missed.">            if (left != null) {</span>
+<span class="fc bfc" id="L1060" title="All 2 branches covered.">                if (left.bitIndex == -1) {</span>
+<span class="fc" id="L1061">                    buffer.append(&quot;left=&quot;).append(&quot;ROOT&quot;);</span>
+                } else {
+<span class="fc" id="L1063">                    buffer.append(&quot;left=&quot;).append(left.getKey()).append(&quot; [&quot;).append(left.bitIndex).append(&quot;]&quot;);</span>
+                }
+            } else {
+<span class="nc" id="L1066">                buffer.append(&quot;left=&quot;).append(&quot;null&quot;);</span>
+            }
+<span class="fc" id="L1068">            buffer.append(&quot;, &quot;);</span>
+
+<span class="pc bpc" id="L1070" title="1 of 2 branches missed.">            if (right != null) {</span>
+<span class="pc bpc" id="L1071" title="1 of 2 branches missed.">                if (right.bitIndex == -1) {</span>
+<span class="nc" id="L1072">                    buffer.append(&quot;right=&quot;).append(&quot;ROOT&quot;);</span>
+                } else {
+<span class="fc" id="L1074">                    buffer.append(&quot;right=&quot;).append(right.getKey()).append(&quot; [&quot;).append(right.bitIndex).append(&quot;]&quot;);</span>
+                }
+            } else {
+<span class="nc" id="L1077">                buffer.append(&quot;right=&quot;).append(&quot;null&quot;);</span>
+            }
+<span class="fc" id="L1079">            buffer.append(&quot;, &quot;);</span>
+
+<span class="pc bpc" id="L1081" title="1 of 2 branches missed.">            if (predecessor != null) {</span>
+<span class="pc bpc" id="L1082" title="1 of 2 branches missed.">                if (predecessor.bitIndex == -1) {</span>
+<span class="nc" id="L1083">                    buffer.append(&quot;predecessor=&quot;).append(&quot;ROOT&quot;);</span>
+                } else {
+<span class="fc" id="L1085">                    buffer.append(&quot;predecessor=&quot;).append(predecessor.getKey()).append(&quot; [&quot;).</span>
+<span class="fc" id="L1086">                           append(predecessor.bitIndex).append(&quot;]&quot;);</span>
+                }
+            }
+
+<span class="fc" id="L1090">            buffer.append(&quot;)&quot;);</span>
+<span class="fc" id="L1091">            return buffer.toString();</span>
+        }
+    }
+
+    /**
+     * An {@link OrderedMapIterator} for a {@link org.apache.commons.collections4.Trie}.
+     */
+<span class="nc" id="L1098">    private final class TrieMapIterator extends AbstractTrieIterator&lt;K&gt; implements OrderedMapIterator&lt;K, V&gt; {</span>
+
+        protected TrieEntry&lt;K, V&gt; previous; // the previous node to return
+
+        @Override
+        public K getKey() {
+<span class="nc bnc" id="L1104" title="All 2 branches missed.">            if (current == null) {</span>
+<span class="nc" id="L1105">                throw new IllegalStateException();</span>
+            }
+<span class="nc" id="L1107">            return current.getKey();</span>
+        }
+
+        @Override
+        public V getValue() {
+<span class="nc bnc" id="L1112" title="All 2 branches missed.">            if (current == null) {</span>
+<span class="nc" id="L1113">                throw new IllegalStateException();</span>
+            }
+<span class="nc" id="L1115">            return current.getValue();</span>
+        }
+
+        @Override
+        public boolean hasPrevious() {
+<span class="nc bnc" id="L1120" title="All 2 branches missed.">            return previous != null;</span>
+        }
+
+        @Override
+        public K next() {
+<span class="nc" id="L1125">            return nextEntry().getKey();</span>
+        }
+
+        @Override
+        protected TrieEntry&lt;K, V&gt; nextEntry() {
+<span class="nc" id="L1130">            final TrieEntry&lt;K, V&gt; nextEntry = super.nextEntry();</span>
+<span class="nc" id="L1131">            previous = nextEntry;</span>
+<span class="nc" id="L1132">            return nextEntry;</span>
+        }
+
+        @Override
+        public K previous() {
+<span class="nc" id="L1137">            return previousEntry().getKey();</span>
+        }
+
+        protected TrieEntry&lt;K, V&gt; previousEntry() {
+<span class="nc bnc" id="L1141" title="All 2 branches missed.">            if (expectedModCount != AbstractPatriciaTrie.this.modCount) {</span>
+<span class="nc" id="L1142">                throw new ConcurrentModificationException();</span>
+            }
+
+<span class="nc" id="L1145">            final TrieEntry&lt;K, V&gt; e = previous;</span>
+<span class="nc bnc" id="L1146" title="All 2 branches missed.">            if (e == null) {</span>
+<span class="nc" id="L1147">                throw new NoSuchElementException();</span>
+            }
+
+<span class="nc" id="L1150">            previous = AbstractPatriciaTrie.this.previousEntry(e);</span>
+<span class="nc" id="L1151">            next = current;</span>
+<span class="nc" id="L1152">            current = e;</span>
+<span class="nc" id="L1153">            return current;</span>
+        }
+
+        @Override
+        public V setValue(final V value) {
+<span class="nc bnc" id="L1158" title="All 2 branches missed.">            if (current == null) {</span>
+<span class="nc" id="L1159">                throw new IllegalStateException();</span>
+            }
+<span class="nc" id="L1161">            return current.setValue(value);</span>
+        }
+
+    }
+
+    /**
+     * This is a value view of the {@link org.apache.commons.collections4.Trie} as returned by {@link Map#values()}.
+     */
+<span class="fc" id="L1169">    private final class Values extends AbstractCollection&lt;V&gt; {</span>
+
+        /**
+         * An {@link Iterator} that returns Value Objects.
+         */
+<span class="fc" id="L1174">        private final class ValueIterator extends AbstractTrieIterator&lt;V&gt; {</span>
+            @Override
+            public V next() {
+<span class="fc" id="L1177">                return nextEntry().getValue();</span>
+            }
+        }
+
+        @Override
+        public void clear() {
+<span class="fc" id="L1183">            AbstractPatriciaTrie.this.clear();</span>
+<span class="fc" id="L1184">        }</span>
+
+        @Override
+        public boolean contains(final Object o) {
+<span class="fc" id="L1188">            return containsValue(o);</span>
+        }
+
+        @Override
+        public Iterator&lt;V&gt; iterator() {
+<span class="fc" id="L1193">            return new ValueIterator();</span>
+        }
+
+        @Override
+        public boolean remove(final Object o) {
+<span class="pc bpc" id="L1198" title="1 of 2 branches missed.">            for (final Iterator&lt;V&gt; it = iterator(); it.hasNext(); ) {</span>
+<span class="fc" id="L1199">                final V value = it.next();</span>
+<span class="fc bfc" id="L1200" title="All 2 branches covered.">                if (compare(value, o)) {</span>
+<span class="fc" id="L1201">                    it.remove();</span>
+<span class="fc" id="L1202">                    return true;</span>
+                }
+<span class="fc" id="L1204">            }</span>
+<span class="nc" id="L1205">            return false;</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L1210">            return AbstractPatriciaTrie.this.size();</span>
+        }
+    }
+
+    private static final long serialVersionUID = 5155253417231339498L;
+
+    /**
+     * Returns true if 'next' is a valid uplink coming from 'from'.
+     */
+    static boolean isValidUplink(final TrieEntry&lt;?, ?&gt; next, final TrieEntry&lt;?, ?&gt; from) {
+<span class="pc bpc" id="L1220" title="1 of 6 branches missed.">        return next != null &amp;&amp; next.bitIndex &lt;= from.bitIndex &amp;&amp; !next.isEmpty();</span>
+    }
+
+    /** The root node of the {@link org.apache.commons.collections4.Trie}. */
+<span class="pc" id="L1224">    private transient TrieEntry&lt;K, V&gt; root = new TrieEntry&lt;&gt;(null, null, -1);</span>
+
+    /**
+     * Each of these fields are initialized to contain an instance of the
+     * appropriate view the first time this view is requested. The views are
+     * stateless, so there's no reason to create more than one of each.
+     */
+    private transient volatile Set&lt;K&gt; keySet;
+
+    private transient volatile Collection&lt;V&gt; values;
+
+    private transient volatile Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet;
+
+    /** The current size of the {@link org.apache.commons.collections4.Trie}. */
+    private transient int size;
+
+    /**
+     * The number of times this {@link org.apache.commons.collections4.Trie} has been modified.
+     * It's used to detect concurrent modifications and fail-fast the {@link Iterator}s.
+     */
+    protected transient int modCount;
+
+    /**
+     * Constructs a new {@link Trie} using the given {@link KeyAnalyzer}.
+     *
+     * @param keyAnalyzer  the {@link KeyAnalyzer} to use
+     */
+    protected AbstractPatriciaTrie(final KeyAnalyzer&lt;? super K&gt; keyAnalyzer) {
+<span class="fc" id="L1252">        super(keyAnalyzer);</span>
+<span class="fc" id="L1253">    }</span>
+
+    /**
+     * Constructs a new {@link org.apache.commons.collections4.Trie}
+     * using the given {@link KeyAnalyzer} and initializes the {@link org.apache.commons.collections4.Trie}
+     * with the values from the provided {@link Map}.
+     */
+    protected AbstractPatriciaTrie(final KeyAnalyzer&lt;? super K&gt; keyAnalyzer,
+                                   final Map&lt;? extends K, ? extends V&gt; map) {
+<span class="nc" id="L1262">        super(keyAnalyzer);</span>
+<span class="nc" id="L1263">        putAll(map);</span>
+<span class="nc" id="L1264">    }</span>
+
+    /**
+     * Adds the given {@link TrieEntry} to the {@link org.apache.commons.collections4.Trie}.
+     */
+    TrieEntry&lt;K, V&gt; addEntry(final TrieEntry&lt;K, V&gt; entry, final int lengthInBits) {
+<span class="fc" id="L1270">        TrieEntry&lt;K, V&gt; current = root.left;</span>
+<span class="fc" id="L1271">        TrieEntry&lt;K, V&gt; path = root;</span>
+        while (true) {
+<span class="fc bfc" id="L1273" title="All 4 branches covered.">            if (current.bitIndex &gt;= entry.bitIndex</span>
+                    || current.bitIndex &lt;= path.bitIndex) {
+<span class="fc" id="L1275">                entry.predecessor = entry;</span>
+
+<span class="fc bfc" id="L1277" title="All 2 branches covered.">                if (!isBitSet(entry.key, entry.bitIndex, lengthInBits)) {</span>
+<span class="fc" id="L1278">                    entry.left = entry;</span>
+<span class="fc" id="L1279">                    entry.right = current;</span>
+                } else {
+<span class="fc" id="L1281">                    entry.left = current;</span>
+<span class="fc" id="L1282">                    entry.right = entry;</span>
+                }
+
+<span class="fc" id="L1285">                entry.parent = path;</span>
+<span class="fc bfc" id="L1286" title="All 2 branches covered.">                if (current.bitIndex &gt;= entry.bitIndex) {</span>
+<span class="fc" id="L1287">                    current.parent = entry;</span>
+                }
+
+                // if we inserted an uplink, set the predecessor on it
+<span class="fc bfc" id="L1291" title="All 2 branches covered.">                if (current.bitIndex &lt;= path.bitIndex) {</span>
+<span class="fc" id="L1292">                    current.predecessor = entry;</span>
+                }
+
+<span class="fc bfc" id="L1295" title="All 4 branches covered.">                if (path == root || !isBitSet(entry.key, path.bitIndex, lengthInBits)) {</span>
+<span class="fc" id="L1296">                    path.left = entry;</span>
+                } else {
+<span class="fc" id="L1298">                    path.right = entry;</span>
+                }
+
+<span class="fc" id="L1301">                return entry;</span>
+            }
+
+<span class="fc" id="L1304">            path = current;</span>
+
+<span class="fc bfc" id="L1306" title="All 2 branches covered.">            if (!isBitSet(entry.key, current.bitIndex, lengthInBits)) {</span>
+<span class="fc" id="L1307">                current = current.left;</span>
+            } else {
+<span class="fc" id="L1309">                current = current.right;</span>
+            }
+        }
+    }
+
+    /**
+     * Returns a key-value mapping associated with the least key greater
+     * than or equal to the given key, or null if there is no such key.
+     */
+    TrieEntry&lt;K, V&gt; ceilingEntry(final K key) {
+        // Basically:
+        // Follow the steps of adding an entry, but instead...
+        //
+        // - If we ever encounter a situation where we found an equal
+        //   key, we return it immediately.
+        //
+        // - If we hit an empty root, return the first iterable item.
+        //
+        // - If we have to add a new item, we temporarily add it,
+        //   find the successor to it, then remove the added item.
+        //
+        // These steps ensure that the returned value is either the
+        // entry for the key itself, or the first entry directly after
+        // the key.
+
+        // TODO: Cleanup so that we don't actually have to add/remove from the
+        //       tree.  (We do it here because there are other well-defined
+        //       functions to perform the search.)
+<span class="nc" id="L1337">        final int lengthInBits = lengthInBits(key);</span>
+
+<span class="nc bnc" id="L1339" title="All 2 branches missed.">        if (lengthInBits == 0) {</span>
+<span class="nc bnc" id="L1340" title="All 2 branches missed.">            if (!root.isEmpty()) {</span>
+<span class="nc" id="L1341">                return root;</span>
+            }
+<span class="nc" id="L1343">            return firstEntry();</span>
+        }
+
+<span class="nc" id="L1346">        final TrieEntry&lt;K, V&gt; found = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="nc bnc" id="L1347" title="All 2 branches missed.">        if (compareKeys(key, found.key)) {</span>
+<span class="nc" id="L1348">            return found;</span>
+        }
+
+<span class="nc" id="L1351">        final int bitIndex = bitIndex(key, found.key);</span>
+<span class="nc bnc" id="L1352" title="All 2 branches missed.">        if (KeyAnalyzer.isValidBitIndex(bitIndex)) {</span>
+<span class="nc" id="L1353">            final TrieEntry&lt;K, V&gt; added = new TrieEntry&lt;&gt;(key, null, bitIndex);</span>
+<span class="nc" id="L1354">            addEntry(added, lengthInBits);</span>
+<span class="nc" id="L1355">            incrementSize(); // must increment because remove will decrement</span>
+<span class="nc" id="L1356">            final TrieEntry&lt;K, V&gt; ceil = nextEntry(added);</span>
+<span class="nc" id="L1357">            removeEntry(added);</span>
+<span class="nc" id="L1358">            modCount -= 2; // we didn't really modify it.</span>
+<span class="nc" id="L1359">            return ceil;</span>
+        }
+<span class="nc bnc" id="L1361" title="All 2 branches missed.">        if (KeyAnalyzer.isNullBitKey(bitIndex)) {</span>
+<span class="nc bnc" id="L1362" title="All 2 branches missed.">            if (!root.isEmpty()) {</span>
+<span class="nc" id="L1363">                return root;</span>
+            }
+<span class="nc" id="L1365">            return firstEntry();</span>
+        }
+<span class="nc bnc" id="L1367" title="All 2 branches missed.">        if (KeyAnalyzer.isEqualBitKey(bitIndex)) {</span>
+<span class="nc" id="L1368">            return found;</span>
+        }
+
+        // we should have exited above.
+<span class="nc" id="L1372">        throw new IllegalStateException(&quot;invalid lookup: &quot; + key);</span>
+    }
+
+    @Override
+    public void clear() {
+<span class="fc" id="L1377">        root.key = null;</span>
+<span class="fc" id="L1378">        root.bitIndex = -1;</span>
+<span class="fc" id="L1379">        root.value = null;</span>
+
+<span class="fc" id="L1381">        root.parent = null;</span>
+<span class="fc" id="L1382">        root.left = root;</span>
+<span class="fc" id="L1383">        root.right = null;</span>
+<span class="fc" id="L1384">        root.predecessor = root;</span>
+
+<span class="fc" id="L1386">        size = 0;</span>
+<span class="fc" id="L1387">        incrementModCount();</span>
+<span class="fc" id="L1388">    }</span>
+
+    @Override
+    public Comparator&lt;? super K&gt; comparator() {
+<span class="fc" id="L1392">        return getKeyAnalyzer();</span>
+    }
+
+    @Override
+    public boolean containsKey(final Object k) {
+<span class="pc bpc" id="L1397" title="1 of 2 branches missed.">        if (k == null) {</span>
+<span class="nc" id="L1398">            return false;</span>
+        }
+
+<span class="fc" id="L1401">        final K key = castKey(k);</span>
+<span class="fc" id="L1402">        final int lengthInBits = lengthInBits(key);</span>
+<span class="fc" id="L1403">        final TrieEntry&lt;K, V&gt; entry = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="fc bfc" id="L1404" title="All 4 branches covered.">        return !entry.isEmpty() &amp;&amp; compareKeys(key, entry.key);</span>
+    }
+
+    /**
+     * A helper method to decrement the {@link org.apache.commons.collections4.Trie} size and increment the modification counter.
+     */
+    void decrementSize() {
+<span class="fc" id="L1411">        size--;</span>
+<span class="fc" id="L1412">        incrementModCount();</span>
+<span class="fc" id="L1413">    }</span>
+
+    @Override
+    public Set&lt;Map.Entry&lt;K, V&gt;&gt; entrySet() {
+<span class="fc bfc" id="L1417" title="All 2 branches covered.">        if (entrySet == null) {</span>
+<span class="fc" id="L1418">            entrySet = new EntrySet();</span>
+        }
+<span class="fc" id="L1420">        return entrySet;</span>
+    }
+
+    /**
+     * Returns the first entry the {@link org.apache.commons.collections4.Trie} is storing.
+     * &lt;p&gt;
+     * This is implemented by going always to the left until
+     * we encounter a valid uplink. That uplink is the first key.
+     */
+    TrieEntry&lt;K, V&gt; firstEntry() {
+        // if Trie is empty, no first node.
+<span class="fc bfc" id="L1431" title="All 2 branches covered.">        if (isEmpty()) {</span>
+<span class="fc" id="L1432">            return null;</span>
+        }
+
+<span class="fc" id="L1435">        return followLeft(root);</span>
+    }
+
+    @Override
+    public K firstKey() {
+<span class="fc bfc" id="L1440" title="All 2 branches covered.">        if (isEmpty()) {</span>
+<span class="fc" id="L1441">            throw new NoSuchElementException();</span>
+        }
+<span class="fc" id="L1443">        return firstEntry().getKey();</span>
+    }
+
+    /**
+     * Returns a key-value mapping associated with the greatest key
+     * less than or equal to the given key, or null if there is no such key.
+     */
+    TrieEntry&lt;K, V&gt; floorEntry(final K key) {
+        // TODO: Cleanup so that we don't actually have to add/remove from the
+        //       tree.  (We do it here because there are other well-defined
+        //       functions to perform the search.)
+<span class="nc" id="L1454">        final int lengthInBits = lengthInBits(key);</span>
+
+<span class="nc bnc" id="L1456" title="All 2 branches missed.">        if (lengthInBits == 0) {</span>
+<span class="nc bnc" id="L1457" title="All 2 branches missed.">            if (!root.isEmpty()) {</span>
+<span class="nc" id="L1458">                return root;</span>
+            }
+<span class="nc" id="L1460">            return null;</span>
+        }
+
+<span class="nc" id="L1463">        final TrieEntry&lt;K, V&gt; found = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="nc bnc" id="L1464" title="All 2 branches missed.">        if (compareKeys(key, found.key)) {</span>
+<span class="nc" id="L1465">            return found;</span>
+        }
+
+<span class="nc" id="L1468">        final int bitIndex = bitIndex(key, found.key);</span>
+<span class="nc bnc" id="L1469" title="All 2 branches missed.">        if (KeyAnalyzer.isValidBitIndex(bitIndex)) {</span>
+<span class="nc" id="L1470">            final TrieEntry&lt;K, V&gt; added = new TrieEntry&lt;&gt;(key, null, bitIndex);</span>
+<span class="nc" id="L1471">            addEntry(added, lengthInBits);</span>
+<span class="nc" id="L1472">            incrementSize(); // must increment because remove will decrement</span>
+<span class="nc" id="L1473">            final TrieEntry&lt;K, V&gt; floor = previousEntry(added);</span>
+<span class="nc" id="L1474">            removeEntry(added);</span>
+<span class="nc" id="L1475">            modCount -= 2; // we didn't really modify it.</span>
+<span class="nc" id="L1476">            return floor;</span>
+        }
+<span class="nc bnc" id="L1478" title="All 2 branches missed.">        if (KeyAnalyzer.isNullBitKey(bitIndex)) {</span>
+<span class="nc bnc" id="L1479" title="All 2 branches missed.">            if (!root.isEmpty()) {</span>
+<span class="nc" id="L1480">                return root;</span>
+            }
+<span class="nc" id="L1482">            return null;</span>
+        }
+<span class="nc bnc" id="L1484" title="All 2 branches missed.">        if (KeyAnalyzer.isEqualBitKey(bitIndex)) {</span>
+<span class="nc" id="L1485">            return found;</span>
+        }
+
+        // we should have exited above.
+<span class="nc" id="L1489">        throw new IllegalStateException(&quot;invalid lookup: &quot; + key);</span>
+    }
+
+    /**
+     * Goes left through the tree until it finds a valid node.
+     */
+    TrieEntry&lt;K, V&gt; followLeft(TrieEntry&lt;K, V&gt; node) {
+        while (true) {
+<span class="fc" id="L1497">            TrieEntry&lt;K, V&gt; child = node.left;</span>
+            // if we hit root and it didn't have a node, go right instead.
+<span class="fc bfc" id="L1499" title="All 2 branches covered.">            if (child.isEmpty()) {</span>
+<span class="fc" id="L1500">                child = node.right;</span>
+            }
+
+<span class="fc bfc" id="L1503" title="All 2 branches covered.">            if (child.bitIndex &lt;= node.bitIndex) {</span>
+<span class="fc" id="L1504">                return child;</span>
+            }
+
+<span class="fc" id="L1507">            node = child;</span>
+<span class="fc" id="L1508">        }</span>
+    }
+
+    /**
+     * Traverses down the right path until it finds an uplink.
+     */
+    TrieEntry&lt;K, V&gt; followRight(TrieEntry&lt;K, V&gt; node) {
+        // if Trie is empty, no last entry.
+<span class="fc bfc" id="L1516" title="All 2 branches covered.">        if (node.right == null) {</span>
+<span class="fc" id="L1517">            return null;</span>
+        }
+
+        // Go as far right as possible, until we encounter an uplink.
+<span class="fc bfc" id="L1521" title="All 2 branches covered.">        while (node.right.bitIndex &gt; node.bitIndex) {</span>
+<span class="fc" id="L1522">            node = node.right;</span>
+        }
+
+<span class="fc" id="L1525">        return node.right;</span>
+    }
+
+    @Override
+    public V get(final Object k) {
+<span class="fc" id="L1530">        final TrieEntry&lt;K, V&gt; entry = getEntry(k);</span>
+<span class="fc bfc" id="L1531" title="All 2 branches covered.">        return entry != null ? entry.getValue() : null;</span>
+    }
+
+    /**
+     * Returns the entry associated with the specified key in the
+     * PatriciaTrieBase.  Returns null if the map contains no mapping
+     * for this key.
+     * &lt;p&gt;
+     * This may throw ClassCastException if the object is not of type K.
+     */
+    TrieEntry&lt;K, V&gt; getEntry(final Object k) {
+<span class="fc" id="L1542">        final K key = castKey(k);</span>
+<span class="pc bpc" id="L1543" title="1 of 2 branches missed.">        if (key == null) {</span>
+<span class="nc" id="L1544">            return null;</span>
+        }
+
+<span class="fc" id="L1547">        final int lengthInBits = lengthInBits(key);</span>
+<span class="fc" id="L1548">        final TrieEntry&lt;K, V&gt; entry = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="fc bfc" id="L1549" title="All 4 branches covered.">        return !entry.isEmpty() &amp;&amp; compareKeys(key, entry.key) ? entry : null;</span>
+    }
+
+    /**
+     * Returns the nearest entry for a given key.  This is useful
+     * for finding knowing if a given key exists (and finding the value
+     * for it), or for inserting the key.
+     *
+     * The actual get implementation. This is very similar to
+     * selectR but with the exception that it might return the
+     * root Entry even if it's empty.
+     */
+    TrieEntry&lt;K, V&gt; getNearestEntryForKey(final K key, final int lengthInBits) {
+<span class="fc" id="L1562">        TrieEntry&lt;K, V&gt; current = root.left;</span>
+<span class="fc" id="L1563">        TrieEntry&lt;K, V&gt; path = root;</span>
+        while (true) {
+<span class="fc bfc" id="L1565" title="All 2 branches covered.">            if (current.bitIndex &lt;= path.bitIndex) {</span>
+<span class="fc" id="L1566">                return current;</span>
+            }
+
+<span class="fc" id="L1569">            path = current;</span>
+<span class="fc bfc" id="L1570" title="All 2 branches covered.">            if (!isBitSet(key, current.bitIndex, lengthInBits)) {</span>
+<span class="fc" id="L1571">                current = current.left;</span>
+            } else {
+<span class="fc" id="L1573">                current = current.right;</span>
+            }
+        }
+    }
+
+    /**
+     * Returns a view of this {@link org.apache.commons.collections4.Trie} of all elements that are prefixed
+     * by the number of bits in the given Key.
+     * &lt;p&gt;
+     * The view that this returns is optimized to have a very efficient
+     * {@link Iterator}. The {@link SortedMap#firstKey()},
+     * {@link SortedMap#lastKey()} &amp;amp; {@link Map#size()} methods must
+     * iterate over all possible values in order to determine the results.
+     * This information is cached until the PATRICIA {@link org.apache.commons.collections4.Trie} changes.
+     * All other methods (except {@link Iterator}) must compare the given
+     * key to the prefix to ensure that it is within the range of the view.
+     * The {@link Iterator}'s remove method must also relocate the subtree
+     * that contains the prefixes if the entry holding the subtree is
+     * removed or changes. Changing the subtree takes O(K) time.
+     *
+     * @param key  the key to use in the search
+     * @param offsetInBits  the prefix offset
+     * @param lengthInBits  the number of significant prefix bits
+     * @return a {@link SortedMap} view of this {@link org.apache.commons.collections4.Trie} with all elements whose
+     *   key is prefixed by the search key
+     */
+    private SortedMap&lt;K, V&gt; getPrefixMapByBits(final K key, final int offsetInBits, final int lengthInBits) {
+
+<span class="fc" id="L1601">        final int offsetLength = offsetInBits + lengthInBits;</span>
+<span class="pc bpc" id="L1602" title="1 of 2 branches missed.">        if (offsetLength &gt; lengthInBits(key)) {</span>
+<span class="nc" id="L1603">            throw new IllegalArgumentException(offsetInBits + &quot; + &quot;</span>
+<span class="nc" id="L1604">                    + lengthInBits + &quot; &gt; &quot; + lengthInBits(key));</span>
+        }
+
+<span class="fc bfc" id="L1607" title="All 2 branches covered.">        if (offsetLength == 0) {</span>
+<span class="fc" id="L1608">            return this;</span>
+        }
+
+<span class="fc" id="L1611">        return new PrefixRangeMap(key, offsetInBits, lengthInBits);</span>
+    }
+
+    @Override
+    public SortedMap&lt;K, V&gt; headMap(final K toKey) {
+<span class="nc" id="L1616">        return new RangeEntryMap(null, toKey);</span>
+    }
+
+    /**
+     * Returns an entry strictly higher than the given key,
+     * or null if no such entry exists.
+     */
+    TrieEntry&lt;K, V&gt; higherEntry(final K key) {
+        // TODO: Cleanup so that we don't actually have to add/remove from the
+        //       tree.  (We do it here because there are other well-defined
+        //       functions to perform the search.)
+<span class="fc" id="L1627">        final int lengthInBits = lengthInBits(key);</span>
+
+<span class="fc bfc" id="L1629" title="All 2 branches covered.">        if (lengthInBits == 0) {</span>
+<span class="pc bpc" id="L1630" title="1 of 2 branches missed.">            if (!root.isEmpty()) {</span>
+                // If data in root, and more after -- return it.
+<span class="pc bpc" id="L1632" title="1 of 2 branches missed.">                if (size() &gt; 1) {</span>
+<span class="fc" id="L1633">                    return nextEntry(root);</span>
+                }
+                // If no more after, no higher entry.
+<span class="nc" id="L1636">                return null;</span>
+            }
+            // Root is empty &amp; we want something after empty, return first.
+<span class="nc" id="L1639">            return firstEntry();</span>
+        }
+
+<span class="fc" id="L1642">        final TrieEntry&lt;K, V&gt; found = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="pc bpc" id="L1643" title="1 of 2 branches missed.">        if (compareKeys(key, found.key)) {</span>
+<span class="fc" id="L1644">            return nextEntry(found);</span>
+        }
+
+<span class="nc" id="L1647">        final int bitIndex = bitIndex(key, found.key);</span>
+<span class="nc bnc" id="L1648" title="All 2 branches missed.">        if (KeyAnalyzer.isValidBitIndex(bitIndex)) {</span>
+<span class="nc" id="L1649">            final TrieEntry&lt;K, V&gt; added = new TrieEntry&lt;&gt;(key, null, bitIndex);</span>
+<span class="nc" id="L1650">            addEntry(added, lengthInBits);</span>
+<span class="nc" id="L1651">            incrementSize(); // must increment because remove will decrement</span>
+<span class="nc" id="L1652">            final TrieEntry&lt;K, V&gt; ceil = nextEntry(added);</span>
+<span class="nc" id="L1653">            removeEntry(added);</span>
+<span class="nc" id="L1654">            modCount -= 2; // we didn't really modify it.</span>
+<span class="nc" id="L1655">            return ceil;</span>
+        }
+<span class="nc bnc" id="L1657" title="All 2 branches missed.">        if (KeyAnalyzer.isNullBitKey(bitIndex)) {</span>
+<span class="nc bnc" id="L1658" title="All 2 branches missed.">            if (!root.isEmpty()) {</span>
+<span class="nc" id="L1659">                return firstEntry();</span>
+            }
+<span class="nc bnc" id="L1661" title="All 2 branches missed.">            if (size() &gt; 1) {</span>
+<span class="nc" id="L1662">                return nextEntry(firstEntry());</span>
+            }
+<span class="nc" id="L1664">            return null;</span>
+        }
+<span class="nc bnc" id="L1666" title="All 2 branches missed.">        if (KeyAnalyzer.isEqualBitKey(bitIndex)) {</span>
+<span class="nc" id="L1667">            return nextEntry(found);</span>
+        }
+
+        // we should have exited above.
+<span class="nc" id="L1671">        throw new IllegalStateException(&quot;invalid lookup: &quot; + key);</span>
+    }
+
+    /**
+     * A helper method to increment the modification counter.
+     */
+    private void incrementModCount() {
+<span class="fc" id="L1678">        ++modCount;</span>
+<span class="fc" id="L1679">    }</span>
+
+    /**
+     * A helper method to increment the {@link org.apache.commons.collections4.Trie} size and the modification counter.
+     */
+    void incrementSize() {
+<span class="fc" id="L1685">        size++;</span>
+<span class="fc" id="L1686">        incrementModCount();</span>
+<span class="fc" id="L1687">    }</span>
+
+    @Override
+    public Set&lt;K&gt; keySet() {
+<span class="fc bfc" id="L1691" title="All 2 branches covered.">        if (keySet == null) {</span>
+<span class="fc" id="L1692">            keySet = new KeySet();</span>
+        }
+<span class="fc" id="L1694">        return keySet;</span>
+    }
+
+    /**
+     * Returns the last entry the {@link org.apache.commons.collections4.Trie} is storing.
+     *
+     * &lt;p&gt;This is implemented by going always to the right until
+     * we encounter a valid uplink. That uplink is the last key.
+     */
+    TrieEntry&lt;K, V&gt; lastEntry() {
+<span class="fc" id="L1704">        return followRight(root.left);</span>
+    }
+
+    @Override
+    public K lastKey() {
+<span class="fc" id="L1709">        final TrieEntry&lt;K, V&gt; entry = lastEntry();</span>
+<span class="fc bfc" id="L1710" title="All 2 branches covered.">        if (entry != null) {</span>
+<span class="fc" id="L1711">            return entry.getKey();</span>
+        }
+<span class="fc" id="L1713">        throw new NoSuchElementException();</span>
+    }
+
+    /**
+     * Returns a key-value mapping associated with the greatest key
+     * strictly less than the given key, or null if there is no such key.
+     */
+    TrieEntry&lt;K, V&gt; lowerEntry(final K key) {
+        // Basically:
+        // Follow the steps of adding an entry, but instead...
+        //
+        // - If we ever encounter a situation where we found an equal
+        //   key, we return it's previousEntry immediately.
+        //
+        // - If we hit root (empty or not), return null.
+        //
+        // - If we have to add a new item, we temporarily add it,
+        //   find the previousEntry to it, then remove the added item.
+        //
+        // These steps ensure that the returned value is always just before
+        // the key or null (if there was nothing before it).
+
+        // TODO: Cleanup so that we don't actually have to add/remove from the
+        //       tree.  (We do it here because there are other well-defined
+        //       functions to perform the search.)
+<span class="fc" id="L1738">        final int lengthInBits = lengthInBits(key);</span>
+
+<span class="pc bpc" id="L1740" title="1 of 2 branches missed.">        if (lengthInBits == 0) {</span>
+<span class="nc" id="L1741">            return null; // there can never be anything before root.</span>
+        }
+
+<span class="fc" id="L1744">        final TrieEntry&lt;K, V&gt; found = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="pc bpc" id="L1745" title="1 of 2 branches missed.">        if (compareKeys(key, found.key)) {</span>
+<span class="fc" id="L1746">            return previousEntry(found);</span>
+        }
+
+<span class="nc" id="L1749">        final int bitIndex = bitIndex(key, found.key);</span>
+<span class="nc bnc" id="L1750" title="All 2 branches missed.">        if (KeyAnalyzer.isValidBitIndex(bitIndex)) {</span>
+<span class="nc" id="L1751">            final TrieEntry&lt;K, V&gt; added = new TrieEntry&lt;&gt;(key, null, bitIndex);</span>
+<span class="nc" id="L1752">            addEntry(added, lengthInBits);</span>
+<span class="nc" id="L1753">            incrementSize(); // must increment because remove will decrement</span>
+<span class="nc" id="L1754">            final TrieEntry&lt;K, V&gt; prior = previousEntry(added);</span>
+<span class="nc" id="L1755">            removeEntry(added);</span>
+<span class="nc" id="L1756">            modCount -= 2; // we didn't really modify it.</span>
+<span class="nc" id="L1757">            return prior;</span>
+        }
+<span class="nc bnc" id="L1759" title="All 2 branches missed.">        if (KeyAnalyzer.isNullBitKey(bitIndex)) {</span>
+<span class="nc" id="L1760">            return null;</span>
+        }
+<span class="nc bnc" id="L1762" title="All 2 branches missed.">        if (KeyAnalyzer.isEqualBitKey(bitIndex)) {</span>
+<span class="nc" id="L1763">            return previousEntry(found);</span>
+        }
+
+        // we should have exited above.
+<span class="nc" id="L1767">        throw new IllegalStateException(&quot;invalid lookup: &quot; + key);</span>
+    }
+
+    @Override
+    public OrderedMapIterator&lt;K, V&gt; mapIterator() {
+<span class="nc" id="L1772">        return new TrieMapIterator();</span>
+    }
+
+    /**
+     * Returns the entry lexicographically after the given entry.
+     * If the given entry is null, returns the first node.
+     */
+    TrieEntry&lt;K, V&gt; nextEntry(final TrieEntry&lt;K, V&gt; node) {
+<span class="fc bfc" id="L1780" title="All 2 branches covered.">        if (node == null) {</span>
+<span class="fc" id="L1781">            return firstEntry();</span>
+        }
+<span class="fc" id="L1783">        return nextEntryImpl(node.predecessor, node, null);</span>
+    }
+
+    /**
+     * Scans for the next node, starting at the specified point, and using 'previous'
+     * as a hint that the last node we returned was 'previous' (so we know not to return
+     * it again).  If 'tree' is non-null, this will limit the search to the given tree.
+     *
+     * The basic premise is that each iteration can follow the following steps:
+     *
+     * 1) Scan all the way to the left.
+     *   a) If we already started from this node last time, proceed to Step 2.
+     *   b) If a valid uplink is found, use it.
+     *   c) If the result is an empty node (root not set), break the scan.
+     *   d) If we already returned the left node, break the scan.
+     *
+     * 2) Check the right.
+     *   a) If we already returned the right node, proceed to Step 3.
+     *   b) If it is a valid uplink, use it.
+     *   c) Do Step 1 from the right node.
+     *
+     * 3) Back up through the parents until we encounter find a parent
+     *    that we're not the right child of.
+     *
+     * 4) If there's no right child of that parent, the iteration is finished.
+     *    Otherwise continue to Step 5.
+     *
+     * 5) Check to see if the right child is a valid uplink.
+     *    a) If we already returned that child, proceed to Step 6.
+     *       Otherwise, use it.
+     *
+     * 6) If the right child of the parent is the parent itself, we've
+     *    already found &amp;amp; returned the end of the Trie, so exit.
+     *
+     * 7) Do Step 1 on the parent's right child.
+     */
+    TrieEntry&lt;K, V&gt; nextEntryImpl(final TrieEntry&lt;K, V&gt; start,
+            final TrieEntry&lt;K, V&gt; previous, final TrieEntry&lt;K, V&gt; tree) {
+
+<span class="fc" id="L1822">        TrieEntry&lt;K, V&gt; current = start;</span>
+
+        // Only look at the left if this was a recursive or
+        // the first check, otherwise we know we've already looked
+        // at the left.
+<span class="pc bpc" id="L1827" title="1 of 4 branches missed.">        if (previous == null || start != previous.predecessor) {</span>
+<span class="pc bpc" id="L1828" title="1 of 2 branches missed.">            while (!current.left.isEmpty()) {</span>
+                // stop traversing if we've already
+                // returned the left of this node.
+<span class="pc bpc" id="L1831" title="1 of 2 branches missed.">                if (previous == current.left) {</span>
+<span class="nc" id="L1832">                    break;</span>
+                }
+
+<span class="fc bfc" id="L1835" title="All 2 branches covered.">                if (isValidUplink(current.left, current)) {</span>
+<span class="fc" id="L1836">                    return current.left;</span>
+                }
+
+<span class="fc" id="L1839">                current = current.left;</span>
+            }
+        }
+
+        // If there's no data at all, exit.
+<span class="pc bpc" id="L1844" title="1 of 2 branches missed.">        if (current.isEmpty()) {</span>
+<span class="nc" id="L1845">            return null;</span>
+        }
+
+        // If we've already returned the left,
+        // and the immediate right is null,
+        // there's only one entry in the Trie
+        // which is stored at the root.
+        //
+        //  / (&quot;&quot;)   &lt;-- root
+        //  \_/  \
+        //       null &lt;-- 'current'
+        //
+<span class="pc bpc" id="L1857" title="1 of 2 branches missed.">        if (current.right == null) {</span>
+<span class="nc" id="L1858">            return null;</span>
+        }
+
+        // If nothing valid on the left, try the right.
+<span class="fc bfc" id="L1862" title="All 2 branches covered.">        if (previous != current.right) {</span>
+            // See if it immediately is valid.
+<span class="fc bfc" id="L1864" title="All 2 branches covered.">            if (isValidUplink(current.right, current)) {</span>
+<span class="fc" id="L1865">                return current.right;</span>
+            }
+
+            // Must search on the right's side if it wasn't initially valid.
+<span class="fc" id="L1869">            return nextEntryImpl(current.right, previous, tree);</span>
+        }
+
+        // Neither left nor right are valid, find the first parent
+        // whose child did not come from the right &amp; traverse it.
+<span class="fc bfc" id="L1874" title="All 2 branches covered.">        while (current == current.parent.right) {</span>
+            // If we're going to traverse to above the subtree, stop.
+<span class="fc bfc" id="L1876" title="All 2 branches covered.">            if (current == tree) {</span>
+<span class="fc" id="L1877">                return null;</span>
+            }
+
+<span class="fc" id="L1880">            current = current.parent;</span>
+        }
+
+        // If we're on the top of the subtree, we can't go any higher.
+<span class="fc bfc" id="L1884" title="All 2 branches covered.">        if (current == tree) {</span>
+<span class="fc" id="L1885">            return null;</span>
+        }
+
+        // If there's no right, the parent must be root, so we're done.
+<span class="fc bfc" id="L1889" title="All 2 branches covered.">        if (current.parent.right == null) {</span>
+<span class="fc" id="L1890">            return null;</span>
+        }
+
+        // If the parent's right points to itself, we've found one.
+<span class="pc bpc" id="L1894" title="1 of 2 branches missed.">        if (previous != current.parent.right</span>
+<span class="fc bfc" id="L1895" title="All 2 branches covered.">                &amp;&amp; isValidUplink(current.parent.right, current.parent)) {</span>
+<span class="fc" id="L1896">            return current.parent.right;</span>
+        }
+
+        // If the parent's right is itself, there can't be any more nodes.
+<span class="pc bpc" id="L1900" title="1 of 2 branches missed.">        if (current.parent.right == current.parent) {</span>
+<span class="nc" id="L1901">            return null;</span>
+        }
+
+        // We need to traverse down the parent's right's path.
+<span class="fc" id="L1905">        return nextEntryImpl(current.parent.right, previous, tree);</span>
+    }
+
+    /**
+     * Returns the entry lexicographically after the given entry.
+     * If the given entry is null, returns the first node.
+     *
+     * This will traverse only within the subtree.  If the given node
+     * is not within the subtree, this will have undefined results.
+     */
+    TrieEntry&lt;K, V&gt; nextEntryInSubtree(final TrieEntry&lt;K, V&gt; node,
+            final TrieEntry&lt;K, V&gt; parentOfSubtree) {
+<span class="pc bpc" id="L1917" title="1 of 2 branches missed.">        if (node == null) {</span>
+<span class="nc" id="L1918">            return firstEntry();</span>
+        }
+<span class="fc" id="L1920">        return nextEntryImpl(node.predecessor, node, parentOfSubtree);</span>
+    }
+
+    @Override
+    public K nextKey(final K key) {
+<span class="fc" id="L1925">        Objects.requireNonNull(key, &quot;key&quot;);</span>
+<span class="fc" id="L1926">        final TrieEntry&lt;K, V&gt; entry = getEntry(key);</span>
+<span class="fc bfc" id="L1927" title="All 2 branches covered.">        if (entry != null) {</span>
+<span class="fc" id="L1928">            final TrieEntry&lt;K, V&gt; nextEntry = nextEntry(entry);</span>
+<span class="fc bfc" id="L1929" title="All 2 branches covered.">            return nextEntry != null ? nextEntry.getKey() : null;</span>
+        }
+<span class="fc" id="L1931">        return null;</span>
+    }
+
+    @Override
+    public SortedMap&lt;K, V&gt; prefixMap(final K key) {
+<span class="fc" id="L1936">        return getPrefixMapByBits(key, 0, lengthInBits(key));</span>
+    }
+
+    /**
+     * Returns the node lexicographically before the given node (or null if none).
+     *
+     * This follows four simple branches:
+     *  - If the uplink that returned us was a right uplink:
+     *      - If predecessor's left is a valid uplink from predecessor, return it.
+     *      - Else, follow the right path from the predecessor's left.
+     *  - If the uplink that returned us was a left uplink:
+     *      - Loop back through parents until we encounter a node where
+     *        node != node.parent.left.
+     *          - If node.parent.left is uplink from node.parent:
+     *              - If node.parent.left is not root, return it.
+     *              - If it is root &amp;amp; root isEmpty, return null.
+     *              - If it is root &amp;amp; root !isEmpty, return root.
+     *          - If node.parent.left is not uplink from node.parent:
+     *              - Follow right path for first right child from node.parent.left
+     *
+     * @param start  the start entry
+     */
+    TrieEntry&lt;K, V&gt; previousEntry(final TrieEntry&lt;K, V&gt; start) {
+<span class="pc bpc" id="L1959" title="1 of 2 branches missed.">        if (start.predecessor == null) {</span>
+<span class="nc" id="L1960">            throw new IllegalArgumentException(&quot;must have come from somewhere!&quot;);</span>
+        }
+
+<span class="fc bfc" id="L1963" title="All 2 branches covered.">        if (start.predecessor.right == start) {</span>
+<span class="fc bfc" id="L1964" title="All 2 branches covered.">            if (isValidUplink(start.predecessor.left, start.predecessor)) {</span>
+<span class="fc" id="L1965">                return start.predecessor.left;</span>
+            }
+<span class="fc" id="L1967">            return followRight(start.predecessor.left);</span>
+        }
+<span class="fc" id="L1969">        TrieEntry&lt;K, V&gt; node = start.predecessor;</span>
+<span class="pc bpc" id="L1970" title="1 of 4 branches missed.">        while (node.parent != null &amp;&amp; node == node.parent.left) {</span>
+<span class="fc" id="L1971">            node = node.parent;</span>
+        }
+
+<span class="pc bpc" id="L1974" title="1 of 2 branches missed.">        if (node.parent == null) { // can be null if we're looking up root.</span>
+<span class="nc" id="L1975">            return null;</span>
+        }
+
+<span class="fc bfc" id="L1978" title="All 2 branches covered.">        if (isValidUplink(node.parent.left, node.parent)) {</span>
+<span class="fc bfc" id="L1979" title="All 2 branches covered.">            if (node.parent.left == root) {</span>
+<span class="pc bpc" id="L1980" title="1 of 2 branches missed.">                if (root.isEmpty()) {</span>
+<span class="nc" id="L1981">                    return null;</span>
+                }
+<span class="fc" id="L1983">                return root;</span>
+
+            }
+<span class="fc" id="L1986">            return node.parent.left;</span>
+        }
+<span class="fc" id="L1988">        return followRight(node.parent.left);</span>
+    }
+
+    @Override
+    public K previousKey(final K key) {
+<span class="fc" id="L1993">        Objects.requireNonNull(key, &quot;key&quot;);</span>
+<span class="fc" id="L1994">        final TrieEntry&lt;K, V&gt; entry = getEntry(key);</span>
+<span class="fc bfc" id="L1995" title="All 2 branches covered.">        if (entry != null) {</span>
+<span class="fc" id="L1996">            final TrieEntry&lt;K, V&gt; prevEntry = previousEntry(entry);</span>
+<span class="fc bfc" id="L1997" title="All 2 branches covered.">            return prevEntry != null ? prevEntry.getKey() : null;</span>
+        }
+<span class="fc" id="L1999">        return null;</span>
+    }
+
+    @Override
+    public V put(final K key, final V value) {
+<span class="fc" id="L2004">        Objects.requireNonNull(key, &quot;key&quot;);</span>
+
+<span class="fc" id="L2006">        final int lengthInBits = lengthInBits(key);</span>
+
+        // The only place to store a key with a length
+        // of zero bits is the root node
+<span class="fc bfc" id="L2010" title="All 2 branches covered.">        if (lengthInBits == 0) {</span>
+<span class="pc bpc" id="L2011" title="1 of 2 branches missed.">            if (root.isEmpty()) {</span>
+<span class="fc" id="L2012">                incrementSize();</span>
+            } else {
+<span class="nc" id="L2014">                incrementModCount();</span>
+            }
+<span class="fc" id="L2016">            return root.setKeyValue(key, value);</span>
+        }
+
+<span class="fc" id="L2019">        final TrieEntry&lt;K, V&gt; found = getNearestEntryForKey(key, lengthInBits);</span>
+<span class="fc bfc" id="L2020" title="All 2 branches covered.">        if (compareKeys(key, found.key)) {</span>
+<span class="pc bpc" id="L2021" title="1 of 2 branches missed.">            if (found.isEmpty()) { // &lt;- must be the root</span>
+<span class="nc" id="L2022">                incrementSize();</span>
+            } else {
+<span class="fc" id="L2024">                incrementModCount();</span>
+            }
+<span class="fc" id="L2026">            return found.setKeyValue(key, value);</span>
+        }
+
+<span class="fc" id="L2029">        final int bitIndex = bitIndex(key, found.key);</span>
+<span class="pc bpc" id="L2030" title="1 of 2 branches missed.">        if (!KeyAnalyzer.isOutOfBoundsIndex(bitIndex)) {</span>
+<span class="pc bpc" id="L2031" title="1 of 2 branches missed.">            if (KeyAnalyzer.isValidBitIndex(bitIndex)) { // in 99.999...9% the case</span>
+                /* NEW KEY+VALUE TUPLE */
+<span class="fc" id="L2033">                final TrieEntry&lt;K, V&gt; t = new TrieEntry&lt;&gt;(key, value, bitIndex);</span>
+<span class="fc" id="L2034">                addEntry(t, lengthInBits);</span>
+<span class="fc" id="L2035">                incrementSize();</span>
+<span class="fc" id="L2036">                return null;</span>
+            }
+<span class="nc bnc" id="L2038" title="All 2 branches missed.">            if (KeyAnalyzer.isNullBitKey(bitIndex)) {</span>
+                // A bits of the Key are zero. The only place to
+                // store such a Key is the root Node!
+
+                /* NULL BIT KEY */
+<span class="nc bnc" id="L2043" title="All 2 branches missed.">                if (root.isEmpty()) {</span>
+<span class="nc" id="L2044">                    incrementSize();</span>
+                } else {
+<span class="nc" id="L2046">                    incrementModCount();</span>
+                }
+<span class="nc" id="L2048">                return root.setKeyValue(key, value);</span>
+
+            }
+<span class="nc bnc" id="L2051" title="All 4 branches missed.">            if (KeyAnalyzer.isEqualBitKey(bitIndex) &amp;&amp; found != root) { // NOPMD</span>
+<span class="nc" id="L2052">                incrementModCount();</span>
+<span class="nc" id="L2053">                return found.setKeyValue(key, value);</span>
+            }
+        }
+
+<span class="nc" id="L2057">        throw new IllegalArgumentException(&quot;Failed to put: &quot; + key + &quot; -&gt; &quot; + value + &quot;, &quot; + bitIndex);</span>
+    }
+
+    /**
+     * Reads the content of the stream.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // This will fail at runtime if the stream is incorrect
+    private void readObject(final ObjectInputStream stream) throws IOException, ClassNotFoundException {
+<span class="fc" id="L2065">        stream.defaultReadObject();</span>
+<span class="fc" id="L2066">        root = new TrieEntry&lt;&gt;(null, null, -1);</span>
+<span class="fc" id="L2067">        final int size = stream.readInt();</span>
+<span class="fc bfc" id="L2068" title="All 2 branches covered.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L2069">            final K k = (K) stream.readObject();</span>
+<span class="fc" id="L2070">            final V v = (V) stream.readObject();</span>
+<span class="fc" id="L2071">            put(k, v);</span>
+        }
+<span class="fc" id="L2073">    }</span>
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws ClassCastException if provided key is of an incompatible type
+     */
+    @Override
+    public V remove(final Object k) {
+<span class="pc bpc" id="L2082" title="1 of 2 branches missed.">        if (k == null) {</span>
+<span class="nc" id="L2083">            return null;</span>
+        }
+
+<span class="fc" id="L2086">        final K key = castKey(k);</span>
+<span class="fc" id="L2087">        final int lengthInBits = lengthInBits(key);</span>
+<span class="fc" id="L2088">        TrieEntry&lt;K, V&gt; current = root.left;</span>
+<span class="fc" id="L2089">        TrieEntry&lt;K, V&gt; path = root;</span>
+        while (true) {
+<span class="fc bfc" id="L2091" title="All 2 branches covered.">            if (current.bitIndex &lt;= path.bitIndex) {</span>
+<span class="fc bfc" id="L2092" title="All 4 branches covered.">                if (!current.isEmpty() &amp;&amp; compareKeys(key, current.key)) {</span>
+<span class="fc" id="L2093">                    return removeEntry(current);</span>
+                }
+<span class="fc" id="L2095">                return null;</span>
+            }
+
+<span class="fc" id="L2098">            path = current;</span>
+
+<span class="fc bfc" id="L2100" title="All 2 branches covered.">            if (!isBitSet(key, current.bitIndex, lengthInBits)) {</span>
+<span class="fc" id="L2101">                current = current.left;</span>
+            } else {
+<span class="fc" id="L2103">                current = current.right;</span>
+            }
+        }
+    }
+
+    /**
+     * Removes a single entry from the {@link org.apache.commons.collections4.Trie}.
+     *
+     * If we found a Key (Entry h) then figure out if it's
+     * an internal (hard to remove) or external Entry (easy
+     * to remove)
+     */
+    V removeEntry(final TrieEntry&lt;K, V&gt; h) {
+<span class="pc bpc" id="L2116" title="1 of 2 branches missed.">        if (h != root) {</span>
+<span class="fc bfc" id="L2117" title="All 2 branches covered.">            if (h.isInternalNode()) {</span>
+<span class="fc" id="L2118">                removeInternalEntry(h);</span>
+            } else {
+<span class="fc" id="L2120">                removeExternalEntry(h);</span>
+            }
+        }
+
+<span class="fc" id="L2124">        decrementSize();</span>
+<span class="fc" id="L2125">        return h.setKeyValue(null, null);</span>
+    }
+
+    /**
+     * Removes an external entry from the {@link org.apache.commons.collections4.Trie}.
+     *
+     * If it's an external Entry then just remove it.
+     * This is very easy and straight forward.
+     */
+    private void removeExternalEntry(final TrieEntry&lt;K, V&gt; h) {
+<span class="pc bpc" id="L2135" title="1 of 2 branches missed.">        if (h == root) {</span>
+<span class="nc" id="L2136">            throw new IllegalArgumentException(&quot;Cannot delete root Entry!&quot;);</span>
+        }
+<span class="pc bpc" id="L2138" title="1 of 2 branches missed.">        if (!h.isExternalNode()) {</span>
+<span class="nc" id="L2139">            throw new IllegalArgumentException(h + &quot; is not an external Entry!&quot;);</span>
+        }
+
+<span class="fc" id="L2142">        final TrieEntry&lt;K, V&gt; parent = h.parent;</span>
+<span class="fc bfc" id="L2143" title="All 2 branches covered.">        final TrieEntry&lt;K, V&gt; child = h.left == h ? h.right : h.left;</span>
+
+<span class="fc bfc" id="L2145" title="All 2 branches covered.">        if (parent.left == h) {</span>
+<span class="fc" id="L2146">            parent.left = child;</span>
+        } else {
+<span class="fc" id="L2148">            parent.right = child;</span>
+        }
+
+        // either the parent is changing, or the predecessor is changing.
+<span class="fc bfc" id="L2152" title="All 2 branches covered.">        if (child.bitIndex &gt; parent.bitIndex) {</span>
+<span class="fc" id="L2153">            child.parent = parent;</span>
+        } else {
+<span class="fc" id="L2155">            child.predecessor = parent;</span>
+        }
+
+<span class="fc" id="L2158">    }</span>
+
+    /**
+     * Removes an internal entry from the {@link org.apache.commons.collections4.Trie}.
+     *
+     * If it's an internal Entry then &quot;good luck&quot; with understanding
+     * this code. The Idea is essentially that Entry p takes Entry h's
+     * place in the trie which requires some re-wiring.
+     */
+    private void removeInternalEntry(final TrieEntry&lt;K, V&gt; h) {
+<span class="pc bpc" id="L2168" title="1 of 2 branches missed.">        if (h == root) {</span>
+<span class="nc" id="L2169">            throw new IllegalArgumentException(&quot;Cannot delete root Entry!&quot;);</span>
+        }
+<span class="pc bpc" id="L2171" title="1 of 2 branches missed.">        if (!h.isInternalNode()) {</span>
+<span class="nc" id="L2172">            throw new IllegalArgumentException(h + &quot; is not an internal Entry!&quot;);</span>
+        }
+
+<span class="fc" id="L2175">        final TrieEntry&lt;K, V&gt; p = h.predecessor;</span>
+
+        // Set P's bitIndex
+<span class="fc" id="L2178">        p.bitIndex = h.bitIndex;</span>
+
+        // Fix P's parent, predecessor and child Nodes
+        {
+<span class="fc" id="L2182">            final TrieEntry&lt;K, V&gt; parent = p.parent;</span>
+<span class="fc bfc" id="L2183" title="All 2 branches covered.">            final TrieEntry&lt;K, V&gt; child = p.left == h ? p.right : p.left;</span>
+
+            // if it was looping to itself previously,
+            // it will now be pointed from its parent
+            // (if we aren't removing its parent --
+            //  in that case, it remains looping to itself).
+            // otherwise, it will continue to have the same
+            // predecessor.
+<span class="fc bfc" id="L2191" title="All 4 branches covered.">            if (p.predecessor == p &amp;&amp; p.parent != h) {</span>
+<span class="fc" id="L2192">                p.predecessor = p.parent;</span>
+            }
+
+<span class="fc bfc" id="L2195" title="All 2 branches covered.">            if (parent.left == p) {</span>
+<span class="fc" id="L2196">                parent.left = child;</span>
+            } else {
+<span class="fc" id="L2198">                parent.right = child;</span>
+            }
+
+<span class="fc bfc" id="L2201" title="All 2 branches covered.">            if (child.bitIndex &gt; parent.bitIndex) {</span>
+<span class="fc" id="L2202">                child.parent = parent;</span>
+            }
+        }
+
+        // Fix H's parent and child Nodes
+        {
+            // If H is a parent of its left and right child
+            // then change them to P
+<span class="fc bfc" id="L2210" title="All 2 branches covered.">            if (h.left.parent == h) {</span>
+<span class="fc" id="L2211">                h.left.parent = p;</span>
+            }
+
+<span class="fc bfc" id="L2214" title="All 2 branches covered.">            if (h.right.parent == h) {</span>
+<span class="fc" id="L2215">                h.right.parent = p;</span>
+            }
+
+            // Change H's parent
+<span class="fc bfc" id="L2219" title="All 2 branches covered.">            if (h.parent.left == h) {</span>
+<span class="fc" id="L2220">                h.parent.left = p;</span>
+            } else {
+<span class="fc" id="L2222">                h.parent.right = p;</span>
+            }
+        }
+
+        // Copy the remaining fields from H to P
+        //p.bitIndex = h.bitIndex;
+<span class="fc" id="L2228">        p.parent = h.parent;</span>
+<span class="fc" id="L2229">        p.left = h.left;</span>
+<span class="fc" id="L2230">        p.right = h.right;</span>
+
+        // Make sure that if h was pointing to any uplinks,
+        // p now points to them.
+<span class="fc bfc" id="L2234" title="All 2 branches covered.">        if (isValidUplink(p.left, p)) {</span>
+<span class="fc" id="L2235">            p.left.predecessor = p;</span>
+        }
+
+<span class="fc bfc" id="L2238" title="All 2 branches covered.">        if (isValidUplink(p.right, p)) {</span>
+<span class="fc" id="L2239">            p.right.predecessor = p;</span>
+        }
+<span class="fc" id="L2241">    }</span>
+
+    /**
+     * Returns the {@link java.util.Map.Entry} whose key is closest in a bitwise XOR
+     * metric to the given key. This is NOT lexicographic closeness.
+     * For example, given the keys:
+     *
+     * &lt;ol&gt;
+     * &lt;li&gt;D = 1000100
+     * &lt;li&gt;H = 1001000
+     * &lt;li&gt;L = 1001100
+     * &lt;/ol&gt;
+     *
+     * If the {@link org.apache.commons.collections4.Trie} contained 'H' and 'L', a lookup of 'D' would
+     * return 'L', because the XOR distance between D &amp;amp; L is smaller
+     * than the XOR distance between D &amp;amp; H.
+     *
+     * @param key  the key to use in the search
+     * @return the {@link java.util.Map.Entry} whose key is closest in a bitwise XOR metric
+     *   to the provided key
+     */
+    public Map.Entry&lt;K, V&gt; select(final K key) {
+<span class="nc" id="L2263">        final int lengthInBits = lengthInBits(key);</span>
+<span class="nc" id="L2264">        final Reference&lt;Map.Entry&lt;K, V&gt;&gt; reference = new Reference&lt;&gt;();</span>
+<span class="nc bnc" id="L2265" title="All 2 branches missed.">        if (!selectR(root.left, -1, key, lengthInBits, reference)) {</span>
+<span class="nc" id="L2266">            return reference.get();</span>
+        }
+<span class="nc" id="L2268">        return null;</span>
+    }
+
+    /**
+     * Returns the key that is closest in a bitwise XOR metric to the
+     * provided key. This is NOT lexicographic closeness!
+     *
+     * For example, given the keys:
+     *
+     * &lt;ol&gt;
+     * &lt;li&gt;D = 1000100
+     * &lt;li&gt;H = 1001000
+     * &lt;li&gt;L = 1001100
+     * &lt;/ol&gt;
+     *
+     * If the {@link org.apache.commons.collections4.Trie} contained 'H' and 'L', a lookup of 'D' would
+     * return 'L', because the XOR distance between D &amp;amp; L is smaller
+     * than the XOR distance between D &amp;amp; H.
+     *
+     * @param key  the key to use in the search
+     * @return the key that is closest in a bitwise XOR metric to the provided key
+     */
+    public K selectKey(final K key) {
+<span class="nc" id="L2291">        final Map.Entry&lt;K, V&gt; entry = select(key);</span>
+<span class="nc bnc" id="L2292" title="All 2 branches missed.">        if (entry == null) {</span>
+<span class="nc" id="L2293">            return null;</span>
+        }
+<span class="nc" id="L2295">        return entry.getKey();</span>
+    }
+
+    private boolean selectR(final TrieEntry&lt;K, V&gt; h, final int bitIndex,
+                            final K key, final int lengthInBits,
+                            final Reference&lt;Map.Entry&lt;K, V&gt;&gt; reference) {
+
+<span class="nc bnc" id="L2302" title="All 2 branches missed.">        if (h.bitIndex &lt;= bitIndex) {</span>
+            // If we hit the root Node and it is empty
+            // we have to look for an alternative best
+            // matching node.
+<span class="nc bnc" id="L2306" title="All 2 branches missed.">            if (!h.isEmpty()) {</span>
+<span class="nc" id="L2307">                reference.set(h);</span>
+<span class="nc" id="L2308">                return false;</span>
+            }
+<span class="nc" id="L2310">            return true;</span>
+        }
+
+<span class="nc bnc" id="L2313" title="All 2 branches missed.">        if (!isBitSet(key, h.bitIndex, lengthInBits)) {</span>
+<span class="nc bnc" id="L2314" title="All 2 branches missed.">            if (selectR(h.left, h.bitIndex, key, lengthInBits, reference)) {</span>
+<span class="nc" id="L2315">                return selectR(h.right, h.bitIndex, key, lengthInBits, reference);</span>
+            }
+        } else {
+<span class="nc bnc" id="L2318" title="All 2 branches missed.">            if (selectR(h.right, h.bitIndex, key, lengthInBits, reference)) {</span>
+<span class="nc" id="L2319">                return selectR(h.left, h.bitIndex, key, lengthInBits, reference);</span>
+            }
+        }
+<span class="nc" id="L2322">        return false;</span>
+    }
+
+    /**
+     * Returns the value whose key is closest in a bitwise XOR metric to
+     * the provided key. This is NOT lexicographic closeness!
+     *
+     * For example, given the keys:
+     *
+     * &lt;ol&gt;
+     * &lt;li&gt;D = 1000100
+     * &lt;li&gt;H = 1001000
+     * &lt;li&gt;L = 1001100
+     * &lt;/ol&gt;
+     *
+     * If the {@link org.apache.commons.collections4.Trie} contained 'H' and 'L', a lookup of 'D' would
+     * return 'L', because the XOR distance between D &amp;amp; L is smaller
+     * than the XOR distance between D &amp;amp; H.
+     *
+     * @param key  the key to use in the search
+     * @return the value whose key is closest in a bitwise XOR metric
+     * to the provided key
+     */
+    public V selectValue(final K key) {
+<span class="nc" id="L2346">        final Map.Entry&lt;K, V&gt; entry = select(key);</span>
+<span class="nc bnc" id="L2347" title="All 2 branches missed.">        if (entry == null) {</span>
+<span class="nc" id="L2348">            return null;</span>
+        }
+<span class="nc" id="L2350">        return entry.getValue();</span>
+    }
+
+    @Override
+    public int size() {
+<span class="fc" id="L2355">        return size;</span>
+    }
+
+    @Override
+    public SortedMap&lt;K, V&gt; subMap(final K fromKey, final K toKey) {
+<span class="nc" id="L2360">        return new RangeEntryMap(fromKey, toKey);</span>
+    }
+
+    /**
+     * Finds the subtree that contains the prefix.
+     *
+     * This is very similar to getR but with the difference that
+     * we stop the lookup if h.bitIndex &gt; lengthInBits.
+     */
+    TrieEntry&lt;K, V&gt; subtree(final K prefix, final int offsetInBits, final int lengthInBits) {
+<span class="fc" id="L2370">        TrieEntry&lt;K, V&gt; current = root.left;</span>
+<span class="fc" id="L2371">        TrieEntry&lt;K, V&gt; path = root;</span>
+        while (true) {
+<span class="fc bfc" id="L2373" title="All 4 branches covered.">            if (current.bitIndex &lt;= path.bitIndex || lengthInBits &lt;= current.bitIndex) {</span>
+<span class="fc" id="L2374">                break;</span>
+            }
+
+<span class="fc" id="L2377">            path = current;</span>
+<span class="fc bfc" id="L2378" title="All 2 branches covered.">            if (!isBitSet(prefix, offsetInBits + current.bitIndex, offsetInBits + lengthInBits)) {</span>
+<span class="fc" id="L2379">                current = current.left;</span>
+            } else {
+<span class="fc" id="L2381">                current = current.right;</span>
+            }
+        }
+
+        // Make sure the entry is valid for a subtree.
+<span class="pc bpc" id="L2386" title="1 of 2 branches missed.">        final TrieEntry&lt;K, V&gt; entry = current.isEmpty() ? path : current;</span>
+
+        // If entry is root, it can't be empty.
+<span class="pc bpc" id="L2389" title="1 of 2 branches missed.">        if (entry.isEmpty()) {</span>
+<span class="nc" id="L2390">            return null;</span>
+        }
+
+<span class="fc" id="L2393">        final int endIndexInBits = offsetInBits + lengthInBits;</span>
+
+        // if root &amp;&amp; length of root is less than length of lookup,
+        // there's nothing.
+        // (this prevents returning the whole subtree if root has an empty
+        //  string and we want to lookup things with &quot;\0&quot;)
+<span class="pc bpc" id="L2399" title="1 of 4 branches missed.">        if (entry == root &amp;&amp; lengthInBits(entry.getKey()) &lt; endIndexInBits) {</span>
+<span class="fc" id="L2400">            return null;</span>
+        }
+
+        // Found key's length-th bit differs from our key
+        // which means it cannot be the prefix...
+<span class="fc" id="L2405">        if (isBitSet(prefix, endIndexInBits - 1, endIndexInBits)</span>
+<span class="fc bfc" id="L2406" title="All 2 branches covered.">                != isBitSet(entry.key, lengthInBits - 1, lengthInBits(entry.key))) {</span>
+<span class="fc" id="L2407">            return null;</span>
+        }
+
+        // ... or there are less than 'length' equal bits
+<span class="fc" id="L2411">        final int bitIndex = getKeyAnalyzer().bitIndex(prefix, offsetInBits, lengthInBits,</span>
+<span class="fc" id="L2412">                                                       entry.key, 0, lengthInBits(entry.getKey()));</span>
+
+<span class="pc bpc" id="L2414" title="1 of 4 branches missed.">        if (bitIndex &gt;= 0 &amp;&amp; bitIndex &lt; lengthInBits) {</span>
+<span class="nc" id="L2415">            return null;</span>
+        }
+
+<span class="fc" id="L2418">        return entry;</span>
+    }
+
+    @Override
+    public SortedMap&lt;K, V&gt; tailMap(final K fromKey) {
+<span class="nc" id="L2423">        return new RangeEntryMap(fromKey, null);</span>
+    }
+
+    @Override
+    public Collection&lt;V&gt; values() {
+<span class="fc bfc" id="L2428" title="All 2 branches covered.">        if (values == null) {</span>
+<span class="fc" id="L2429">            values = new Values();</span>
+        }
+<span class="fc" id="L2431">        return values;</span>
+    }
+
+    /**
+     * Writes the content to the stream for serialization.
+     */
+    private void writeObject(final ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L2438">        stream.defaultWriteObject();</span>
+<span class="fc" id="L2439">        stream.writeInt(this.size());</span>
+<span class="pc bpc" id="L2440" title="1 of 2 branches missed.">        for (final Entry&lt;K, V&gt; entry : entrySet()) {</span>
+<span class="nc" id="L2441">            stream.writeObject(entry.getKey());</span>
+<span class="nc" id="L2442">            stream.writeObject(entry.getValue());</span>
+<span class="nc" id="L2443">        }</span>
+<span class="fc" id="L2444">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

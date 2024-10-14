@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultEntityResolver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.resolver</a> &gt; <span class="el_source">DefaultEntityResolver.java</span></div><h1>DefaultEntityResolver.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.resolver;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.xml.sax.EntityResolver;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+
+/**
+ * The DefaultEntityResolver used by XML Configurations.
+ *
+ * @since 1.7
+ */
+<span class="fc" id="L35">public class DefaultEntityResolver implements EntityResolver, EntityRegistry {</span>
+    /** Stores a map with the registered public IDs. */
+<span class="fc" id="L37">    private final Map&lt;String, URL&gt; registeredEntities = new HashMap&lt;&gt;();</span>
+
+    /**
+     * Gets a map with the entity IDs that have been registered using the {@code registerEntityId()} method.
+     *
+     * @return a map with the registered entity IDs
+     */
+    @Override
+    public Map&lt;String, URL&gt; getRegisteredEntities() {
+<span class="fc" id="L46">        return registeredEntities;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Registers the specified URL for the specified public identifier.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This implementation maps {@code PUBLICID}'s to URLs (from which the resource will be loaded). A common use case for
+     * this method is to register local URLs (possibly computed at runtime by a class loader) for DTDs and Schemas. This
+     * allows the performance advantage of using a local version without having to ensure every {@code SYSTEM} URI on every
+     * processed XML document is local. This implementation provides only basic functionality. If more sophisticated
+     * features are required, either calling {@code XMLConfiguration.setDocumentBuilder(DocumentBuilder)} to set a custom
+     * {@code DocumentBuilder} (which also can be initialized with a custom {@code EntityResolver}) or creating a custom
+     * entity resolver and registering it with the XMLConfiguration is recommended.
+     * &lt;/p&gt;
+     *
+     * @param publicId Public identifier of the Entity to be resolved
+     * @param entityURL The URL to use for reading this Entity
+     * @throws IllegalArgumentException if the public ID is undefined
+     */
+    @Override
+    public void registerEntityId(final String publicId, final URL entityURL) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (publicId == null) {</span>
+<span class="nc" id="L70">            throw new IllegalArgumentException(&quot;Public ID must not be null!&quot;);</span>
+        }
+<span class="nc" id="L72">        getRegisteredEntities().put(publicId, entityURL);</span>
+<span class="nc" id="L73">    }</span>
+
+    /**
+     * Resolves the requested external entity. This is the default implementation of the {@code EntityResolver} interface.
+     * It checks the passed in public ID against the registered entity IDs and uses a local URL if possible.
+     *
+     * @param publicId the public identifier of the entity being referenced
+     * @param systemId the system identifier of the entity being referenced
+     * @return an input source for the specified entity
+     * @throws org.xml.sax.SAXException if a parsing exception occurs
+     */
+    @SuppressWarnings(&quot;resource&quot;) // The stream is managed by the InputSource returned by this method.
+    @Override
+    public InputSource resolveEntity(final String publicId, final String systemId) throws SAXException {
+        // Has this system identifier been registered?
+<span class="fc" id="L88">        URL entityURL = null;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (publicId != null) {</span>
+<span class="fc" id="L90">            entityURL = getRegisteredEntities().get(publicId);</span>
+        }
+
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (entityURL != null) {</span>
+            // Obtain an InputSource for this URL. This code is based on the
+            // createInputSourceFromURL() method of Commons Digester.
+            try {
+<span class="nc" id="L97">                final URLConnection connection = entityURL.openConnection();</span>
+<span class="nc" id="L98">                connection.setUseCaches(false);</span>
+<span class="nc" id="L99">                final InputStream stream = connection.getInputStream();</span>
+<span class="nc" id="L100">                final InputSource source = new InputSource(stream);</span>
+<span class="nc" id="L101">                source.setSystemId(entityURL.toExternalForm());</span>
+<span class="nc" id="L102">                return source;</span>
+<span class="nc" id="L103">            } catch (final IOException e) {</span>
+<span class="nc" id="L104">                throw new SAXException(e);</span>
+            }
+        }
+        // default processing behavior
+<span class="fc" id="L108">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContextedException.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.exception</a> &gt; <span class="el_source">ContextedException.java</span></div><h1>ContextedException.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.exception;
+
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.lang3.tuple.Pair;
+
+/**
+ * An exception that provides an easy and safe way to add contextual information.
+ * &lt;p&gt;
+ * An exception trace itself is often insufficient to provide rapid diagnosis of the issue.
+ * Frequently what is needed is a select few pieces of local contextual data.
+ * Providing this data is tricky however, due to concerns over formatting and nulls.
+ * &lt;/p&gt;&lt;p&gt;
+ * The contexted exception approach allows the exception to be created together with a
+ * list of context label-value pairs. This additional information is automatically included in
+ * the message and printed stack trace.
+ * &lt;/p&gt;&lt;p&gt;
+ * An unchecked version of this exception is provided by ContextedRuntimeException.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To use this class write code as follows:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ *   try {
+ *     ...
+ *   } catch (Exception e) {
+ *     throw new ContextedException(&quot;Error posting account transaction&quot;, e)
+ *          .addContextValue(&quot;Account Number&quot;, accountNumber)
+ *          .addContextValue(&quot;Amount Posted&quot;, amountPosted)
+ *          .addContextValue(&quot;Previous Balance&quot;, previousBalance);
+ *   }
+ * }
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * or improve diagnose data at a higher level:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ *   try {
+ *     ...
+ *   } catch (ContextedException e) {
+ *     throw e.setContextValue(&quot;Transaction Id&quot;, transactionId);
+ *   } catch (Exception e) {
+ *     if (e instanceof ExceptionContext) {
+ *       e.setContextValue(&quot;Transaction Id&quot;, transactionId);
+ *     }
+ *     throw e;
+ *   }
+ * }
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * The output in a printStacktrace() (which often is written to a log) would look something like the following:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * org.apache.commons.lang3.exception.ContextedException: java.lang.Exception: Error posting account transaction
+ *  Exception Context:
+ *  [1:Account Number=null]
+ *  [2:Amount Posted=100.00]
+ *  [3:Previous Balance=-2.17]
+ *  [4:Transaction Id=94ef1d15-d443-46c4-822b-637f26244899]
+ *
+ *  ---------------------------------
+ *  at org.apache.commons.lang3.exception.ContextedExceptionTest.testAddValue(ContextedExceptionTest.java:88)
+ *  ..... (rest of trace)
+ * &lt;/pre&gt;
+ *
+ * @see ContextedRuntimeException
+ * @since 3.0
+ */
+public class ContextedException extends Exception implements ExceptionContext {
+
+    /** The serialization version. */
+    private static final long serialVersionUID = 20110706L;
+    /** The context where the data is stored. */
+    private final ExceptionContext exceptionContext;
+
+    /**
+     * Instantiates ContextedException without message or cause.
+     * &lt;p&gt;
+     * The context information is stored using a default implementation.
+     */
+<span class="fc" id="L98">    public ContextedException() {</span>
+<span class="fc" id="L99">        exceptionContext = new DefaultExceptionContext();</span>
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Instantiates ContextedException with message, but without cause.
+     * &lt;p&gt;
+     * The context information is stored using a default implementation.
+     *
+     * @param message  the exception message, may be null
+     */
+    public ContextedException(final String message) {
+<span class="fc" id="L110">        super(message);</span>
+<span class="fc" id="L111">        exceptionContext = new DefaultExceptionContext();</span>
+<span class="fc" id="L112">    }</span>
+
+    /**
+     * Instantiates ContextedException with cause and message.
+     * &lt;p&gt;
+     * The context information is stored using a default implementation.
+     *
+     * @param message  the exception message, may be null
+     * @param cause  the underlying cause of the exception, may be null
+     */
+    public ContextedException(final String message, final Throwable cause) {
+<span class="fc" id="L123">        super(message, cause);</span>
+<span class="fc" id="L124">        exceptionContext = new DefaultExceptionContext();</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Instantiates ContextedException with cause, message, and ExceptionContext.
+     *
+     * @param message  the exception message, may be null
+     * @param cause  the underlying cause of the exception, may be null
+     * @param context  the context used to store the additional information, null uses default implementation
+     */
+    public ContextedException(final String message, final Throwable cause, ExceptionContext context) {
+<span class="fc" id="L135">        super(message, cause);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L137">            context = new DefaultExceptionContext();</span>
+        }
+<span class="fc" id="L139">        exceptionContext = context;</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * Instantiates ContextedException with cause, but without message.
+     * &lt;p&gt;
+     * The context information is stored using a default implementation.
+     *
+     * @param cause  the underlying cause of the exception, may be null
+     */
+    public ContextedException(final Throwable cause) {
+<span class="fc" id="L150">        super(cause);</span>
+<span class="fc" id="L151">        exceptionContext = new DefaultExceptionContext();</span>
+<span class="fc" id="L152">    }</span>
+
+    /**
+     * Adds information helpful to a developer in diagnosing and correcting the problem.
+     * For the information to be meaningful, the value passed should have a reasonable
+     * toString() implementation.
+     * Different values can be added with the same label multiple times.
+     * &lt;p&gt;
+     * Note: This exception is only serializable if the object added is serializable.
+     * &lt;/p&gt;
+     *
+     * @param label  a textual label associated with information, {@code null} not recommended
+     * @param value  information needed to understand exception, may be {@code null}
+     * @return {@code this}, for method chaining, not {@code null}
+     */
+    @Override
+    public ContextedException addContextValue(final String label, final Object value) {
+<span class="fc" id="L169">        exceptionContext.addContextValue(label, value);</span>
+<span class="fc" id="L170">        return this;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;Pair&lt;String, Object&gt;&gt; getContextEntries() {
+<span class="fc" id="L178">        return this.exceptionContext.getContextEntries();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Set&lt;String&gt; getContextLabels() {
+<span class="fc" id="L186">        return exceptionContext.getContextLabels();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;Object&gt; getContextValues(final String label) {
+<span class="fc" id="L194">        return this.exceptionContext.getContextValues(label);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Object getFirstContextValue(final String label) {
+<span class="fc" id="L202">        return this.exceptionContext.getFirstContextValue(label);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String getFormattedExceptionMessage(final String baseMessage) {
+<span class="fc" id="L210">        return exceptionContext.getFormattedExceptionMessage(baseMessage);</span>
+    }
+
+    /**
+     * Provides the message explaining the exception, including the contextual data.
+     *
+     * @see Throwable#getMessage()
+     * @return the message, never null
+     */
+    @Override
+    public String getMessage() {
+<span class="fc" id="L221">        return getFormattedExceptionMessage(super.getMessage());</span>
+    }
+
+    /**
+     * Provides the message explaining the exception without the contextual data.
+     *
+     * @see Throwable#getMessage()
+     * @return the message
+     * @since 3.0.1
+     */
+    public String getRawMessage() {
+<span class="fc" id="L232">        return super.getMessage();</span>
+    }
+
+    /**
+     * Sets information helpful to a developer in diagnosing and correcting the problem.
+     * For the information to be meaningful, the value passed should have a reasonable
+     * toString() implementation.
+     * Any existing values with the same labels are removed before the new one is added.
+     * &lt;p&gt;
+     * Note: This exception is only serializable if the object added as value is serializable.
+     * &lt;/p&gt;
+     *
+     * @param label  a textual label associated with information, {@code null} not recommended
+     * @param value  information needed to understand exception, may be {@code null}
+     * @return {@code this}, for method chaining, not {@code null}
+     */
+    @Override
+    public ContextedException setContextValue(final String label, final Object value) {
+<span class="fc" id="L250">        exceptionContext.setContextValue(label, value);</span>
+<span class="fc" id="L251">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

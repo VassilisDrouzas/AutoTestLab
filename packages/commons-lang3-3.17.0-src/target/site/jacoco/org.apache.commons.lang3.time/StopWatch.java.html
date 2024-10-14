@@ -1,0 +1,675 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StopWatch.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.time</a> &gt; <span class="el_source">StopWatch.java</span></div><h1>StopWatch.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.time;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.function.FailableConsumer;
+import org.apache.commons.lang3.function.FailableRunnable;
+
+/**
+ * {@link StopWatch} provides a convenient API for timings.
+ *
+ * &lt;p&gt;
+ * To start the watch, call {@link #start()} or {@link StopWatch#createStarted()}. At this point you can:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #split()} the watch to get the time whilst the watch continues in the background. {@link #unsplit()} will remove the effect of the split. At this
+ * point, these three options are available again.&lt;/li&gt;
+ * &lt;li&gt;{@link #suspend()} the watch to pause it. {@link #resume()} allows the watch to continue. Any time between the suspend and resume will not be counted in
+ * the total. At this point, these three options are available again.&lt;/li&gt;
+ * &lt;li&gt;{@link #stop()} the watch to complete the timing session.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;
+ * It is intended that the output methods {@link #toString()} and {@link #getTime()} should only be called after stop, split or suspend, however a suitable
+ * result will be returned at other points.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * NOTE: As from v2.1, the methods protect against inappropriate calls. Thus you cannot now call stop before start, resume before suspend or unsplit before
+ * split.
+ * &lt;/p&gt;
+ *
+ * &lt;ol&gt;
+ * &lt;li&gt;{@link #split()}, {@link #suspend()}, or {@link #stop()} cannot be invoked twice&lt;/li&gt;
+ * &lt;li&gt;{@link #unsplit()} may only be called if the watch has been {@link #split()}&lt;/li&gt;
+ * &lt;li&gt;{@link #resume()} may only be called if the watch has been {@link #suspend()}&lt;/li&gt;
+ * &lt;li&gt;{@link #start()} cannot be called twice without calling {@link #reset()}&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;
+ * This class is not thread-safe
+ * &lt;/p&gt;
+ *
+ * @see DurationUtils#of(FailableRunnable)
+ * @see DurationUtils#of(FailableConsumer)
+ *
+ * @since 2.0
+ */
+public class StopWatch {
+
+    /**
+     * Enumeration type which indicates the split status of a StopWatch.
+     */
+<span class="fc" id="L74">    private enum SplitState {</span>
+<span class="fc" id="L75">        SPLIT, UNSPLIT</span>
+    }
+
+    /**
+     * Enumeration type which indicates the status of a StopWatch.
+     */
+<span class="fc" id="L81">    private enum State {</span>
+
+<span class="fc" id="L83">        RUNNING {</span>
+            @Override
+            boolean isStarted() {
+<span class="fc" id="L86">                return true;</span>
+            }
+
+            @Override
+            boolean isStopped() {
+<span class="fc" id="L91">                return false;</span>
+            }
+
+            @Override
+            boolean isSuspended() {
+<span class="fc" id="L96">                return false;</span>
+            }
+        },
+
+<span class="fc" id="L100">        STOPPED {</span>
+            @Override
+            boolean isStarted() {
+<span class="fc" id="L103">                return false;</span>
+            }
+
+            @Override
+            boolean isStopped() {
+<span class="fc" id="L108">                return true;</span>
+            }
+
+            @Override
+            boolean isSuspended() {
+<span class="fc" id="L113">                return false;</span>
+            }
+        },
+
+<span class="fc" id="L117">        SUSPENDED {</span>
+            @Override
+            boolean isStarted() {
+<span class="fc" id="L120">                return true;</span>
+            }
+
+            @Override
+            boolean isStopped() {
+<span class="fc" id="L125">                return false;</span>
+            }
+
+            @Override
+            boolean isSuspended() {
+<span class="fc" id="L130">                return true;</span>
+            }
+        },
+
+<span class="fc" id="L134">        UNSTARTED {</span>
+            @Override
+            boolean isStarted() {
+<span class="fc" id="L137">                return false;</span>
+            }
+
+            @Override
+            boolean isStopped() {
+<span class="fc" id="L142">                return true;</span>
+            }
+
+            @Override
+            boolean isSuspended() {
+<span class="fc" id="L147">                return false;</span>
+            }
+        };
+
+        /**
+         * Tests whether the StopWatch is started. A suspended StopWatch is also started.
+         *
+         * @return boolean If the StopWatch is started.
+         */
+        abstract boolean isStarted();
+
+        /**
+         * Tests whether the StopWatch is stopped. A StopWatch which is not yet started and explicitly stopped is considered stopped.
+         *
+         * @return boolean If the StopWatch is stopped.
+         */
+        abstract boolean isStopped();
+
+        /**
+         * Tests whether the StopWatch is suspended.
+         *
+         * @return boolean If the StopWatch is suspended.
+         */
+        abstract boolean isSuspended();
+    }
+
+    private static final long NANO_2_MILLIS = 1000000L;
+
+    /**
+     * Creates a StopWatch.
+     *
+     * @return StopWatch a StopWatch.
+     *
+     * @since 3.10
+     */
+    public static StopWatch create() {
+<span class="fc" id="L183">        return new StopWatch();</span>
+    }
+
+    /**
+     * Creates and starts a StopWatch.
+     *
+     * @return StopWatch a started StopWatch.
+     *
+     * @since 3.5
+     */
+    public static StopWatch createStarted() {
+<span class="fc" id="L194">        final StopWatch sw = new StopWatch();</span>
+<span class="fc" id="L195">        sw.start();</span>
+<span class="fc" id="L196">        return sw;</span>
+    }
+
+    /**
+     * A message for string presentation.
+     *
+     * @since 3.10
+     */
+    private final String message;
+
+    /**
+     * The current running state of the StopWatch.
+     */
+<span class="fc" id="L209">    private State runningState = State.UNSTARTED;</span>
+
+    /**
+     * Whether the StopWatch has a split time recorded.
+     */
+<span class="fc" id="L214">    private SplitState splitState = SplitState.UNSPLIT;</span>
+
+    /**
+     * The start time in nanoseconds.
+     *
+     * This field can be removed once we move off of Java 8.
+     */
+    private long startTimeNanos;
+
+    /**
+     * The start Instant.
+     * &lt;p&gt;
+     * nanoTime is only for elapsed time so we need to also store the currentTimeMillis to maintain the old getStartTime API.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * On Java 8, Instant has millisecond precision, only later versions use nanoseconds.
+     * &lt;/p&gt;
+     */
+    private Instant startInstant;
+
+    /**
+     * The end Instant.
+     * &lt;p&gt;
+     * nanoTime is only for elapsed time so we need to also store the currentTimeMillis to maintain the old getStartTime API.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * On Java 8, Instant has millisecond precision, only later versions use nanoseconds.
+     * &lt;/p&gt;
+     */
+    private Instant stopInstant;
+
+    /**
+     * The stop time in nanoseconds.
+     *
+     * This field can be removed once we move off of Java 8.
+     */
+    private long stopTimeNanos;
+
+    /**
+     * Constructs a new instance.
+     */
+    public StopWatch() {
+<span class="fc" id="L256">        this(null);</span>
+<span class="fc" id="L257">    }</span>
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param message A message for string presentation.
+     * @since 3.10
+     */
+<span class="fc" id="L265">    public StopWatch(final String message) {</span>
+<span class="fc" id="L266">        this.message = message;</span>
+<span class="fc" id="L267">    }</span>
+
+    /**
+     * Formats the split time with {@link DurationFormatUtils#formatDurationHMS}.
+     *
+     * @return the split time formatted by {@link DurationFormatUtils#formatDurationHMS}.
+     * @since 3.10
+     */
+    public String formatSplitTime() {
+<span class="fc" id="L276">        return DurationFormatUtils.formatDurationHMS(getSplitDuration().toMillis());</span>
+    }
+
+    /**
+     * Formats the time formatted with {@link DurationFormatUtils#formatDurationHMS}.
+     *
+     * @return the time formatted by {@link DurationFormatUtils#formatDurationHMS}.
+     * @since 3.10
+     */
+    public String formatTime() {
+<span class="fc" id="L286">        return DurationFormatUtils.formatDurationHMS(getTime());</span>
+    }
+
+    /**
+     * Gets the Duration on the StopWatch.
+     *
+     * &lt;p&gt;
+     * This is either the Duration between the start and the moment this method is called, or the Duration between start and stop.
+     * &lt;/p&gt;
+     *
+     * @return the Duration.
+     * @since 3.16.0
+     */
+    public Duration getDuration() {
+<span class="fc" id="L300">        return Duration.ofNanos(getNanoTime());</span>
+    }
+
+    /**
+     * Gets the message for string presentation.
+     *
+     * @return the message for string presentation.
+     * @since 3.10
+     */
+    public String getMessage() {
+<span class="fc" id="L310">        return message;</span>
+    }
+
+    /**
+     * Gets the &lt;em&gt;elapsed&lt;/em&gt; time in nanoseconds.
+     *
+     * &lt;p&gt;
+     * This is either the time between the start and the moment this method is called, or the amount of time between start and stop.
+     * &lt;/p&gt;
+     *
+     * @return the &lt;em&gt;elapsed&lt;/em&gt; time in nanoseconds.
+     * @see System#nanoTime()
+     * @since 3.0
+     */
+    public long getNanoTime() {
+<span class="fc bfc" id="L325" title="All 4 branches covered.">        if (runningState == State.STOPPED || runningState == State.SUSPENDED) {</span>
+<span class="fc" id="L326">            return stopTimeNanos - startTimeNanos;</span>
+        }
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        if (runningState == State.UNSTARTED) {</span>
+<span class="fc" id="L329">            return 0;</span>
+        }
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">        if (runningState == State.RUNNING) {</span>
+<span class="fc" id="L332">            return System.nanoTime() - startTimeNanos;</span>
+        }
+<span class="nc" id="L334">        throw new IllegalStateException(&quot;Illegal running state has occurred.&quot;);</span>
+    }
+
+    /**
+     * Gets the split Duration on the StopWatch.
+     *
+     * &lt;p&gt;
+     * This is the Duration between start and latest split.
+     * &lt;/p&gt;
+     *
+     * @return the split Duration
+     *
+     * @throws IllegalStateException if the StopWatch has not yet been split.
+     * @since 3.16.0
+     */
+    public Duration getSplitDuration() {
+<span class="fc" id="L350">        return Duration.ofNanos(getSplitNanoTime());</span>
+    }
+
+    /**
+     * Gets the split time in nanoseconds.
+     *
+     * &lt;p&gt;
+     * This is the time between start and latest split.
+     * &lt;/p&gt;
+     *
+     * @return the split time in nanoseconds
+     *
+     * @throws IllegalStateException if the StopWatch has not yet been split.
+     * @since 3.0
+     */
+    public long getSplitNanoTime() {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        if (splitState != SplitState.SPLIT) {</span>
+<span class="fc" id="L367">            throw new IllegalStateException(&quot;Stopwatch must be split to get the split time.&quot;);</span>
+        }
+<span class="fc" id="L369">        return stopTimeNanos - startTimeNanos;</span>
+    }
+
+    /**
+     * Gets the split time on the StopWatch.
+     *
+     * &lt;p&gt;
+     * This is the time between start and latest split.
+     * &lt;/p&gt;
+     *
+     * @return the split time in milliseconds
+     *
+     * @throws IllegalStateException if the StopWatch has not yet been split.
+     * @since 2.1
+     * @deprecated Use {@link #getSplitDuration()}.
+     */
+    @Deprecated
+    public long getSplitTime() {
+<span class="fc" id="L387">        return nanosToMillis(getSplitNanoTime());</span>
+    }
+
+    /**
+     * Gets the Instant this StopWatch was started, between the current time and midnight, January 1, 1970 UTC.
+     *
+     * @return the Instant this StopWatch was started, between the current time and midnight, January 1, 1970 UTC.
+     * @throws IllegalStateException if this StopWatch has not been started
+     * @since 3.16.0
+     */
+    public Instant getStartInstant() {
+<span class="fc" id="L398">        return Instant.ofEpochMilli(getStartTime());</span>
+    }
+
+    /**
+     * Gets the time this StopWatch was started in milliseconds, between the current time and midnight, January 1, 1970 UTC.
+     *
+     * @return the time this StopWatch was started in milliseconds, between the current time and midnight, January 1, 1970 UTC.
+     * @throws IllegalStateException if this StopWatch has not been started
+     * @since 2.4
+     * @deprecated Use {@link #getStartInstant()}.
+     */
+    @Deprecated
+    public long getStartTime() {
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (runningState == State.UNSTARTED) {</span>
+<span class="fc" id="L412">            throw new IllegalStateException(&quot;Stopwatch has not been started&quot;);</span>
+        }
+        // stopTimeNanos stores System.nanoTime() for elapsed time
+<span class="fc" id="L415">        return startInstant.toEpochMilli();</span>
+    }
+
+    /**
+     * Gets the Instant this StopWatch was stopped, between the current time and midnight, January 1, 1970 UTC.
+     *
+     * @return the Instant this StopWatch was stopped in milliseconds, between the current time and midnight, January 1, 1970 UTC.
+     * @throws IllegalStateException if this StopWatch has not been started
+     * @since 3.16.0
+     */
+    public Instant getStopInstant() {
+<span class="fc" id="L426">        return Instant.ofEpochMilli(getStopTime());</span>
+    }
+
+    /**
+     * Gets the time this StopWatch was stopped in milliseconds, between the current time and midnight, January 1, 1970 UTC.
+     *
+     * @return the time this StopWatch was stopped in milliseconds, between the current time and midnight, January 1, 1970 UTC.
+     * @throws IllegalStateException if this StopWatch has not been started
+     * @since 3.12.0
+     * @deprecated Use {@link #getStopInstant()}.
+     */
+    @Deprecated
+    public long getStopTime() {
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">        if (runningState == State.UNSTARTED) {</span>
+<span class="nc" id="L440">            throw new IllegalStateException(&quot;Stopwatch has not been started&quot;);</span>
+        }
+        // stopTimeNanos stores System.nanoTime() for elapsed time
+<span class="fc" id="L443">        return stopInstant.toEpochMilli();</span>
+    }
+
+    /**
+     * Gets the time on the StopWatch.
+     *
+     * &lt;p&gt;
+     * This is either the time between the start and the moment this method is called, or the amount of time between start and stop.
+     * &lt;/p&gt;
+     *
+     * @return the time in milliseconds
+     * @deprecated Use {@link #getDuration()}.
+     */
+    @Deprecated
+    public long getTime() {
+<span class="fc" id="L458">        return nanosToMillis(getNanoTime());</span>
+    }
+
+    /**
+     * Gets the time in the specified TimeUnit.
+     *
+     * &lt;p&gt;
+     * This is either the time between the start and the moment this method is called, or the amount of time between start and stop. The resulting time will be
+     * expressed in the desired TimeUnit with any remainder rounded down. For example, if the specified unit is {@code TimeUnit.HOURS} and the StopWatch time is
+     * 59 minutes, then the result returned will be {@code 0}.
+     * &lt;/p&gt;
+     *
+     * @param timeUnit the unit of time, not null
+     * @return the time in the specified TimeUnit, rounded down
+     * @since 3.5
+     */
+    public long getTime(final TimeUnit timeUnit) {
+<span class="fc" id="L475">        return timeUnit.convert(getNanoTime(), TimeUnit.NANOSECONDS);</span>
+    }
+
+    /**
+     * Tests whether the StopWatch is started. A suspended StopWatch is also started watch.
+     *
+     * @return boolean If the StopWatch is started.
+     * @since 3.2
+     */
+    public boolean isStarted() {
+<span class="fc" id="L485">        return runningState.isStarted();</span>
+    }
+
+    /**
+     * Tests whether StopWatch is stopped. The StopWatch which's not yet started and explicitly stopped StopWatch is considered as stopped.
+     *
+     * @return boolean If the StopWatch is stopped.
+     * @since 3.2
+     */
+    public boolean isStopped() {
+<span class="fc" id="L495">        return runningState.isStopped();</span>
+    }
+
+    /**
+     * Tests whether the StopWatch is suspended.
+     *
+     * @return boolean If the StopWatch is suspended.
+     * @since 3.2
+     */
+    public boolean isSuspended() {
+<span class="fc" id="L505">        return runningState.isSuspended();</span>
+    }
+
+    /**
+     * Converts nanoseconds to milliseconds.
+     *
+     * @param nanos nanoseconds to convert.
+     * @return milliseconds conversion result.
+     */
+    private long nanosToMillis(final long nanos) {
+<span class="fc" id="L515">        return nanos / NANO_2_MILLIS;</span>
+    }
+
+    /**
+     * Resets the StopWatch. Stops it if need be.
+     *
+     * &lt;p&gt;
+     * This method clears the internal values to allow the object to be reused.
+     * &lt;/p&gt;
+     */
+    public void reset() {
+<span class="fc" id="L526">        runningState = State.UNSTARTED;</span>
+<span class="fc" id="L527">        splitState = SplitState.UNSPLIT;</span>
+<span class="fc" id="L528">    }</span>
+
+    /**
+     * Resumes the StopWatch after a suspend.
+     *
+     * &lt;p&gt;
+     * This method resumes the watch after it was suspended. The watch will not include time between the suspend and resume calls in the total time.
+     * &lt;/p&gt;
+     *
+     * @throws IllegalStateException if the StopWatch has not been suspended.
+     */
+    public void resume() {
+<span class="fc bfc" id="L540" title="All 2 branches covered.">        if (runningState != State.SUSPENDED) {</span>
+<span class="fc" id="L541">            throw new IllegalStateException(&quot;Stopwatch must be suspended to resume. &quot;);</span>
+        }
+<span class="fc" id="L543">        startTimeNanos += System.nanoTime() - stopTimeNanos;</span>
+<span class="fc" id="L544">        runningState = State.RUNNING;</span>
+<span class="fc" id="L545">    }</span>
+
+    /**
+     * Splits the time.
+     *
+     * &lt;p&gt;
+     * This method sets the stop time of the watch to allow a time to be extracted. The start time is unaffected, enabling {@link #unsplit()} to continue the
+     * timing from the original start point.
+     * &lt;/p&gt;
+     *
+     * @throws IllegalStateException if the StopWatch is not running.
+     */
+    public void split() {
+<span class="fc bfc" id="L558" title="All 2 branches covered.">        if (runningState != State.RUNNING) {</span>
+<span class="fc" id="L559">            throw new IllegalStateException(&quot;Stopwatch is not running. &quot;);</span>
+        }
+<span class="fc" id="L561">        stopTimeNanos = System.nanoTime();</span>
+<span class="fc" id="L562">        splitState = SplitState.SPLIT;</span>
+<span class="fc" id="L563">    }</span>
+
+    /**
+     * Starts the StopWatch.
+     *
+     * &lt;p&gt;
+     * This method starts a new timing session, clearing any previous values.
+     * &lt;/p&gt;
+     *
+     * @throws IllegalStateException if the StopWatch is already running.
+     */
+    public void start() {
+<span class="fc bfc" id="L575" title="All 2 branches covered.">        if (runningState == State.STOPPED) {</span>
+<span class="fc" id="L576">            throw new IllegalStateException(&quot;Stopwatch must be reset before being restarted. &quot;);</span>
+        }
+<span class="fc bfc" id="L578" title="All 2 branches covered.">        if (runningState != State.UNSTARTED) {</span>
+<span class="fc" id="L579">            throw new IllegalStateException(&quot;Stopwatch already started. &quot;);</span>
+        }
+<span class="fc" id="L581">        startTimeNanos = System.nanoTime();</span>
+<span class="fc" id="L582">        startInstant = Instant.now();</span>
+<span class="fc" id="L583">        runningState = State.RUNNING;</span>
+<span class="fc" id="L584">    }</span>
+
+    /**
+     * Stops the StopWatch.
+     *
+     * &lt;p&gt;
+     * This method ends a new timing session, allowing the time to be retrieved.
+     * &lt;/p&gt;
+     *
+     * @throws IllegalStateException if the StopWatch is not running.
+     */
+    public void stop() {
+<span class="fc bfc" id="L596" title="All 4 branches covered.">        if (runningState != State.RUNNING &amp;&amp; runningState != State.SUSPENDED) {</span>
+<span class="fc" id="L597">            throw new IllegalStateException(&quot;Stopwatch is not running. &quot;);</span>
+        }
+<span class="fc bfc" id="L599" title="All 2 branches covered.">        if (runningState == State.RUNNING) {</span>
+<span class="fc" id="L600">            stopTimeNanos = System.nanoTime();</span>
+<span class="fc" id="L601">            stopInstant = Instant.now();</span>
+        }
+<span class="fc" id="L603">        runningState = State.STOPPED;</span>
+<span class="fc" id="L604">    }</span>
+
+    /**
+     * Suspends the StopWatch for later resumption.
+     *
+     * &lt;p&gt;
+     * This method suspends the watch until it is resumed. The watch will not include time between the suspend and resume calls in the total time.
+     * &lt;/p&gt;
+     *
+     * @throws IllegalStateException if the StopWatch is not currently running.
+     */
+    public void suspend() {
+<span class="fc bfc" id="L616" title="All 2 branches covered.">        if (runningState != State.RUNNING) {</span>
+<span class="fc" id="L617">            throw new IllegalStateException(&quot;Stopwatch must be running to suspend. &quot;);</span>
+        }
+<span class="fc" id="L619">        stopTimeNanos = System.nanoTime();</span>
+<span class="fc" id="L620">        stopInstant = Instant.now();</span>
+<span class="fc" id="L621">        runningState = State.SUSPENDED;</span>
+<span class="fc" id="L622">    }</span>
+
+    /**
+     * Gets a summary of the split time that the StopWatch recorded as a string.
+     *
+     * &lt;p&gt;
+     * The format used is ISO 8601-like, [&lt;i&gt;message&lt;/i&gt; ]&lt;i&gt;hours&lt;/i&gt;:&lt;i&gt;minutes&lt;/i&gt;:&lt;i&gt;seconds&lt;/i&gt;.&lt;i&gt;milliseconds&lt;/i&gt;.
+     * &lt;/p&gt;
+     *
+     * @return the split time as a String
+     * @since 2.1
+     * @since 3.10 Returns the prefix {@code &quot;message &quot;} if the message is set.
+     */
+    public String toSplitString() {
+<span class="fc" id="L636">        final String msgStr = Objects.toString(message, StringUtils.EMPTY);</span>
+<span class="fc" id="L637">        final String formattedTime = formatSplitTime();</span>
+<span class="fc bfc" id="L638" title="All 2 branches covered.">        return msgStr.isEmpty() ? formattedTime : msgStr + StringUtils.SPACE + formattedTime;</span>
+    }
+
+    /**
+     * Gets a summary of the time that the StopWatch recorded as a string.
+     *
+     * &lt;p&gt;
+     * The format used is ISO 8601-like, [&lt;i&gt;message&lt;/i&gt; ]&lt;i&gt;hours&lt;/i&gt;:&lt;i&gt;minutes&lt;/i&gt;:&lt;i&gt;seconds&lt;/i&gt;.&lt;i&gt;milliseconds&lt;/i&gt;.
+     * &lt;/p&gt;
+     *
+     * @return the time as a String
+     * @since 3.10 Returns the prefix {@code &quot;message &quot;} if the message is set.
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L653">        final String msgStr = Objects.toString(message, StringUtils.EMPTY);</span>
+<span class="fc" id="L654">        final String formattedTime = formatTime();</span>
+<span class="fc bfc" id="L655" title="All 2 branches covered.">        return msgStr.isEmpty() ? formattedTime : msgStr + StringUtils.SPACE + formattedTime;</span>
+    }
+
+    /**
+     * Removes a split.
+     *
+     * &lt;p&gt;
+     * This method clears the stop time. The start time is unaffected, enabling timing from the original start point to continue.
+     * &lt;/p&gt;
+     *
+     * @throws IllegalStateException if the StopWatch has not been split.
+     */
+    public void unsplit() {
+<span class="fc bfc" id="L668" title="All 2 branches covered.">        if (splitState != SplitState.SPLIT) {</span>
+<span class="fc" id="L669">            throw new IllegalStateException(&quot;Stopwatch has not been split. &quot;);</span>
+        }
+<span class="fc" id="L671">        splitState = SplitState.UNSPLIT;</span>
+<span class="fc" id="L672">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

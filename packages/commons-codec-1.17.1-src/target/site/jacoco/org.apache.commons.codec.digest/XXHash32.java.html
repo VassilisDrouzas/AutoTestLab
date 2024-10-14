@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XXHash32.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.digest</a> &gt; <span class="el_source">XXHash32.java</span></div><h1>XXHash32.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.digest;
+
+import static java.lang.Integer.rotateLeft;
+
+import java.util.zip.Checksum;
+
+/**
+ * Implements the xxHash32 hash algorithm.
+ *
+ * &lt;p&gt;
+ * Copied from Commons Compress 1.14 &lt;a href=
+ * &quot;https://gitbox.apache.org/repos/asf?p=commons-compress.git;a=blob;f=src/main/java/org/apache/commons/compress/compressors/lz4/XXHash32.java;h=a406ffc197449be594d46f0d2712b2d4786a1e68;hb=HEAD&quot;&gt;https://gitbox.apache.org/repos/asf?p=commons-compress.git;a=blob;f=src/main/java/org/apache/commons/compress/compressors/lz4/XXHash32.java;h=a406ffc197449be594d46f0d2712b2d4786a1e68;hb=HEAD&lt;/a&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * NotThreadSafe
+ * &lt;/p&gt;
+ *
+ * @see &lt;a href=&quot;https://cyan4973.github.io/xxHash/&quot;&gt;xxHash&lt;/a&gt;
+ * @since 1.11
+ */
+public class XXHash32 implements Checksum {
+
+    private static final int BUF_SIZE = 16;
+    private static final int ROTATE_BITS = 13;
+
+    private static final int PRIME1 = (int) 2654435761L;
+    private static final int PRIME2 = (int) 2246822519L;
+    private static final int PRIME3 = (int) 3266489917L;
+    private static final int PRIME4 =  668265263;
+    private static final int PRIME5 =  374761393;
+
+    /**
+     * Gets the little-endian int from 4 bytes starting at the specified index.
+     *
+     * @param buffer The data
+     * @param idx The index
+     * @return The little-endian int
+     */
+    private static int getInt(final byte[] buffer, final int idx) {
+<span class="fc" id="L57">        return buffer[idx    ] &amp; 0xff |</span>
+               (buffer[idx + 1] &amp; 0xff) &lt;&lt;  8 |
+               (buffer[idx + 2] &amp; 0xff) &lt;&lt; 16 |
+               (buffer[idx + 3] &amp; 0xff) &lt;&lt; 24;
+    }
+<span class="fc" id="L62">    private final byte[] oneByte = new byte[1];</span>
+<span class="fc" id="L63">    private final int[] state = new int[4];</span>
+    // Note: the code used to use ByteBuffer but the manual method is 50% faster
+    // See: https://gitbox.apache.org/repos/asf/commons-compress/diff/2f56fb5c
+<span class="fc" id="L66">    private final byte[] buffer = new byte[BUF_SIZE];</span>
+
+    private final int seed;
+    private int totalLen;
+
+    private int pos;
+
+    /** Sets to true when the state array has been updated since the last reset. */
+    private boolean stateUpdated;
+
+    /**
+     * Creates an XXHash32 instance with a seed of 0.
+     */
+    public XXHash32() {
+<span class="fc" id="L80">        this(0);</span>
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Creates an XXHash32 instance.
+     * @param seed the seed to use
+     */
+<span class="fc" id="L87">    public XXHash32(final int seed) {</span>
+<span class="fc" id="L88">        this.seed = seed;</span>
+<span class="fc" id="L89">        initializeState();</span>
+<span class="fc" id="L90">    }</span>
+
+    @Override
+    public long getValue() {
+        int hash;
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (stateUpdated) {</span>
+            // Hash with the state
+<span class="fc" id="L97">            hash =</span>
+<span class="fc" id="L98">                rotateLeft(state[0],  1) +</span>
+<span class="fc" id="L99">                rotateLeft(state[1],  7) +</span>
+<span class="fc" id="L100">                rotateLeft(state[2], 12) +</span>
+<span class="fc" id="L101">                rotateLeft(state[3], 18);</span>
+        } else {
+            // Hash using the original seed from position 2
+<span class="fc" id="L104">            hash = state[2] + PRIME5;</span>
+        }
+<span class="fc" id="L106">        hash += totalLen;</span>
+
+<span class="fc" id="L108">        int idx = 0;</span>
+<span class="fc" id="L109">        final int limit = pos - 4;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (; idx &lt;= limit; idx += 4) {</span>
+<span class="fc" id="L111">            hash = rotateLeft(hash + getInt(buffer, idx) * PRIME3, 17) * PRIME4;</span>
+        }
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        while (idx &lt; pos) {</span>
+<span class="fc" id="L114">            hash = rotateLeft(hash + (buffer[idx++] &amp; 0xff) * PRIME5, 11) * PRIME1;</span>
+        }
+
+<span class="fc" id="L117">        hash ^= hash &gt;&gt;&gt; 15;</span>
+<span class="fc" id="L118">        hash *= PRIME2;</span>
+<span class="fc" id="L119">        hash ^= hash &gt;&gt;&gt; 13;</span>
+<span class="fc" id="L120">        hash *= PRIME3;</span>
+<span class="fc" id="L121">        hash ^= hash &gt;&gt;&gt; 16;</span>
+<span class="fc" id="L122">        return hash &amp; 0xffffffffL;</span>
+    }
+
+    private void initializeState() {
+<span class="fc" id="L126">        state[0] = seed + PRIME1 + PRIME2;</span>
+<span class="fc" id="L127">        state[1] = seed + PRIME2;</span>
+<span class="fc" id="L128">        state[2] = seed;</span>
+<span class="fc" id="L129">        state[3] = seed - PRIME1;</span>
+<span class="fc" id="L130">    }</span>
+
+    private void process(final byte[] b, final int offset) {
+        // local shadows for performance
+<span class="fc" id="L134">        int s0 = state[0];</span>
+<span class="fc" id="L135">        int s1 = state[1];</span>
+<span class="fc" id="L136">        int s2 = state[2];</span>
+<span class="fc" id="L137">        int s3 = state[3];</span>
+
+<span class="fc" id="L139">        s0 = rotateLeft(s0 + getInt(b, offset) * PRIME2, ROTATE_BITS) * PRIME1;</span>
+<span class="fc" id="L140">        s1 = rotateLeft(s1 + getInt(b, offset + 4) * PRIME2, ROTATE_BITS) * PRIME1;</span>
+<span class="fc" id="L141">        s2 = rotateLeft(s2 + getInt(b, offset + 8) * PRIME2, ROTATE_BITS) * PRIME1;</span>
+<span class="fc" id="L142">        s3 = rotateLeft(s3 + getInt(b, offset + 12) * PRIME2, ROTATE_BITS) * PRIME1;</span>
+
+<span class="fc" id="L144">        state[0] = s0;</span>
+<span class="fc" id="L145">        state[1] = s1;</span>
+<span class="fc" id="L146">        state[2] = s2;</span>
+<span class="fc" id="L147">        state[3] = s3;</span>
+
+<span class="fc" id="L149">        stateUpdated = true;</span>
+<span class="fc" id="L150">    }</span>
+
+    @Override
+    public void reset() {
+<span class="fc" id="L154">        initializeState();</span>
+<span class="fc" id="L155">        totalLen = 0;</span>
+<span class="fc" id="L156">        pos = 0;</span>
+<span class="fc" id="L157">        stateUpdated = false;</span>
+<span class="fc" id="L158">    }</span>
+
+    @Override
+    public void update(final byte[] b, int off, final int len) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (len &lt;= 0) {</span>
+<span class="fc" id="L163">            return;</span>
+        }
+<span class="fc" id="L165">        totalLen += len;</span>
+
+<span class="fc" id="L167">        final int end = off + len;</span>
+
+        // Check if the unprocessed bytes and new bytes can fill a block of 16.
+        // Make this overflow safe in the event that len is Integer.MAX_VALUE.
+        // Equivalent to: (pos + len &lt; BUF_SIZE)
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (pos + len - BUF_SIZE &lt; 0) {</span>
+<span class="fc" id="L173">            System.arraycopy(b, off, buffer, pos, len);</span>
+<span class="fc" id="L174">            pos += len;</span>
+<span class="fc" id="L175">            return;</span>
+        }
+
+        // Process left-over bytes with new bytes
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (pos &gt; 0) {</span>
+<span class="fc" id="L180">            final int size = BUF_SIZE - pos;</span>
+<span class="fc" id="L181">            System.arraycopy(b, off, buffer, pos, size);</span>
+<span class="fc" id="L182">            process(buffer, 0);</span>
+<span class="fc" id="L183">            off += size;</span>
+        }
+
+<span class="fc" id="L186">        final int limit = end - BUF_SIZE;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        while (off &lt;= limit) {</span>
+<span class="fc" id="L188">            process(b, off);</span>
+<span class="fc" id="L189">            off += BUF_SIZE;</span>
+        }
+
+        // Handle left-over bytes
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (off &lt; end) {</span>
+<span class="fc" id="L194">            pos = end - off;</span>
+<span class="fc" id="L195">            System.arraycopy(b, off, buffer, 0, pos);</span>
+        } else {
+<span class="fc" id="L197">            pos = 0;</span>
+        }
+<span class="fc" id="L199">    }</span>
+
+    @Override
+    public void update(final int b) {
+<span class="fc" id="L203">        oneByte[0] = (byte) (b &amp; 0xff);</span>
+<span class="fc" id="L204">        update(oneByte, 0, 1);</span>
+<span class="fc" id="L205">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

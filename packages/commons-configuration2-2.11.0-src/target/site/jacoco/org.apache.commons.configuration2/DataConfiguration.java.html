@@ -1,0 +1,1449 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2</a> &gt; <span class="el_source">DataConfiguration.java</span></div><h1>DataConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.configuration2;
+
+import java.awt.Color;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.net.URI;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+import org.apache.commons.configuration2.convert.ConversionHandler;
+import org.apache.commons.configuration2.convert.DefaultConversionHandler;
+import org.apache.commons.configuration2.ex.ConversionException;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * Decorator providing additional getters for any Configuration. This extended Configuration supports more types:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link java.net.URL}&lt;/li&gt;
+ * &lt;li&gt;{@link java.util.Locale}&lt;/li&gt;
+ * &lt;li&gt;{@link java.util.Date}&lt;/li&gt;
+ * &lt;li&gt;{@link java.util.Calendar}&lt;/li&gt;
+ * &lt;li&gt;{@link java.awt.Color}&lt;/li&gt;
+ * &lt;li&gt;{@link java.net.InetAddress}&lt;/li&gt;
+ * &lt;li&gt;{@code javax.mail.internet.InternetAddress} (requires Javamail in the classpath)&lt;/li&gt;
+ * &lt;li&gt;{@code jakarta.mail.internet.InternetAddress} (requires Javamail 2.+ in the classpath)&lt;/li&gt;
+ * &lt;li&gt;{@link Enum}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * Lists and arrays are available for all types.&lt;br&gt;
+ * Note that this class is only a thin wrapper over functionality already provided by {@link AbstractConfiguration}.
+ * Basically, the generic {@code get()}, and {@code getCollection()} methods are used to actually perform data
+ * conversions.
+ *
+ * &lt;p&gt;
+ * &lt;strong&gt;Example&lt;/strong&gt;
+ * &lt;/p&gt;
+ *
+ * Configuration file {@code config.properties}:
+ *
+ * &lt;pre&gt;
+ * title.color = #0000FF
+ * remote.host = 192.168.0.53
+ * default.locales = fr,en,de
+ * email.contact = dev@test.org, tester@test.org
+ * &lt;/pre&gt;
+ *
+ * Usage:
+ *
+ * &lt;pre&gt;
+ * DataConfiguration config = new DataConfiguration(new PropertiesConfiguration(&quot;config.properties&quot;));
+ *
+ * // retrieve a property using a specialized getter
+ * Color color = config.getColor(&quot;title.color&quot;);
+ *
+ * // retrieve a property using a generic getter
+ * InetAddress host = (InetAddress) config.get(InetAddress.class, &quot;remote.host&quot;);
+ * Locale[] locales = (Locale[]) config.getArray(Locale.class, &quot;default.locales&quot;);
+ * List contacts = config.getList(InternetAddress.class, &quot;email.contact&quot;);
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * &lt;strong&gt;Dates&lt;/strong&gt;
+ * &lt;/p&gt;
+ *
+ * Date objects are expected to be formatted with the pattern {@code yyyy-MM-dd HH:mm:ss}. This default format can be
+ * changed by specifying another format in the getters, or by putting a date format in the configuration under the key
+ * {@code org.apache.commons.configuration.format.date}. Alternatively, the date format can also be specified via the
+ * {@code ConversionHandler} used by a configuration instance:
+ *
+ * &lt;pre&gt;
+ * DefaultConversionHandler handler = new DefaultConversionHandler();
+ * handler.setDateFormat(&quot;mm/dd/yyyy&quot;);
+ * config.setConversionHandler(handler);
+ * &lt;/pre&gt;
+ *
+ * @since 1.1
+ */
+public class DataConfiguration extends AbstractConfiguration {
+
+    /**
+     * A specialized {@code ConversionHandler} implementation which allows overriding the date format pattern. This class
+     * takes care that the format pattern can be defined as a property of the wrapped configuration or temporarily passed
+     * when calling a conversion method.
+     */
+<span class="fc" id="L111">    private final class DataConversionHandler extends DefaultConversionHandler {</span>
+        /**
+         * {@inheritDoc} This implementation checks for a defined data format in the following order:
+         * &lt;ul&gt;
+         * &lt;li&gt;If a temporary date format is set for the current call, it is used.&lt;/li&gt;
+         * &lt;li&gt;If a date format is specified in this configuration using the {@code DATE_FORMAT_KEY} property, it is used.&lt;/li&gt;
+         * &lt;li&gt;Otherwise, the date format set for the original conversion handler is used if available.&lt;/li&gt;
+         * &lt;/ul&gt;
+         */
+        @Override
+        public String getDateFormat() {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (StringUtils.isNotEmpty(TEMP_DATE_FORMAT.get())) {</span>
+<span class="fc" id="L123">                return TEMP_DATE_FORMAT.get();</span>
+            }
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (containsKey(DATE_FORMAT_KEY)) {</span>
+<span class="fc" id="L126">                return getDefaultDateFormat();</span>
+            }
+
+<span class="fc" id="L129">            final DefaultConversionHandler orgHandler = getOriginalConversionHandler();</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            return orgHandler != null ? orgHandler.getDateFormat() : null;</span>
+        }
+    }
+
+    /** The key of the property storing the user-defined date format. */
+    public static final String DATE_FORMAT_KEY = &quot;org.apache.commons.configuration.format.date&quot;;
+
+    /** The default format for dates. */
+    public static final String DEFAULT_DATE_FORMAT = &quot;yyyy-MM-dd HH:mm:ss&quot;;
+
+    /** Empty array constant. */
+<span class="fc" id="L141">    private static final URL[] EMPTY_URL_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L144">    private static final URI[] EMPTY_URI_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L147">    private static final Locale[] EMPTY_LOCALE_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L150">    private static final Date[] EMPTY_DATE_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L153">    private static final Color[] EMPTY_COLOR_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L156">    private static final Calendar[] EMPTY_CALENDARD_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L159">    private static final BigInteger[] EMPTY_BIG_INTEGER_ARRAY = {};</span>
+
+    /** Empty array constant. */
+<span class="fc" id="L162">    private static final BigDecimal[] EMPTY_BIG_DECIMAL_ARRAY = {};</span>
+
+    /** Stores temporary date formats. */
+<span class="fc" id="L165">    private static final ThreadLocal&lt;String&gt; TEMP_DATE_FORMAT = new ThreadLocal&lt;&gt;();</span>
+
+    /** Stores the wrapped configuration. */
+    private final Configuration configuration;
+
+    /** A special conversion handler object used by this configuration. */
+    private final ConversionHandler dataConversionHandler;
+
+    /**
+     * Creates a new instance of {@code DataConfiguration} and sets the wrapped configuration.
+     *
+     * @param configuration the wrapped configuration
+     */
+<span class="fc" id="L178">    public DataConfiguration(final Configuration configuration) {</span>
+<span class="fc" id="L179">        this.configuration = Objects.requireNonNull(configuration, &quot;configuration&quot;);</span>
+<span class="fc" id="L180">        this.dataConversionHandler = new DataConversionHandler();</span>
+<span class="fc" id="L181">    }</span>
+
+    @Override
+    protected void addPropertyDirect(final String key, final Object value) {
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (configuration instanceof AbstractConfiguration) {</span>
+<span class="fc" id="L186">            ((AbstractConfiguration) configuration).addPropertyDirect(key, value);</span>
+        } else {
+<span class="nc" id="L188">            configuration.addProperty(key, value);</span>
+        }
+<span class="fc" id="L190">    }</span>
+
+    @Override
+    protected void addPropertyInternal(final String key, final Object obj) {
+<span class="fc" id="L194">        configuration.addProperty(key, obj);</span>
+<span class="fc" id="L195">    }</span>
+
+    private &lt;R&gt; R applyTempDateFormat(final String format, final Supplier&lt;R&gt; supplier) {
+<span class="fc" id="L198">        TEMP_DATE_FORMAT.set(format);</span>
+        try {
+<span class="fc" id="L200">            return supplier.get();</span>
+        } finally {
+<span class="fc" id="L202">            TEMP_DATE_FORMAT.remove();</span>
+        }
+    }
+
+    @Override
+    protected void clearPropertyDirect(final String key) {
+<span class="fc" id="L208">        configuration.clearProperty(key);</span>
+<span class="fc" id="L209">    }</span>
+
+    @Override
+    protected boolean containsKeyInternal(final String key) {
+<span class="fc" id="L213">        return configuration.containsKey(key);</span>
+    }
+
+    /**
+     * Tests whether this configuration contains one or more matches to this value. This operation stops at first
+     * match but may be more expensive than the containsKey method.
+     * @since 2.11.0
+     */
+    @Override
+    protected boolean containsValueInternal(final Object value) {
+<span class="nc" id="L223">        return configuration.containsValue(value);</span>
+    }
+
+    /**
+     * Gets an array of BigDecimals associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated BigDecimal array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigDecimals.
+     */
+    public BigDecimal[] getBigDecimalArray(final String key) {
+<span class="fc" id="L236">        return getBigDecimalArray(key, EMPTY_BIG_DECIMAL_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of BigDecimals associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated BigDecimal array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigDecimals.
+     */
+    public BigDecimal[] getBigDecimalArray(final String key, final BigDecimal... defaultValue) {
+<span class="fc" id="L250">        return get(BigDecimal[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of BigDecimals associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated BigDecimal list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigDecimals.
+     */
+    public List&lt;BigDecimal&gt; getBigDecimalList(final String key) {
+<span class="fc" id="L263">        return getBigDecimalList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of BigDecimals associated with the given configuration key. If the key doesn't map to an existing object,
+     * the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of BigDecimals.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigDecimals.
+     */
+    public List&lt;BigDecimal&gt; getBigDecimalList(final String key, final List&lt;BigDecimal&gt; defaultValue) {
+<span class="fc" id="L277">        return getList(BigDecimal.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of BigIntegers associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated BigInteger array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigIntegers.
+     */
+    public BigInteger[] getBigIntegerArray(final String key) {
+<span class="fc" id="L290">        return getBigIntegerArray(key, EMPTY_BIG_INTEGER_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of BigIntegers associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated BigInteger array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigIntegers.
+     */
+    public BigInteger[] getBigIntegerArray(final String key, final BigInteger... defaultValue) {
+<span class="fc" id="L304">        return get(BigInteger[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of BigIntegers associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated BigInteger list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigIntegers.
+     */
+    public List&lt;BigInteger&gt; getBigIntegerList(final String key) {
+<span class="fc" id="L317">        return getBigIntegerList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of BigIntegers associated with the given configuration key. If the key doesn't map to an existing object,
+     * the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of BigIntegers.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of BigIntegers.
+     */
+    public List&lt;BigInteger&gt; getBigIntegerList(final String key, final List&lt;BigInteger&gt; defaultValue) {
+<span class="fc" id="L331">        return getList(BigInteger.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of boolean primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated boolean array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of booleans.
+     */
+    public boolean[] getBooleanArray(final String key) {
+<span class="fc" id="L344">        return (boolean[]) getArray(Boolean.TYPE, key);</span>
+    }
+
+    /**
+     * Gets an array of boolean primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated boolean array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of booleans.
+     */
+    public boolean[] getBooleanArray(final String key, final boolean... defaultValue) {
+<span class="fc" id="L358">        return get(boolean[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Boolean objects associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Boolean list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of booleans.
+     */
+    public List&lt;Boolean&gt; getBooleanList(final String key) {
+<span class="fc" id="L371">        return getBooleanList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Boolean objects associated with the given configuration key. If the key doesn't map to an existing
+     * object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Booleans.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of booleans.
+     */
+    public List&lt;Boolean&gt; getBooleanList(final String key, final List&lt;Boolean&gt; defaultValue) {
+<span class="fc" id="L385">        return getList(Boolean.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of byte primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated byte array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of bytes.
+     */
+    public byte[] getByteArray(final String key) {
+<span class="fc" id="L398">        return getByteArray(key, ArrayUtils.EMPTY_BYTE_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of byte primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated byte array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of bytes.
+     */
+    public byte[] getByteArray(final String key, final byte... defaultValue) {
+<span class="fc" id="L412">        return get(byte[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Byte objects associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Byte list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of bytes.
+     */
+    public List&lt;Byte&gt; getByteList(final String key) {
+<span class="fc" id="L425">        return getByteList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Byte objects associated with the given configuration key. If the key doesn't map to an existing object,
+     * the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Bytes.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of bytes.
+     */
+    public List&lt;Byte&gt; getByteList(final String key, final List&lt;Byte&gt; defaultValue) {
+<span class="fc" id="L439">        return getList(Byte.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a Calendar associated with the given configuration key. If the property is a String, it will be parsed with the
+     * format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern.
+     *
+     * @param key The configuration key.
+     * @return The associated Calendar.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Calendar.
+     */
+    public Calendar getCalendar(final String key) {
+<span class="fc" id="L453">        return get(Calendar.class, key);</span>
+    }
+
+    /**
+     * Gets a Calendar associated with the given configuration key. If the property is a String, it will be parsed with the
+     * format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated Calendar.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Calendar.
+     */
+    public Calendar getCalendar(final String key, final Calendar defaultValue) {
+<span class="fc" id="L468">        return getCalendar(key, defaultValue, null);</span>
+    }
+
+    /**
+     * Gets a Calendar associated with the given configuration key. If the property is a String, it will be parsed with the
+     * specified format pattern. If the key doesn't map to an existing object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Calendar.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Calendar.
+     */
+    public Calendar getCalendar(final String key, final Calendar defaultValue, final String format) {
+<span class="fc" id="L483">        return applyTempDateFormat(format, () -&gt; get(Calendar.class, key, defaultValue));</span>
+    }
+
+    /**
+     * Gets a Calendar associated with the given configuration key. If the property is a String, it will be parsed with the
+     * specified format pattern.
+     *
+     * @param key The configuration key.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Calendar
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Calendar.
+     */
+    public Calendar getCalendar(final String key, final String format) {
+<span class="fc" id="L497">        final Calendar value = getCalendar(key, null, format);</span>
+<span class="fc bfc" id="L498" title="All 2 branches covered.">        if (value != null) {</span>
+<span class="fc" id="L499">            return value;</span>
+        }
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        if (isThrowExceptionOnMissing()) {</span>
+<span class="fc" id="L502">            throw new NoSuchElementException('\'' + key + &quot;' doesn't map to an existing object&quot;);</span>
+        }
+<span class="fc" id="L504">        return null;</span>
+    }
+
+    /**
+     * Gets an array of Calendars associated with the given configuration key. If the property is a list of Strings, they
+     * will be parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined
+     * with the {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object an empty array is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Calendar array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public Calendar[] getCalendarArray(final String key) {
+<span class="fc" id="L519">        return getCalendarArray(key, EMPTY_CALENDARD_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of Calendars associated with the given configuration key. If the property is a list of Strings, they
+     * will be parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined
+     * with the {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object an empty array is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated Calendar array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public Calendar[] getCalendarArray(final String key, final Calendar... defaultValue) {
+<span class="fc" id="L535">        return getCalendarArray(key, defaultValue, null);</span>
+    }
+
+    /**
+     * Gets an array of Calendars associated with the given configuration key. If the property is a list of Strings, they
+     * will be parsed with the specified format pattern. If the key doesn't map to an existing object, the default value is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Calendar array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public Calendar[] getCalendarArray(final String key, final Calendar[] defaultValue, final String format) {
+<span class="fc" id="L551">        return applyTempDateFormat(format, () -&gt; get(Calendar[].class, key, defaultValue));</span>
+    }
+
+    /**
+     * Gets an array of Calendars associated with the given configuration key. If the property is a list of Strings, they
+     * will be parsed with the specified format pattern. If the key doesn't map to an existing object an empty array is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Calendar array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public Calendar[] getCalendarArray(final String key, final String format) {
+<span class="fc" id="L566">        return getCalendarArray(key, EMPTY_CALENDARD_ARRAY, format);</span>
+    }
+
+    /**
+     * Gets a list of Calendars associated with the given configuration key. If the property is a list of Strings, they will
+     * be parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with
+     * the {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Calendar list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public List&lt;Calendar&gt; getCalendarList(final String key) {
+<span class="fc" id="L580">        return getCalendarList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Calendars associated with the given configuration key. If the property is a list of Strings, they will
+     * be parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with
+     * the {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object, the default value is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated Calendar list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public List&lt;Calendar&gt; getCalendarList(final String key, final List&lt;Calendar&gt; defaultValue) {
+<span class="fc" id="L596">        return getCalendarList(key, defaultValue, null);</span>
+    }
+
+    /**
+     * Gets a list of Calendars associated with the given configuration key. If the property is a list of Strings, they will
+     * be parsed with the specified format pattern. If the key doesn't map to an existing object, the default value is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Calendar list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public List&lt;Calendar&gt; getCalendarList(final String key, final List&lt;Calendar&gt; defaultValue, final String format) {
+<span class="fc" id="L612">        return applyTempDateFormat(format, () -&gt; getList(Calendar.class, key, defaultValue));</span>
+    }
+
+    /**
+     * Gets a list of Calendars associated with the given configuration key. If the property is a list of Strings, they will
+     * be parsed with the specified format pattern. If the key doesn't map to an existing object an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Calendar list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Calendars.
+     */
+    public List&lt;Calendar&gt; getCalendarList(final String key, final String format) {
+<span class="nc" id="L626">        return getCalendarList(key, new ArrayList&lt;&gt;(), format);</span>
+    }
+
+    /**
+     * Gets a Color associated with the given configuration key.
+     *
+     * @param key The configuration key.
+     * @return The associated Color.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Color.
+     */
+    public Color getColor(final String key) {
+<span class="fc" id="L638">        return get(Color.class, key);</span>
+    }
+
+    /**
+     * Gets a Color associated with the given configuration key. If the key doesn't map to an existing object, the default
+     * value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated Color.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Color.
+     */
+    public Color getColor(final String key, final Color defaultValue) {
+<span class="fc" id="L652">        return get(Color.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of Colors associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Color array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Colors.
+     */
+    public Color[] getColorArray(final String key) {
+<span class="fc" id="L665">        return getColorArray(key, EMPTY_COLOR_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of Colors associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated Color array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Colors.
+     */
+    public Color[] getColorArray(final String key, final Color... defaultValue) {
+<span class="fc" id="L679">        return get(Color[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Colors associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Color list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Colors.
+     */
+    public List&lt;Color&gt; getColorList(final String key) {
+<span class="fc" id="L692">        return getColorList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Colors associated with the given configuration key. If the key doesn't map to an existing object, the
+     * default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Colors.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Colors.
+     */
+    public List&lt;Color&gt; getColorList(final String key, final List&lt;Color&gt; defaultValue) {
+<span class="fc" id="L706">        return getList(Color.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets the configuration decorated by this DataConfiguration.
+     *
+     * @return the wrapped configuration
+     */
+    public Configuration getConfiguration() {
+<span class="fc" id="L715">        return configuration;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation returns the special conversion handler used by this configuration instance.
+     */
+    @Override
+    public ConversionHandler getConversionHandler() {
+<span class="fc" id="L723">        return dataConversionHandler;</span>
+    }
+
+    /**
+     * Gets a Date associated with the given configuration key. If the property is a String, it will be parsed with the
+     * format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern.
+     *
+     * @param key The configuration key.
+     * @return The associated Date.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Date.
+     */
+    public Date getDate(final String key) {
+<span class="fc" id="L737">        return get(Date.class, key);</span>
+    }
+
+    /**
+     * Gets a Date associated with the given configuration key. If the property is a String, it will be parsed with the
+     * format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated Date.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Date.
+     */
+    public Date getDate(final String key, final Date defaultValue) {
+<span class="fc" id="L752">        return getDate(key, defaultValue, null);</span>
+    }
+
+    /**
+     * Gets a Date associated with the given configuration key. If the property is a String, it will be parsed with the
+     * specified format pattern. If the key doesn't map to an existing object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Date.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Date.
+     */
+    public Date getDate(final String key, final Date defaultValue, final String format) {
+<span class="fc" id="L767">        return applyTempDateFormat(format, () -&gt; get(Date.class, key, defaultValue));</span>
+    }
+
+    /**
+     * Gets a Date associated with the given configuration key. If the property is a String, it will be parsed with the
+     * specified format pattern.
+     *
+     * @param key The configuration key.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Date
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Date.
+     */
+    public Date getDate(final String key, final String format) {
+<span class="fc" id="L781">        final Date value = getDate(key, null, format);</span>
+<span class="fc bfc" id="L782" title="All 2 branches covered.">        if (value != null) {</span>
+<span class="fc" id="L783">            return value;</span>
+        }
+<span class="fc bfc" id="L785" title="All 2 branches covered.">        if (isThrowExceptionOnMissing()) {</span>
+<span class="fc" id="L786">            throw new NoSuchElementException('\'' + key + &quot;' doesn't map to an existing object&quot;);</span>
+        }
+<span class="fc" id="L788">        return null;</span>
+    }
+
+    /**
+     * Gets an array of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Date array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public Date[] getDateArray(final String key) {
+<span class="fc" id="L802">        return getDateArray(key, EMPTY_DATE_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated Date array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public Date[] getDateArray(final String key, final Date... defaultValue) {
+<span class="fc" id="L817">        return getDateArray(key, defaultValue, null);</span>
+    }
+
+    /**
+     * Gets an array of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the specified format pattern. If the key doesn't map to an existing object, the default value is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Date array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public Date[] getDateArray(final String key, final Date[] defaultValue, final String format) {
+<span class="fc" id="L833">        return applyTempDateFormat(format, () -&gt; get(Date[].class, key, defaultValue));</span>
+    }
+
+    /**
+     * Gets an array of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the specified format pattern. If the key doesn't map to an existing object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Date array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public Date[] getDateArray(final String key, final String format) {
+<span class="fc" id="L847">        return getDateArray(key, EMPTY_DATE_ARRAY, format);</span>
+    }
+
+    public List&lt;Date&gt; getDateList(final String key) {
+<span class="fc" id="L851">        return getDateList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the format defined by the user in the {@link #DATE_FORMAT_KEY} property, or if it's not defined with the
+     * {@link #DEFAULT_DATE_FORMAT} pattern. If the key doesn't map to an existing object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated Date list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public List&lt;Date&gt; getDateList(final String key, final List&lt;Date&gt; defaultValue) {
+<span class="fc" id="L866">        return getDateList(key, defaultValue, null);</span>
+    }
+
+    /**
+     * Gets a list of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the specified format pattern. If the key doesn't map to an existing object, the default value is
+     * returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Date list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public List&lt;Date&gt; getDateList(final String key, final List&lt;Date&gt; defaultValue, final String format) {
+<span class="fc" id="L882">        return applyTempDateFormat(format, () -&gt; getList(Date.class, key, defaultValue));</span>
+    }
+
+    /**
+     * Gets a list of Dates associated with the given configuration key. If the property is a list of Strings, they will be
+     * parsed with the specified format pattern. If the key doesn't map to an existing object an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @param format The non-localized {@link java.text.DateFormat} pattern.
+     * @return The associated Date list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Dates.
+     */
+    public List&lt;Date&gt; getDateList(final String key, final String format) {
+<span class="nc" id="L896">        return getDateList(key, new ArrayList&lt;&gt;(), format);</span>
+    }
+
+    /**
+     * Gets the date format specified by the user in the DATE_FORMAT_KEY property, or the default format otherwise.
+     *
+     * @return the default date format
+     */
+    private String getDefaultDateFormat() {
+<span class="fc" id="L905">        return getString(DATE_FORMAT_KEY, DEFAULT_DATE_FORMAT);</span>
+    }
+
+    /**
+     * Gets an array of double primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated double array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of doubles.
+     */
+    public double[] getDoubleArray(final String key) {
+<span class="fc" id="L918">        return getDoubleArray(key, ArrayUtils.EMPTY_DOUBLE_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of double primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated double array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of doubles.
+     */
+    public double[] getDoubleArray(final String key, final double... defaultValue) {
+<span class="fc" id="L932">        return get(double[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Double objects associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Double list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of doubles.
+     */
+    public List&lt;Double&gt; getDoubleList(final String key) {
+<span class="fc" id="L945">        return getDoubleList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Double objects associated with the given configuration key. If the key doesn't map to an existing
+     * object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Doubles.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of doubles.
+     */
+    public List&lt;Double&gt; getDoubleList(final String key, final List&lt;Double&gt; defaultValue) {
+<span class="fc" id="L959">        return getList(Double.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of float primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated float array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of floats.
+     */
+    public float[] getFloatArray(final String key) {
+<span class="fc" id="L972">        return getFloatArray(key, ArrayUtils.EMPTY_FLOAT_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of float primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated float array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of floats.
+     */
+    public float[] getFloatArray(final String key, final float... defaultValue) {
+<span class="fc" id="L986">        return get(float[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Float objects associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Float list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of floats.
+     */
+    public List&lt;Float&gt; getFloatList(final String key) {
+<span class="fc" id="L999">        return getFloatList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Float objects associated with the given configuration key. If the key doesn't map to an existing
+     * object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Floats.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of floats.
+     */
+    public List&lt;Float&gt; getFloatList(final String key, final List&lt;Float&gt; defaultValue) {
+<span class="fc" id="L1013">        return getList(Float.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of int primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated int array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of integers.
+     */
+    public int[] getIntArray(final String key) {
+<span class="fc" id="L1026">        return getIntArray(key, ArrayUtils.EMPTY_INT_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of int primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated int array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of integers.
+     */
+    public int[] getIntArray(final String key, final int... defaultValue) {
+<span class="fc" id="L1040">        return get(int[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Integer objects associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Integer list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of integers.
+     */
+    public List&lt;Integer&gt; getIntegerList(final String key) {
+<span class="fc" id="L1053">        return getIntegerList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Integer objects associated with the given configuration key. If the key doesn't map to an existing
+     * object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Integers.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of integers.
+     */
+    public List&lt;Integer&gt; getIntegerList(final String key, final List&lt;Integer&gt; defaultValue) {
+<span class="fc" id="L1067">        return getList(Integer.class, key, defaultValue);</span>
+    }
+
+    @Override
+    protected Iterator&lt;String&gt; getKeysInternal() {
+<span class="fc" id="L1072">        return configuration.getKeys();</span>
+    }
+
+    /**
+     * Gets a Locale associated with the given configuration key.
+     *
+     * @param key The configuration key.
+     * @return The associated Locale.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Locale.
+     */
+    public Locale getLocale(final String key) {
+<span class="fc" id="L1084">        return get(Locale.class, key);</span>
+    }
+
+    /**
+     * Gets a Locale associated with the given configuration key. If the key doesn't map to an existing object, the default
+     * value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated Locale.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a Locale.
+     */
+    public Locale getLocale(final String key, final Locale defaultValue) {
+<span class="fc" id="L1098">        return get(Locale.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of Locales associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Locale array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Locales.
+     */
+    public Locale[] getLocaleArray(final String key) {
+<span class="fc" id="L1111">        return getLocaleArray(key, EMPTY_LOCALE_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of Locales associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated Locale array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Locales.
+     */
+    public Locale[] getLocaleArray(final String key, final Locale... defaultValue) {
+<span class="fc" id="L1125">        return get(Locale[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Locales associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Locale list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Locales.
+     */
+    public List&lt;Locale&gt; getLocaleList(final String key) {
+<span class="fc" id="L1138">        return getLocaleList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Locales associated with the given configuration key. If the key doesn't map to an existing object, the
+     * default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Locales.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of Locales.
+     */
+    public List&lt;Locale&gt; getLocaleList(final String key, final List&lt;Locale&gt; defaultValue) {
+<span class="fc" id="L1152">        return getList(Locale.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of long primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated long array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of longs.
+     */
+    public long[] getLongArray(final String key) {
+<span class="fc" id="L1165">        return getLongArray(key, ArrayUtils.EMPTY_LONG_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of long primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated long array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of longs.
+     */
+    public long[] getLongArray(final String key, final long... defaultValue) {
+<span class="fc" id="L1179">        return get(long[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Long objects associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Long list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of longs.
+     */
+    public List&lt;Long&gt; getLongList(final String key) {
+<span class="fc" id="L1192">        return getLongList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Long objects associated with the given configuration key. If the key doesn't map to an existing object,
+     * the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Longs.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of longs.
+     */
+    public List&lt;Long&gt; getLongList(final String key, final List&lt;Long&gt; defaultValue) {
+<span class="fc" id="L1206">        return getList(Long.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets the original conversion handler set for this configuration. If this is not a
+     * {@code DefaultConversionHandler}, result is &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @return the original conversion handler or &lt;b&gt;null&lt;/b&gt;
+     */
+    private DefaultConversionHandler getOriginalConversionHandler() {
+<span class="fc" id="L1216">        final ConversionHandler handler = super.getConversionHandler();</span>
+<span class="pc bpc" id="L1217" title="1 of 2 branches missed.">        return (DefaultConversionHandler) (handler instanceof DefaultConversionHandler ? handler : null);</span>
+    }
+
+    @Override
+    protected Object getPropertyInternal(final String key) {
+<span class="fc" id="L1222">        return configuration.getProperty(key);</span>
+    }
+
+    /**
+     * Gets an array of short primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated short array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of shorts.
+     */
+    public short[] getShortArray(final String key) {
+<span class="fc" id="L1235">        return getShortArray(key, ArrayUtils.EMPTY_SHORT_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of short primitives associated with the given configuration key. If the key doesn't map to an existing
+     * object an empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated short array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of shorts.
+     */
+    public short[] getShortArray(final String key, final short... defaultValue) {
+<span class="fc" id="L1249">        return get(short[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of Short objects associated with the given configuration key. If the key doesn't map to an existing object
+     * an empty list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated Short list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of shorts.
+     */
+    public List&lt;Short&gt; getShortList(final String key) {
+<span class="fc" id="L1262">        return getShortList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of Short objects associated with the given configuration key. If the key doesn't map to an existing
+     * object, the default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of Shorts.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of shorts.
+     */
+    public List&lt;Short&gt; getShortList(final String key, final List&lt;Short&gt; defaultValue) {
+<span class="fc" id="L1276">        return getList(Short.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an URI associated with the given configuration key.
+     *
+     * @param key The configuration key.
+     * @return The associated URI.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not an URI.
+     */
+    public URI getURI(final String key) {
+<span class="fc" id="L1288">        return get(URI.class, key);</span>
+    }
+
+    /**
+     * Gets an URI associated with the given configuration key. If the key doesn't map to an existing object, the default
+     * value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated URI.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not an URI.
+     */
+    public URI getURI(final String key, final URI defaultValue) {
+<span class="fc" id="L1302">        return get(URI.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of URIs associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated URI array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URIs.
+     */
+    public URI[] getURIArray(final String key) {
+<span class="fc" id="L1315">        return getURIArray(key, EMPTY_URI_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of URIs associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated URI array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URIs.
+     */
+    public URI[] getURIArray(final String key, final URI... defaultValue) {
+<span class="fc" id="L1329">        return get(URI[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of URIs associated with the given configuration key. If the key doesn't map to an existing object an empty
+     * list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated URI list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URIs.
+     */
+    public List&lt;URI&gt; getURIList(final String key) {
+<span class="fc" id="L1342">        return getURIList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of URIs associated with the given configuration key. If the key doesn't map to an existing object, the
+     * default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of URIs.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URIs.
+     */
+    public List&lt;URI&gt; getURIList(final String key, final List&lt;URI&gt; defaultValue) {
+<span class="fc" id="L1356">        return getList(URI.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an URL associated with the given configuration key.
+     *
+     * @param key The configuration key.
+     * @return The associated URL.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not an URL.
+     */
+    public URL getURL(final String key) {
+<span class="fc" id="L1368">        return get(URL.class, key);</span>
+    }
+
+    /**
+     * Gets an URL associated with the given configuration key. If the key doesn't map to an existing object, the default
+     * value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated URL.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not an URL.
+     */
+    public URL getURL(final String key, final URL defaultValue) {
+<span class="fc" id="L1382">        return get(URL.class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets an array of URLs associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated URL array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URLs.
+     */
+    public URL[] getURLArray(final String key) {
+<span class="fc" id="L1395">        return getURLArray(key, EMPTY_URL_ARRAY);</span>
+    }
+
+    /**
+     * Gets an array of URLs associated with the given configuration key. If the key doesn't map to an existing object an
+     * empty array is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue the default value, which will be returned if the property is not found
+     * @return The associated URL array if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URLs.
+     */
+    public URL[] getURLArray(final String key, final URL... defaultValue) {
+<span class="fc" id="L1409">        return get(URL[].class, key, defaultValue);</span>
+    }
+
+    /**
+     * Gets a list of URLs associated with the given configuration key. If the key doesn't map to an existing object an empty
+     * list is returned.
+     *
+     * @param key The configuration key.
+     * @return The associated URL list if the key is found.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URLs.
+     */
+    public List&lt;URL&gt; getURLList(final String key) {
+<span class="fc" id="L1422">        return getURLList(key, new ArrayList&lt;&gt;());</span>
+    }
+
+    /**
+     * Gets a list of URLs associated with the given configuration key. If the key doesn't map to an existing object, the
+     * default value is returned.
+     *
+     * @param key The configuration key.
+     * @param defaultValue The default value.
+     * @return The associated List of URLs.
+     *
+     * @throws ConversionException is thrown if the key maps to an object that is not a list of URLs.
+     */
+    public List&lt;URL&gt; getURLList(final String key, final List&lt;URL&gt; defaultValue) {
+<span class="fc" id="L1436">        return getList(URL.class, key, defaultValue);</span>
+    }
+
+    @Override
+    protected boolean isEmptyInternal() {
+<span class="fc" id="L1441">        return configuration.isEmpty();</span>
+    }
+
+    @Override
+    protected void setPropertyInternal(final String key, final Object value) {
+<span class="fc" id="L1446">        configuration.setProperty(key, value);</span>
+<span class="fc" id="L1447">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

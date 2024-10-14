@@ -1,0 +1,608 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DiffBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.builder</a> &gt; <span class="el_source">DiffBuilder.java</span></div><h1>DiffBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.builder;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Supplier;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ObjectUtils;
+
+/**
+ * Assists in implementing {@link Diffable#diff(Object)} methods.
+ *
+ * &lt;p&gt;
+ * To use this class, write code as follows:
+ * &lt;/p&gt;
+ *
+ * &lt;pre&gt;{@code
+ * public class Person implements Diffable&lt;Person&gt; {
+ *   String name;
+ *   int age;
+ *   boolean smoker;
+ *
+ *   ...
+ *
+ *   public DiffResult diff(Person obj) {
+ *     // No need for null check, as NullPointerException correct if obj is null
+ *     return new DiffBuilder.&lt;Person&gt;builder()
+ *         .setLeft(this)
+ *         .setRight(obj)
+ *         .setStyle(ToStringStyle.SHORT_PREFIX_STYLE))
+ *         .build()
+ *       .append(&quot;name&quot;, this.name, obj.name)
+ *       .append(&quot;age&quot;, this.age, obj.age)
+ *       .append(&quot;smoker&quot;, this.smoker, obj.smoker)
+ *       .build();
+ *   }
+ * }
+ * }&lt;/pre&gt;
+ *
+ * &lt;p&gt;
+ * The {@link ToStringStyle} passed to the constructor is embedded in the returned {@link DiffResult} and influences the style of the
+ * {@code DiffResult.toString()} method. This style choice can be overridden by calling {@link DiffResult#toString(ToStringStyle)}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * See {@link ReflectionDiffBuilder} for a reflection based version of this class.
+ * &lt;/p&gt;
+ *
+ * @param &lt;T&gt; type of the left and right object.
+ * @see Diffable
+ * @see Diff
+ * @see DiffResult
+ * @see ToStringStyle
+ * @see ReflectionDiffBuilder
+ * @since 3.3
+ */
+public class DiffBuilder&lt;T&gt; implements Builder&lt;DiffResult&lt;T&gt;&gt; {
+
+    /**
+     * Constructs a new instance.
+     *
+     * @param &lt;T&gt; type of the left and right object.
+     * @since 3.15.0
+     */
+    public static final class Builder&lt;T&gt; {
+
+        private T left;
+        private T right;
+        private ToStringStyle style;
+<span class="fc" id="L87">        private boolean testObjectsEquals = true;</span>
+<span class="fc" id="L88">        private String toStringFormat = TO_STRING_FORMAT;</span>
+
+        /**
+         * Constructs a new instance.
+         */
+<span class="fc" id="L93">        public Builder() {</span>
+            // empty
+<span class="fc" id="L95">        }</span>
+
+        /**
+         * Builds a new configured {@link DiffBuilder}.
+         *
+         * @return a new configured {@link DiffBuilder}.
+         */
+        public DiffBuilder&lt;T&gt; build() {
+<span class="fc" id="L103">            return new DiffBuilder&lt;&gt;(left, right, style, testObjectsEquals, toStringFormat);</span>
+        }
+
+        /**
+         * Sets the left object.
+         *
+         * @param left the left object.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setLeft(final T left) {
+<span class="fc" id="L113">            this.left = left;</span>
+<span class="fc" id="L114">            return this;</span>
+        }
+
+        /**
+         * Sets the right object.
+         *
+         * @param right the left object.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setRight(final T right) {
+<span class="fc" id="L124">            this.right = right;</span>
+<span class="fc" id="L125">            return this;</span>
+        }
+
+        /**
+         * Sets the style will to use when outputting the objects, {@code null} uses the default.
+         *
+         * @param style the style to use when outputting the objects, {@code null} uses the default.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setStyle(final ToStringStyle style) {
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            this.style = style != null ? style : ToStringStyle.DEFAULT_STYLE;</span>
+<span class="fc" id="L136">            return this;</span>
+        }
+
+        /**
+         * Sets whether to test if left and right are the same or equal. All of the append(fieldName, left, right) methods will abort without creating a field
+         * {@link Diff} if the trivially equal test is enabled and returns true. The result of this test is never changed throughout the life of this
+         * {@link DiffBuilder}.
+         *
+         * @param testObjectsEquals If true, this will test if lhs and rhs are the same or equal. All of the append(fieldName, left, right) methods will abort
+         *                          without creating a field {@link Diff} if the trivially equal test is enabled and returns true. The result of this test is
+         *                          never changed throughout the life of this {@link DiffBuilder}.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setTestObjectsEquals(final boolean testObjectsEquals) {
+<span class="nc" id="L150">            this.testObjectsEquals = testObjectsEquals;</span>
+<span class="nc" id="L151">            return this;</span>
+        }
+
+        /**
+         * Sets the two-argument format string for {@link String#format(String, Object...)}, for example {@code &quot;%s differs from %s&quot;}.
+         *
+         * @param toStringFormat {@code null} uses the default.
+         * @return {@code this} instance.
+         */
+        public Builder&lt;T&gt; setToStringFormat(final String toStringFormat) {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            this.toStringFormat = toStringFormat != null ? toStringFormat : TO_STRING_FORMAT;</span>
+<span class="fc" id="L162">            return this;</span>
+        }
+    }
+
+    private static final class SDiff&lt;T&gt; extends Diff&lt;T&gt; {
+
+        private static final long serialVersionUID = 1L;
+        private final transient Supplier&lt;T&gt; leftSupplier;
+        private final transient Supplier&lt;T&gt; rightSupplier;
+
+        private SDiff(final String fieldName, final Supplier&lt;T&gt; leftSupplier, final Supplier&lt;T&gt; rightSupplier, final Class&lt;T&gt; type) {
+<span class="fc" id="L173">            super(fieldName, type);</span>
+<span class="fc" id="L174">            this.leftSupplier = Objects.requireNonNull(leftSupplier);</span>
+<span class="fc" id="L175">            this.rightSupplier = Objects.requireNonNull(rightSupplier);</span>
+<span class="fc" id="L176">        }</span>
+
+        @Override
+        public T getLeft() {
+<span class="fc" id="L180">            return leftSupplier.get();</span>
+        }
+
+        @Override
+        public T getRight() {
+<span class="fc" id="L185">            return rightSupplier.get();</span>
+        }
+
+    }
+
+    static final String TO_STRING_FORMAT = &quot;%s differs from %s&quot;;
+
+    /**
+     * Constructs a new {@link Builder}.
+     *
+     * @param &lt;T&gt; type of the left and right object.
+     * @return a new {@link Builder}.
+     * @since 3.15.0
+     */
+    public static &lt;T&gt; Builder&lt;T&gt; builder() {
+<span class="fc" id="L200">        return new Builder&lt;&gt;();</span>
+    }
+
+    private final List&lt;Diff&lt;?&gt;&gt; diffs;
+    private final boolean equals;
+    private final T left;
+    private final T right;
+    private final ToStringStyle style;
+    private final String toStringFormat;
+
+    /**
+     * Constructs a builder for the specified objects with the specified style.
+     *
+     * &lt;p&gt;
+     * If {@code lhs == rhs} or {@code lhs.equals(rhs)} then the builder will not evaluate any calls to {@code append(...)} and will return an empty
+     * {@link DiffResult} when {@link #build()} is executed.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * This delegates to {@link #DiffBuilder(Object, Object, ToStringStyle, boolean)} with the testTriviallyEqual flag enabled.
+     * &lt;/p&gt;
+     *
+     * @param left  {@code this} object
+     * @param right the object to diff against
+     * @param style the style to use when outputting the objects, {@code null} uses the default
+     * @throws NullPointerException if {@code lhs} or {@code rhs} is {@code null}
+     * @deprecated Use {@link Builder}.
+     */
+    @Deprecated
+    public DiffBuilder(final T left, final T right, final ToStringStyle style) {
+<span class="fc" id="L230">        this(left, right, style, true);</span>
+<span class="fc" id="L231">    }</span>
+
+    /**
+     * Constructs a builder for the specified objects with the specified style.
+     *
+     * &lt;p&gt;
+     * If {@code lhs == rhs} or {@code lhs.equals(rhs)} then the builder will not evaluate any calls to {@code append(...)} and will return an empty
+     * {@link DiffResult} when {@link #build()} is executed.
+     * &lt;/p&gt;
+     *
+     * @param left              {@code this} object
+     * @param right             the object to diff against
+     * @param style             the style to use when outputting the objects, {@code null} uses the default
+     * @param testObjectsEquals If true, this will test if lhs and rhs are the same or equal. All of the append(fieldName, lhs, rhs) methods will abort without
+     *                          creating a field {@link Diff} if the trivially equal test is enabled and returns true. The result of this test is never changed
+     *                          throughout the life of this {@link DiffBuilder}.
+     * @throws NullPointerException if {@code lhs} or {@code rhs} is {@code null}
+     * @since 3.4
+     * @deprecated Use {@link Builder}.
+     */
+    @Deprecated
+    public DiffBuilder(final T left, final T right, final ToStringStyle style, final boolean testObjectsEquals) {
+<span class="fc" id="L253">        this(left, right, style, testObjectsEquals, TO_STRING_FORMAT);</span>
+<span class="fc" id="L254">    }</span>
+
+<span class="fc" id="L256">    private DiffBuilder(final T left, final T right, final ToStringStyle style, final boolean testObjectsEquals, final String toStringFormat) {</span>
+<span class="fc" id="L257">        this.left = Objects.requireNonNull(left, &quot;left&quot;);</span>
+<span class="fc" id="L258">        this.right = Objects.requireNonNull(right, &quot;right&quot;);</span>
+<span class="fc" id="L259">        this.diffs = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L260">        this.toStringFormat = toStringFormat;</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        this.style = style != null ? style : ToStringStyle.DEFAULT_STYLE;</span>
+        // Don't compare any fields if objects equal
+<span class="fc bfc" id="L263" title="All 4 branches covered.">        this.equals = testObjectsEquals &amp;&amp; Objects.equals(left, right);</span>
+<span class="fc" id="L264">    }</span>
+
+    private &lt;F&gt; DiffBuilder&lt;T&gt; add(final String fieldName, final Supplier&lt;F&gt; left, final Supplier&lt;F&gt; right, final Class&lt;F&gt; type) {
+<span class="fc" id="L267">        diffs.add(new SDiff&lt;&gt;(fieldName, left, right, type));</span>
+<span class="fc" id="L268">        return this;</span>
+    }
+
+    /**
+     * Tests if two {@code boolean}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code boolean}
+     * @param rhs       the right-hand side {@code boolean}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final boolean lhs, final boolean rhs) {
+<span class="fc bfc" id="L281" title="All 4 branches covered.">        return equals || lhs == rhs ? this : add(fieldName, () -&gt; Boolean.valueOf(lhs), () -&gt; Boolean.valueOf(rhs), Boolean.class);</span>
+    }
+
+    /**
+     * Tests if two {@code boolean[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code boolean[]}
+     * @param rhs       the right-hand side {@code boolean[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final boolean[] lhs, final boolean[] rhs) {
+<span class="fc bfc" id="L294" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Boolean[].class);</span>
+    }
+
+    /**
+     * Tests if two {@code byte}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code byte}
+     * @param rhs       the right-hand side {@code byte}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final byte lhs, final byte rhs) {
+<span class="fc bfc" id="L307" title="All 4 branches covered.">        return equals || lhs == rhs ? this : add(fieldName, () -&gt; Byte.valueOf(lhs), () -&gt; Byte.valueOf(rhs), Byte.class);</span>
+    }
+
+    /**
+     * Tests if two {@code byte[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code byte[]}
+     * @param rhs       the right-hand side {@code byte[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final byte[] lhs, final byte[] rhs) {
+<span class="fc bfc" id="L320" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Byte[].class);</span>
+    }
+
+    /**
+     * Tests if two {@code char}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code char}
+     * @param rhs       the right-hand side {@code char}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final char lhs, final char rhs) {
+<span class="fc bfc" id="L333" title="All 4 branches covered.">        return equals || lhs == rhs ? this : add(fieldName, () -&gt; Character.valueOf(lhs), () -&gt; Character.valueOf(rhs), Character.class);</span>
+    }
+
+    /**
+     * Tests if two {@code char[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code char[]}
+     * @param rhs       the right-hand side {@code char[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final char[] lhs, final char[] rhs) {
+<span class="fc bfc" id="L346" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Character[].class);</span>
+    }
+
+    /**
+     * Appends diffs from another {@link DiffResult}.
+     *
+     * &lt;p&gt;
+     * Useful this method to compare properties which are themselves Diffable and would like to know which specific part of it is different.
+     * &lt;/p&gt;
+     *
+     * &lt;pre&gt;{@code
+     * public class Person implements Diffable&lt;Person&gt; {
+     *   String name;
+     *   Address address; // implements Diffable&lt;Address&gt;
+     *
+     *   ...
+     *
+     *   public DiffResult diff(Person obj) {
+     *     return new DiffBuilder(this, obj, ToStringStyle.SHORT_PREFIX_STYLE)
+     *       .append(&quot;name&quot;, this.name, obj.name)
+     *       .append(&quot;address&quot;, this.address.diff(obj.address))
+     *       .build();
+     *   }
+     * }
+     * }
+     * &lt;/pre&gt;
+     *
+     * @param fieldName  the field name
+     * @param diffResult the {@link DiffResult} to append
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null} or diffResult is {@code null}
+     * @since 3.5
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final DiffResult&lt;?&gt; diffResult) {
+<span class="fc" id="L380">        Objects.requireNonNull(diffResult, &quot;diffResult&quot;);</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        if (equals) {</span>
+<span class="fc" id="L382">            return this;</span>
+        }
+<span class="fc" id="L384">        diffResult.getDiffs().forEach(diff -&gt; append(fieldName + &quot;.&quot; + diff.getFieldName(), diff.getLeft(), diff.getRight()));</span>
+<span class="fc" id="L385">        return this;</span>
+    }
+
+    /**
+     * Tests if two {@code double}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code double}
+     * @param rhs       the right-hand side {@code double}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final double lhs, final double rhs) {
+<span class="fc bfc" id="L398" title="All 4 branches covered.">        return equals || Double.doubleToLongBits(lhs) == Double.doubleToLongBits(rhs) ? this</span>
+<span class="fc" id="L399">                : add(fieldName, () -&gt; Double.valueOf(lhs), () -&gt; Double.valueOf(rhs), Double.class);</span>
+    }
+
+    /**
+     * Tests if two {@code double[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code double[]}
+     * @param rhs       the right-hand side {@code double[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final double[] lhs, final double[] rhs) {
+<span class="fc bfc" id="L412" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Double[].class);</span>
+    }
+
+    /**
+     * Test if two {@code float}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code float}
+     * @param rhs       the right-hand side {@code float}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final float lhs, final float rhs) {
+<span class="fc bfc" id="L425" title="All 4 branches covered.">        return equals || Float.floatToIntBits(lhs) == Float.floatToIntBits(rhs) ? this</span>
+<span class="fc" id="L426">                : add(fieldName, () -&gt; Float.valueOf(lhs), () -&gt; Float.valueOf(rhs), Float.class);</span>
+    }
+
+    /**
+     * Tests if two {@code float[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code float[]}
+     * @param rhs       the right-hand side {@code float[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final float[] lhs, final float[] rhs) {
+<span class="fc bfc" id="L439" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Float[].class);</span>
+    }
+
+    /**
+     * Tests if two {@code int}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code int}
+     * @param rhs       the right-hand side {@code int}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final int lhs, final int rhs) {
+<span class="fc bfc" id="L452" title="All 4 branches covered.">        return equals || lhs == rhs ? this : add(fieldName, () -&gt; Integer.valueOf(lhs), () -&gt; Integer.valueOf(rhs), Integer.class);</span>
+    }
+
+    /**
+     * Tests if two {@code int[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code int[]}
+     * @param rhs       the right-hand side {@code int[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final int[] lhs, final int[] rhs) {
+<span class="fc bfc" id="L465" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Integer[].class);</span>
+    }
+
+    /**
+     * Tests if two {@code long}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code long}
+     * @param rhs       the right-hand side {@code long}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final long lhs, final long rhs) {
+<span class="fc bfc" id="L478" title="All 4 branches covered.">        return equals || lhs == rhs ? this : add(fieldName, () -&gt; Long.valueOf(lhs), () -&gt; Long.valueOf(rhs), Long.class);</span>
+    }
+
+    /**
+     * Tests if two {@code long[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code long[]}
+     * @param rhs       the right-hand side {@code long[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final long[] lhs, final long[] rhs) {
+<span class="fc bfc" id="L491" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Long[].class);</span>
+    }
+
+    /**
+     * Tests if two {@link Objects}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@link Object}
+     * @param rhs       the right-hand side {@link Object}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final Object lhs, final Object rhs) {
+<span class="fc bfc" id="L504" title="All 4 branches covered.">        if (equals || lhs == rhs) {</span>
+<span class="fc" id="L505">            return this;</span>
+        }
+        // rhs cannot be null, as lhs != rhs
+<span class="fc bfc" id="L508" title="All 2 branches covered.">        final Object test = lhs != null ? lhs : rhs;</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        if (ObjectUtils.isArray(test)) {</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">            if (test instanceof boolean[]) {</span>
+<span class="fc" id="L511">                return append(fieldName, (boolean[]) lhs, (boolean[]) rhs);</span>
+            }
+<span class="fc bfc" id="L513" title="All 2 branches covered.">            if (test instanceof byte[]) {</span>
+<span class="fc" id="L514">                return append(fieldName, (byte[]) lhs, (byte[]) rhs);</span>
+            }
+<span class="fc bfc" id="L516" title="All 2 branches covered.">            if (test instanceof char[]) {</span>
+<span class="fc" id="L517">                return append(fieldName, (char[]) lhs, (char[]) rhs);</span>
+            }
+<span class="fc bfc" id="L519" title="All 2 branches covered.">            if (test instanceof double[]) {</span>
+<span class="fc" id="L520">                return append(fieldName, (double[]) lhs, (double[]) rhs);</span>
+            }
+<span class="fc bfc" id="L522" title="All 2 branches covered.">            if (test instanceof float[]) {</span>
+<span class="fc" id="L523">                return append(fieldName, (float[]) lhs, (float[]) rhs);</span>
+            }
+<span class="fc bfc" id="L525" title="All 2 branches covered.">            if (test instanceof int[]) {</span>
+<span class="fc" id="L526">                return append(fieldName, (int[]) lhs, (int[]) rhs);</span>
+            }
+<span class="fc bfc" id="L528" title="All 2 branches covered.">            if (test instanceof long[]) {</span>
+<span class="fc" id="L529">                return append(fieldName, (long[]) lhs, (long[]) rhs);</span>
+            }
+<span class="fc bfc" id="L531" title="All 2 branches covered.">            if (test instanceof short[]) {</span>
+<span class="fc" id="L532">                return append(fieldName, (short[]) lhs, (short[]) rhs);</span>
+            }
+<span class="fc" id="L534">            return append(fieldName, (Object[]) lhs, (Object[]) rhs);</span>
+        }
+        // Not array type
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        return Objects.equals(lhs, rhs) ? this : add(fieldName, () -&gt; lhs, () -&gt; rhs, Object.class);</span>
+    }
+
+    /**
+     * Tests if two {@code Object[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code Object[]}
+     * @param rhs       the right-hand side {@code Object[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final Object[] lhs, final Object[] rhs) {
+<span class="fc bfc" id="L550" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; lhs, () -&gt; rhs, Object[].class);</span>
+    }
+
+    /**
+     * Tests if two {@code short}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code short}
+     * @param rhs       the right-hand side {@code short}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final short lhs, final short rhs) {
+<span class="fc bfc" id="L563" title="All 4 branches covered.">        return equals || lhs == rhs ? this : add(fieldName, () -&gt; Short.valueOf(lhs), () -&gt; Short.valueOf(rhs), Short.class);</span>
+    }
+
+    /**
+     * Tests if two {@code short[]}s are equal.
+     *
+     * @param fieldName the field name
+     * @param lhs       the left-hand side {@code short[]}
+     * @param rhs       the right-hand side {@code short[]}
+     * @return {@code this} instance.
+     * @throws NullPointerException if field name is {@code null}
+     */
+    public DiffBuilder&lt;T&gt; append(final String fieldName, final short[] lhs, final short[] rhs) {
+<span class="fc bfc" id="L576" title="All 4 branches covered.">        return equals || Arrays.equals(lhs, rhs) ? this : add(fieldName, () -&gt; ArrayUtils.toObject(lhs), () -&gt; ArrayUtils.toObject(rhs), Short[].class);</span>
+    }
+
+    /**
+     * Builds a {@link DiffResult} based on the differences appended to this builder.
+     *
+     * @return a {@link DiffResult} containing the differences between the two objects.
+     */
+    @Override
+    public DiffResult&lt;T&gt; build() {
+<span class="fc" id="L586">        return new DiffResult&lt;&gt;(left, right, diffs, style, toStringFormat);</span>
+    }
+
+    /**
+     * Gets the left object.
+     *
+     * @return the left object.
+     */
+    T getLeft() {
+<span class="fc" id="L595">        return left;</span>
+    }
+
+    /**
+     * Gets the right object.
+     *
+     * @return the right object.
+     */
+    T getRight() {
+<span class="fc" id="L604">        return right;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

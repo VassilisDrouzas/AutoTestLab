@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultBeanFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.beanutils</a> &gt; <span class="el_source">DefaultBeanFactory.java</span></div><h1>DefaultBeanFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.beanutils;
+
+import java.lang.reflect.Constructor;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+
+import org.apache.commons.configuration2.convert.ConversionHandler;
+import org.apache.commons.configuration2.convert.DefaultConversionHandler;
+import org.apache.commons.configuration2.ex.ConfigurationRuntimeException;
+
+/**
+ * &lt;p&gt;
+ * The default implementation of the {@code BeanFactory} interface.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class creates beans of arbitrary types using reflection. Each time the {@code createBean()} method is invoked, a
+ * new bean instance is created. A default bean class is not supported.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For data type conversions (which may be needed before invoking methods through reflection to ensure that the current
+ * parameters match their declared types) a {@link ConversionHandler} object is used. An instance of this class can be
+ * passed to the constructor. Alternatively, a default {@code ConversionHandler} instance is used.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this factory class will be set as the default bean factory for the {@link BeanHelper} class. This
+ * means that if not bean factory is specified in a {@link BeanDeclaration}, this default instance will be used.
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ */
+public class DefaultBeanFactory implements BeanFactory {
+
+    /** Stores the default instance of this class. */
+<span class="fc" id="L52">    public static final DefaultBeanFactory INSTANCE = new DefaultBeanFactory();</span>
+
+    /** A format string for generating error messages for constructor matching. */
+    private static final String FMT_CTOR_ERROR = &quot;%s! Bean class = %s, constructor arguments = %s&quot;;
+
+    /**
+     * Checks whether exactly one matching constructor was found. Throws a meaningful exception if there
+     * is not a single matching constructor.
+     *
+     * @param beanClass the bean class
+     * @param data the bean declaration
+     * @param matchingConstructors the list with matching constructors
+     * @throws ConfigurationRuntimeException if there is not exactly one match
+     */
+    private static &lt;T&gt; void checkSingleMatchingConstructor(final Class&lt;T&gt; beanClass, final BeanDeclaration data,
+        final List&lt;Constructor&lt;T&gt;&gt; matchingConstructors) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (matchingConstructors.isEmpty()) {</span>
+<span class="fc" id="L69">            throw constructorMatchingException(beanClass, data, &quot;No matching constructor found&quot;);</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (matchingConstructors.size() &gt; 1) {</span>
+<span class="fc" id="L72">            throw constructorMatchingException(beanClass, data, &quot;Multiple matching constructors found&quot;);</span>
+        }
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * Constructs an exception if no single matching constructor was found with a meaningful error message.
+     *
+     * @param beanClass the affected bean class
+     * @param data the bean declaration
+     * @param msg an error message
+     * @return the exception with the error message
+     */
+    private static ConfigurationRuntimeException constructorMatchingException(final Class&lt;?&gt; beanClass, final BeanDeclaration data, final String msg) {
+<span class="fc" id="L85">        return new ConfigurationRuntimeException(FMT_CTOR_ERROR, msg, beanClass.getName(), getConstructorArgs(data).toString());</span>
+    }
+
+    /**
+     * Evaluates constructor arguments in the specified {@code BeanDeclaration} and tries to find a unique matching
+     * constructor. If this is not possible, an exception is thrown. Note: This method is intended to be used by concrete
+     * {@link BeanFactory} implementations and not by client code.
+     *
+     * @param beanClass the class of the bean to be created
+     * @param data the current {@code BeanDeclaration}
+     * @param &lt;T&gt; the type of the bean to be created
+     * @return the single matching constructor
+     * @throws ConfigurationRuntimeException if no single matching constructor can be found
+     * @throws NullPointerException if the bean class or bean declaration are &lt;b&gt;null&lt;/b&gt;
+     */
+    protected static &lt;T&gt; Constructor&lt;T&gt; findMatchingConstructor(final Class&lt;T&gt; beanClass, final BeanDeclaration data) {
+<span class="fc" id="L101">        final List&lt;Constructor&lt;T&gt;&gt; matchingConstructors = findMatchingConstructors(beanClass, data);</span>
+<span class="fc" id="L102">        checkSingleMatchingConstructor(beanClass, data, matchingConstructors);</span>
+<span class="fc" id="L103">        return matchingConstructors.get(0);</span>
+    }
+
+    /**
+     * Returns a list with all constructors which are compatible with the constructor arguments specified by the given
+     * {@code BeanDeclaration}.
+     *
+     * @param beanClass the bean class to be instantiated
+     * @param data the current {@code BeanDeclaration}
+     * @return a list with all matching constructors
+     */
+    private static &lt;T&gt; List&lt;Constructor&lt;T&gt;&gt; findMatchingConstructors(final Class&lt;T&gt; beanClass, final BeanDeclaration data) {
+<span class="fc" id="L115">        final List&lt;Constructor&lt;T&gt;&gt; result = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L116">        final Collection&lt;ConstructorArg&gt; args = getConstructorArgs(data);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (final Constructor&lt;?&gt; ctor : beanClass.getConstructors()) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (matchesConstructor(ctor, args)) {</span>
+                // cast should be okay according to the Javadocs of
+                // getConstructors()
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L122">                final Constructor&lt;T&gt; match = (Constructor&lt;T&gt;) ctor;</span>
+<span class="fc" id="L123">                result.add(match);</span>
+            }
+        }
+<span class="fc" id="L126">        return result;</span>
+    }
+
+    /**
+     * Gets constructor arguments from a bean declaration. Deals with &lt;b&gt;null&lt;/b&gt; values.
+     *
+     * @param data the bean declaration
+     * @return the collection with constructor arguments (never &lt;b&gt;null&lt;/b&gt;)
+     */
+    private static Collection&lt;ConstructorArg&gt; getConstructorArgs(final BeanDeclaration data) {
+<span class="fc" id="L136">        Collection&lt;ConstructorArg&gt; args = data.getConstructorArgs();</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (args == null) {</span>
+<span class="fc" id="L138">            args = Collections.emptySet();</span>
+        }
+<span class="fc" id="L140">        return args;</span>
+    }
+
+    /**
+     * Checks whether the given constructor is compatible with the given list of arguments.
+     *
+     * @param ctor the constructor to be checked
+     * @param args the collection of constructor arguments
+     * @return a flag whether this constructor is compatible with the given arguments
+     */
+    private static boolean matchesConstructor(final Constructor&lt;?&gt; ctor, final Collection&lt;ConstructorArg&gt; args) {
+<span class="fc" id="L151">        final Class&lt;?&gt;[] types = ctor.getParameterTypes();</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (types.length != args.size()) {</span>
+<span class="fc" id="L153">            return false;</span>
+        }
+
+<span class="fc" id="L156">        int idx = 0;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        for (final ConstructorArg arg : args) {</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (!arg.matches(types[idx++])) {</span>
+<span class="fc" id="L159">                return false;</span>
+            }
+<span class="fc" id="L161">        }</span>
+
+<span class="fc" id="L163">        return true;</span>
+    }
+
+    /**
+     * Fetches constructor arguments from the given bean declaration. Handles &lt;b&gt;null&lt;/b&gt; values safely.
+     *
+     * @param data the bean declaration
+     * @return the collection with constructor arguments (never &lt;b&gt;null&lt;/b&gt;)
+     */
+    private static Collection&lt;ConstructorArg&gt; nullSafeConstructorArgs(final BeanDeclaration data) {
+<span class="fc" id="L173">        Collection&lt;ConstructorArg&gt; args = data.getConstructorArgs();</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (args == null) {</span>
+<span class="fc" id="L175">            args = Collections.emptySet();</span>
+        }
+<span class="fc" id="L177">        return args;</span>
+    }
+
+    /** The conversion handler used by this instance. */
+    private final ConversionHandler conversionHandler;
+
+    /**
+     * Constructs a new instance of {@code DefaultBeanFactory} using a default {@code ConversionHandler}.
+     */
+    public DefaultBeanFactory() {
+<span class="fc" id="L187">        this(null);</span>
+<span class="fc" id="L188">    }</span>
+
+    /**
+     * Constructs a new instance of {@code DefaultBeanFactory} using the specified {@code ConversionHandler} for data type
+     * conversions.
+     *
+     * @param convHandler the {@code ConversionHandler}; can be &lt;b&gt;null&lt;/b&gt;, then a default handler is used
+     * @since 2.0
+     */
+<span class="fc" id="L197">    public DefaultBeanFactory(final ConversionHandler convHandler) {</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        conversionHandler = convHandler != null ? convHandler : DefaultConversionHandler.INSTANCE;</span>
+<span class="fc" id="L199">    }</span>
+
+    /**
+     * Creates a new bean instance. This implementation delegates to the protected methods {@code createBeanInstance()} and
+     * {@code initBeanInstance()} for creating and initializing the bean. This makes it easier for derived classes that need
+     * to change specific functionality of the base class.
+     *
+     * @param bcc the context object defining the bean to be created
+     * @return the new bean instance
+     * @throws Exception if an error occurs
+     */
+    @Override
+    public Object createBean(final BeanCreationContext bcc) throws Exception {
+<span class="fc" id="L212">        final Object result = createBeanInstance(bcc);</span>
+<span class="fc" id="L213">        initBeanInstance(result, bcc);</span>
+<span class="fc" id="L214">        return result;</span>
+    }
+
+    /**
+     * Creates the bean instance. This method is called by {@code createBean()}. It uses reflection to create a new instance
+     * of the specified class.
+     *
+     * @param bcc the context object defining the bean to be created
+     * @return the new bean instance
+     * @throws Exception if an error occurs
+     */
+    protected Object createBeanInstance(final BeanCreationContext bcc) throws Exception {
+<span class="fc" id="L226">        final Constructor&lt;?&gt; ctor = findMatchingConstructor(bcc.getBeanClass(), bcc.getBeanDeclaration());</span>
+<span class="fc" id="L227">        final Object[] args = fetchConstructorArgs(ctor, bcc);</span>
+<span class="fc" id="L228">        return ctor.newInstance(args);</span>
+    }
+
+    /**
+     * Obtains the arguments for a constructor call to create a bean. This method resolves nested bean declarations and
+     * performs necessary type conversions.
+     *
+     * @param ctor the constructor to be invoked
+     * @param bcc the context object defining the bean to be created
+     * @return an array with constructor arguments
+     */
+    private Object[] fetchConstructorArgs(final Constructor&lt;?&gt; ctor, final BeanCreationContext bcc) {
+<span class="fc" id="L240">        final Class&lt;?&gt;[] types = ctor.getParameterTypes();</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        assert types.length == nullSafeConstructorArgs(bcc.getBeanDeclaration()).size() : &quot;Wrong number of constructor arguments!&quot;;</span>
+<span class="fc" id="L242">        final Object[] args = new Object[types.length];</span>
+<span class="fc" id="L243">        int idx = 0;</span>
+
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        for (final ConstructorArg arg : nullSafeConstructorArgs(bcc.getBeanDeclaration())) {</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">            final Object val = arg.isNestedBeanDeclaration() ? bcc.createBean(arg.getBeanDeclaration()) : arg.getValue();</span>
+<span class="fc" id="L247">            args[idx] = getConversionHandler().to(val, types[idx], null);</span>
+<span class="fc" id="L248">            idx++;</span>
+<span class="fc" id="L249">        }</span>
+
+<span class="fc" id="L251">        return args;</span>
+    }
+
+    /**
+     * Gets the {@code ConversionHandler} used by this object.
+     *
+     * @return the {@code ConversionHandler}
+     * @since 2.0
+     */
+    public ConversionHandler getConversionHandler() {
+<span class="fc" id="L261">        return conversionHandler;</span>
+    }
+
+    /**
+     * Gets the default bean class used by this factory. This is always &lt;b&gt;null&lt;/b&gt; for this implementation.
+     *
+     * @return the default bean class
+     */
+    @Override
+    public Class&lt;?&gt; getDefaultBeanClass() {
+<span class="fc" id="L271">        return null;</span>
+    }
+
+    /**
+     * Initializes the newly created bean instance. This method is called by {@code createBean()}. It calls the
+     * {@code initBean()} method of the context object for performing the initialization.
+     *
+     * @param bean the newly created bean instance
+     * @param bcc the context object defining the bean to be created
+     * @throws Exception if an error occurs
+     */
+    protected void initBeanInstance(final Object bean, final BeanCreationContext bcc) throws Exception {
+<span class="fc" id="L283">        bcc.initBean(bean, bcc.getBeanDeclaration());</span>
+<span class="fc" id="L284">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

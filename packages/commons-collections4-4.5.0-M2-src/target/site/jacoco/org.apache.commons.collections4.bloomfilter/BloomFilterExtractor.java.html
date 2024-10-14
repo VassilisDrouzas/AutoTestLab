@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BloomFilterExtractor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.bloomfilter</a> &gt; <span class="el_source">BloomFilterExtractor.java</span></div><h1>BloomFilterExtractor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.bloomfilter;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
+
+/**
+ * Produces Bloom filters from a collection (e.g. LayeredBloomFilter).
+ *
+ * @since 4.5
+ */
+@FunctionalInterface
+public interface BloomFilterExtractor {
+
+    /**
+     * Creates a BloomFilterExtractor from an array of Bloom filters.
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;The asBloomFilterArray() method returns a copy of the original array
+     * with references to the original filters.&lt;/li&gt;
+     * &lt;li&gt;The forEachBloomFilterPair() method uses references to the original filters.&lt;/li&gt;
+     * &lt;/ul&gt;
+     * &lt;p&gt;&lt;em&gt;All modifications to the Bloom filters are reflected in the original filters&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param filters The filters to be returned by the extractor.
+     * @return THe BloomFilterExtractor containing the filters.
+     */
+    static BloomFilterExtractor fromBloomFilterArray(final BloomFilter... filters) {
+<span class="fc" id="L47">        Objects.requireNonNull(filters, &quot;filters&quot;);</span>
+<span class="fc" id="L48">        return new BloomFilterExtractor() {</span>
+            /**
+             * This implementation returns a copy the original array, the contained Bloom filters
+             * are references to the originals, any modifications to them are reflected in the original
+             * filters.
+             */
+            @Override
+            public BloomFilter[] asBloomFilterArray() {
+<span class="fc" id="L56">                return filters.clone();</span>
+            }
+
+            @Override
+            public boolean processBloomFilters(final Predicate&lt;BloomFilter&gt; predicate) {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                for (final BloomFilter filter : filters) {</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                    if (!predicate.test(filter)) {</span>
+<span class="fc" id="L63">                        return false;</span>
+                    }
+                }
+<span class="fc" id="L66">                return true;</span>
+            }
+
+            /**
+             * This implementation uses references to the original filters.  Any modifications to the
+             * filters are reflected in the originals.
+             */
+            @Override
+            public boolean processBloomFilterPair(final BloomFilterExtractor other,
+                                                  final BiPredicate&lt;BloomFilter, BloomFilter&gt; func) {
+<span class="fc" id="L76">                final CountingPredicate&lt;BloomFilter&gt; p = new CountingPredicate&lt;&gt;(filters, func);</span>
+<span class="fc bfc" id="L77" title="All 4 branches covered.">                return other.processBloomFilters(p) &amp;&amp; p.processRemaining();</span>
+            }
+        };
+    }
+
+    /**
+     * Return an array of the Bloom filters in the collection.
+     * &lt;p&gt;&lt;em&gt;Implementations should specify if the array contains deep copies, immutable instances,
+     * or references to the filters in the collection.&lt;/em&gt;&lt;/p&gt;
+     * &lt;p&gt;The default method returns a deep copy of the enclosed filters.&lt;/p&gt;
+     *
+     * @return An array of Bloom filters.
+     */
+    default BloomFilter[] asBloomFilterArray() {
+<span class="fc" id="L91">        final List&lt;BloomFilter&gt; filters = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L92">        processBloomFilters(f -&gt; filters.add(f.copy()));</span>
+<span class="fc" id="L93">        return filters.toArray(new BloomFilter[0]);</span>
+    }
+
+    /**
+     * Create a standard (non-layered) Bloom filter by merging all of the layers. If
+     * the filter is empty this method will return an empty Bloom filter.
+     *
+     * @return the merged bloom filter.
+     */
+    default BloomFilter flatten() {
+<span class="fc" id="L103">        final BloomFilter[] bf = {null};</span>
+<span class="fc" id="L104">        processBloomFilters(x -&gt; {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (bf[0] == null) {</span>
+<span class="fc" id="L106">                bf[0] = new SimpleBloomFilter( x.getShape());</span>
+            }
+<span class="fc" id="L108">            return bf[0].merge( x );</span>
+        });
+<span class="fc" id="L110">        return bf[0];</span>
+    }
+
+    /**
+     * Executes a Bloom filter Predicate on each Bloom filter in the collection. The
+     * ordering of the Bloom filters is not specified by this interface.
+     *
+     * @param bloomFilterPredicate the predicate to evaluate each Bloom filter with.
+     * @return {@code false} when the first filter fails the predicate test. Returns
+     *         {@code true} if all filters pass the test.
+     */
+    boolean processBloomFilters(Predicate&lt;BloomFilter&gt; bloomFilterPredicate);
+
+    /**
+     * Applies the {@code func} to each Bloom filter pair in order. Will apply all
+     * of the Bloom filters from the other BloomFilterExtractor to this extractor. If
+     * either {@code this} extractor or {@code other} extractor has fewer BloomFilters
+     * ths method will provide {@code null} for all excess calls to the {@code func}.
+     *
+     * &lt;p&gt;&lt;em&gt;This implementation returns references to the Bloom filter.  Other implementations
+     * should specify if the array contains deep copies, immutable instances,
+     * or references to the filters in the collection.&lt;/em&gt;&lt;/p&gt;
+     *
+     * @param other The other BloomFilterExtractor that provides the y values in the
+     *              (x,y) pair.
+     * @param func  The function to apply.
+     * @return {@code true} if the {@code func} returned {@code true} for every pair,
+     *         {@code false} otherwise.
+     */
+    default boolean processBloomFilterPair(final BloomFilterExtractor other,
+                                           final BiPredicate&lt;BloomFilter, BloomFilter&gt; func) {
+<span class="fc" id="L141">        final CountingPredicate&lt;BloomFilter&gt; p = new CountingPredicate&lt;&gt;(asBloomFilterArray(), func);</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">        return other.processBloomFilters(p) &amp;&amp; p.processRemaining();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

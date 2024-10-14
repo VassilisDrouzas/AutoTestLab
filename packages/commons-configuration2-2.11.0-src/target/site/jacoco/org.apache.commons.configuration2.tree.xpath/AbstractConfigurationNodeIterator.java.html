@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractConfigurationNodeIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree.xpath</a> &gt; <span class="el_source">AbstractConfigurationNodeIterator.java</span></div><h1>AbstractConfigurationNodeIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree.xpath;
+
+import org.apache.commons.configuration2.tree.NodeHandler;
+import org.apache.commons.jxpath.ri.QName;
+import org.apache.commons.jxpath.ri.model.NodeIterator;
+import org.apache.commons.jxpath.ri.model.NodePointer;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * &lt;p&gt;
+ * A base class for implementing iterators over configuration nodes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class already provides common functionality for implementing the iteration process. Derived classes will
+ * implement specific behavior based on the concrete node type (child node or attribute node).
+ * &lt;/p&gt;
+ *
+ * @since 1.3
+ * @param &lt;T&gt; the type of the nodes this iterator deals with
+ */
+abstract class AbstractConfigurationNodeIterator&lt;T&gt; implements NodeIterator {
+    /** Constant for the prefix separator. */
+    private static final String PREFIX_SEPARATOR = &quot;:&quot;;
+
+    /** A format for constructing a node name with a namespace prefix. */
+    private static final String FMT_NAMESPACE = &quot;%s&quot; + PREFIX_SEPARATOR + &quot;%s&quot;;
+
+    /**
+     * Generates a qualified name with a namespace prefix.
+     *
+     * @param prefix the prefix
+     * @param name the name (may be &lt;b&gt;null&lt;/b&gt;)
+     * @return the qualified name
+     */
+    protected static String prefixName(final String prefix, final String name) {
+<span class="fc" id="L52">        return String.format(FMT_NAMESPACE, prefix, StringUtils.defaultString(name));</span>
+    }
+
+    /**
+     * Returns the qualified name from the given {@code QName}. If the name has no namespace, result is the simple name.
+     * Otherwise, the namespace prefix is added.
+     *
+     * @param name the {@code QName}
+     * @return the qualified name
+     */
+    protected static String qualifiedName(final QName name) {
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        return name.getPrefix() == null ? name.getName() : prefixName(name.getPrefix(), name.getName());</span>
+    }
+
+    /** Stores the parent node pointer. */
+    private final ConfigurationNodePointer&lt;T&gt; parent;
+
+    /** Stores the current position. */
+    private int position;
+
+    /** Stores the start offset of the iterator. */
+    private int startOffset;
+
+    /** Stores the reverse flag. */
+    private final boolean reverse;
+
+    /**
+     * Creates a new instance of {@code ConfigurationNodeIteratorBase} and initializes it.
+     *
+     * @param parent the parent pointer
+     * @param reverse the reverse flag
+     */
+<span class="fc" id="L84">    protected AbstractConfigurationNodeIterator(final ConfigurationNodePointer&lt;T&gt; parent, final boolean reverse) {</span>
+<span class="fc" id="L85">        this.parent = parent;</span>
+<span class="fc" id="L86">        this.reverse = reverse;</span>
+<span class="fc" id="L87">    }</span>
+
+    /**
+     * Creates the configuration node pointer for the current position. This method is called by {@code getNodePointer()}.
+     * Derived classes must create the correct pointer object.
+     *
+     * @param position the current position in the iteration
+     * @return the node pointer
+     */
+    protected abstract NodePointer createNodePointer(int position);
+
+    /**
+     * Gets the maximum position for this iterator.
+     *
+     * @return the maximum allowed position
+     */
+    protected int getMaxPosition() {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        return reverse ? getStartOffset() + 1 : size() - getStartOffset();</span>
+    }
+
+    /**
+     * Gets the node handler for the managed nodes. This is a convenience method.
+     *
+     * @return the node handler
+     */
+    protected NodeHandler&lt;T&gt; getNodeHandler() {
+<span class="fc" id="L113">        return getParent().getNodeHandler();</span>
+    }
+
+    /**
+     * Gets the current node pointer.
+     *
+     * @return the current pointer in this iteration
+     */
+    @Override
+    public NodePointer getNodePointer() {
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">        if (getPosition() &lt; 1 &amp;&amp; !setPosition(1)) {</span>
+<span class="fc" id="L124">            return null;</span>
+        }
+
+<span class="fc" id="L127">        return createNodePointer(positionToIndex(getPosition()));</span>
+    }
+
+    /**
+     * Gets the parent node pointer.
+     *
+     * @return the parent node pointer
+     */
+    protected ConfigurationNodePointer&lt;T&gt; getParent() {
+<span class="fc" id="L136">        return parent;</span>
+    }
+
+    /**
+     * Gets the position of the iteration.
+     *
+     * @return the position
+     */
+    @Override
+    public int getPosition() {
+<span class="fc" id="L146">        return position;</span>
+    }
+
+    /**
+     * Gets the start offset of the iteration.
+     *
+     * @return the start offset
+     */
+    protected int getStartOffset() {
+<span class="fc" id="L155">        return startOffset;</span>
+    }
+
+    /**
+     * Returns the index in the data list for the given position. This method also checks the reverse flag.
+     *
+     * @param pos the position (1-based)
+     * @return the corresponding list index
+     */
+    protected int positionToIndex(final int pos) {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        return (reverse ? 1 - pos : pos - 1) + getStartOffset();</span>
+    }
+
+    /**
+     * Sets the position of the iteration.
+     *
+     * @param pos the new position
+     * @return a flag if this is a valid position
+     */
+    @Override
+    public boolean setPosition(final int pos) {
+<span class="fc" id="L176">        position = pos;</span>
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">        return pos &gt;= 1 &amp;&amp; pos &lt;= getMaxPosition();</span>
+    }
+
+    /**
+     * Sets the start offset of the iteration. This is used when a start element was set.
+     *
+     * @param startOffset the start offset
+     */
+    protected void setStartOffset(final int startOffset) {
+<span class="fc" id="L186">        this.startOffset = startOffset;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (reverse) {</span>
+<span class="fc" id="L188">            this.startOffset--;</span>
+        } else {
+<span class="fc" id="L190">            this.startOffset++;</span>
+        }
+<span class="fc" id="L192">    }</span>
+
+    /**
+     * Returns the number of elements in this iteration.
+     *
+     * @return the number of elements
+     */
+    protected abstract int size();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

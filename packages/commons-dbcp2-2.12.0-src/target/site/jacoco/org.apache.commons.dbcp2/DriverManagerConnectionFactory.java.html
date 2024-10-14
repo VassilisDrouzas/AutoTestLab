@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DriverManagerConnectionFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">DriverManagerConnectionFactory.java</span></div><h1>DriverManagerConnectionFactory.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Properties;
+
+/**
+ * A {@link DriverManager}-based implementation of {@link ConnectionFactory}.
+ *
+ * @since 2.0
+ */
+public class DriverManagerConnectionFactory implements ConnectionFactory {
+
+    static {
+        // Related to DBCP-212
+        // Driver manager does not sync loading of drivers that use the service
+        // provider interface. This will cause issues is multi-threaded
+        // environments. This hack makes sure the drivers are loaded before
+        // DBCP tries to use them.
+<span class="fc" id="L37">        DriverManager.getDrivers();</span>
+<span class="fc" id="L38">    }</span>
+
+    private final String connectionUri;
+
+    private final String userName;
+
+    private final char[] userPassword;
+
+    private final Properties properties;
+
+    /**
+     * Constructor for DriverManagerConnectionFactory.
+     *
+     * @param connectionUri
+     *            a database connection string of the form {@code  jdbc:&lt;em&gt;subprotocol&lt;/em&gt;:&lt;em&gt;subname&lt;/em&gt;}
+     * @since 2.2
+     */
+<span class="fc" id="L55">    public DriverManagerConnectionFactory(final String connectionUri) {</span>
+<span class="fc" id="L56">        this.connectionUri = connectionUri;</span>
+<span class="fc" id="L57">        this.properties = new Properties();</span>
+<span class="fc" id="L58">        this.userName = null;</span>
+<span class="fc" id="L59">        this.userPassword = null;</span>
+<span class="fc" id="L60">    }</span>
+
+    /**
+     * Constructor for DriverManagerConnectionFactory.
+     *
+     * @param connectionUri
+     *            a database connection string of the form {@code  jdbc:&lt;em&gt;subprotocol&lt;/em&gt;:&lt;em&gt;subname&lt;/em&gt;}
+     * @param properties
+     *            a list of arbitrary string tag/value pairs as connection arguments; normally at least a &quot;user&quot; and
+     *            &quot;password&quot; property should be included.
+     */
+<span class="fc" id="L71">    public DriverManagerConnectionFactory(final String connectionUri, final Properties properties) {</span>
+<span class="fc" id="L72">        this.connectionUri = connectionUri;</span>
+<span class="fc" id="L73">        this.properties = properties;</span>
+<span class="fc" id="L74">        this.userName = null;</span>
+<span class="fc" id="L75">        this.userPassword = null;</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Constructor for DriverManagerConnectionFactory.
+     *
+     * @param connectionUri
+     *            a database connection string of the form {@code jdbc:&lt;em&gt;subprotocol&lt;/em&gt;:&lt;em&gt;subname&lt;/em&gt;}
+     * @param userName
+     *            the database user
+     * @param userPassword
+     *            the user's password
+     */
+    public DriverManagerConnectionFactory(final String connectionUri, final String userName,
+<span class="fc" id="L89">            final char[] userPassword) {</span>
+<span class="fc" id="L90">        this.connectionUri = connectionUri;</span>
+<span class="fc" id="L91">        this.userName = userName;</span>
+<span class="fc" id="L92">        this.userPassword = Utils.clone(userPassword);</span>
+<span class="fc" id="L93">        this.properties = null;</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Constructor for DriverManagerConnectionFactory.
+     *
+     * @param connectionUri
+     *            a database connection string of the form {@code jdbc:&lt;em&gt;subprotocol&lt;/em&gt;:&lt;em&gt;subname&lt;/em&gt;}
+     * @param userName
+     *            the database user
+     * @param userPassword
+     *            the user's password
+     */
+    public DriverManagerConnectionFactory(final String connectionUri, final String userName,
+<span class="fc" id="L107">            final String userPassword) {</span>
+<span class="fc" id="L108">        this.connectionUri = connectionUri;</span>
+<span class="fc" id="L109">        this.userName = userName;</span>
+<span class="fc" id="L110">        this.userPassword =  Utils.toCharArray(userPassword);</span>
+<span class="fc" id="L111">        this.properties = null;</span>
+<span class="fc" id="L112">    }</span>
+
+    @Override
+    public Connection createConnection() throws SQLException {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (null == properties) {</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">            if (userName == null &amp;&amp; userPassword == null) {</span>
+<span class="fc" id="L118">                return DriverManager.getConnection(connectionUri);</span>
+            }
+<span class="fc" id="L120">            return DriverManager.getConnection(connectionUri, userName, Utils.toString(userPassword));</span>
+        }
+<span class="fc" id="L122">        return DriverManager.getConnection(connectionUri, properties);</span>
+    }
+
+    /**
+     * @return The connection URI.
+     * @since 2.6.0
+     */
+    public String getConnectionUri() {
+<span class="nc" id="L130">        return connectionUri;</span>
+    }
+
+    /**
+     * @return The Properties.
+     * @since 2.6.0
+     */
+    public Properties getProperties() {
+<span class="nc" id="L138">        return properties;</span>
+    }
+
+    /**
+     * @return The user name.
+     * @since 2.6.0
+     */
+    public String getUserName() {
+<span class="nc" id="L146">        return userName;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

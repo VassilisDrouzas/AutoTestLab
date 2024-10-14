@@ -1,0 +1,554 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractMapMultiSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.multiset</a> &gt; <span class="el_source">AbstractMapMultiSet.java</span></div><h1>AbstractMapMultiSet.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.multiset;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.Array;
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
+import java.util.Map;
+
+import org.apache.commons.collections4.MultiSet;
+import org.apache.commons.collections4.iterators.AbstractIteratorDecorator;
+
+/**
+ * Abstract implementation of the {@link MultiSet} interface to simplify the
+ * creation of subclass implementations.
+ * &lt;p&gt;
+ * Subclasses specify a Map implementation to use as the internal storage. The
+ * map will be used to map multiset elements to a number; the number represents the
+ * number of occurrences of that element in the multiset.
+ * &lt;/p&gt;
+ *
+ * @param &lt;E&gt; the type held in the multiset
+ * @since 4.1
+ */
+public abstract class AbstractMapMultiSet&lt;E&gt; extends AbstractMultiSet&lt;E&gt; {
+
+    /**
+     * Inner class EntrySetIterator.
+     */
+    protected static class EntrySetIterator&lt;E&gt; implements Iterator&lt;Entry&lt;E&gt;&gt; {
+
+        /** The parent map */
+        protected final AbstractMapMultiSet&lt;E&gt; parent;
+
+        protected final Iterator&lt;Map.Entry&lt;E, MutableInteger&gt;&gt; decorated;
+
+        /** The last returned entry */
+        protected Entry&lt;E&gt; last;
+
+        /** Whether remove is allowed at present */
+        protected boolean canRemove;
+
+        /**
+         * Constructs a new instance.
+         * @param iterator  the iterator to decorate
+         * @param parent  the parent multiset
+         */
+        protected EntrySetIterator(final Iterator&lt;Map.Entry&lt;E, MutableInteger&gt;&gt; iterator,
+<span class="fc" id="L66">                                   final AbstractMapMultiSet&lt;E&gt; parent) {</span>
+<span class="fc" id="L67">            this.decorated = iterator;</span>
+<span class="fc" id="L68">            this.parent = parent;</span>
+<span class="fc" id="L69">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc" id="L73">            return decorated.hasNext();</span>
+        }
+
+        @Override
+        public Entry&lt;E&gt; next() {
+<span class="fc" id="L78">            last = new MultiSetEntry&lt;&gt;(decorated.next());</span>
+<span class="fc" id="L79">            canRemove = true;</span>
+<span class="fc" id="L80">            return last;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            if (!canRemove) {</span>
+<span class="nc" id="L86">                throw new IllegalStateException(&quot;Iterator remove() can only be called once after next()&quot;);</span>
+            }
+<span class="nc" id="L88">            decorated.remove();</span>
+<span class="nc" id="L89">            last = null;</span>
+<span class="nc" id="L90">            canRemove = false;</span>
+<span class="nc" id="L91">        }</span>
+    }
+    /**
+     * Inner class iterator for the MultiSet.
+     */
+    private static final class MapBasedMultiSetIterator&lt;E&gt; implements Iterator&lt;E&gt; {
+        private final AbstractMapMultiSet&lt;E&gt; parent;
+        private final Iterator&lt;Map.Entry&lt;E, MutableInteger&gt;&gt; entryIterator;
+        private Map.Entry&lt;E, MutableInteger&gt; current;
+        private int itemCount;
+        private final int mods;
+        private boolean canRemove;
+
+        /**
+         * Constructs a new instance.
+         *
+         * @param parent the parent multiset
+         */
+<span class="fc" id="L109">        MapBasedMultiSetIterator(final AbstractMapMultiSet&lt;E&gt; parent) {</span>
+<span class="fc" id="L110">            this.parent = parent;</span>
+<span class="fc" id="L111">            this.entryIterator = parent.map.entrySet().iterator();</span>
+<span class="fc" id="L112">            this.current = null;</span>
+<span class="fc" id="L113">            this.mods = parent.modCount;</span>
+<span class="fc" id="L114">            this.canRemove = false;</span>
+<span class="fc" id="L115">        }</span>
+
+        /** {@inheritDoc} */
+        @Override
+        public boolean hasNext() {
+<span class="fc bfc" id="L120" title="All 4 branches covered.">            return itemCount &gt; 0 || entryIterator.hasNext();</span>
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public E next() {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (parent.modCount != mods) {</span>
+<span class="fc" id="L127">                throw new ConcurrentModificationException();</span>
+            }
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            if (itemCount == 0) {</span>
+<span class="fc" id="L130">                current = entryIterator.next();</span>
+<span class="fc" id="L131">                itemCount = current.getValue().value;</span>
+            }
+<span class="fc" id="L133">            canRemove = true;</span>
+<span class="fc" id="L134">            itemCount--;</span>
+<span class="fc" id="L135">            return current.getKey();</span>
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public void remove() {
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (parent.modCount != mods) {</span>
+<span class="nc" id="L142">                throw new ConcurrentModificationException();</span>
+            }
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (!canRemove) {</span>
+<span class="fc" id="L145">                throw new IllegalStateException();</span>
+            }
+<span class="fc" id="L147">            final MutableInteger mut = current.getValue();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (mut.value &gt; 1) {</span>
+<span class="fc" id="L149">                mut.value--;</span>
+            } else {
+<span class="fc" id="L151">                entryIterator.remove();</span>
+            }
+<span class="fc" id="L153">            parent.size--;</span>
+<span class="fc" id="L154">            canRemove = false;</span>
+<span class="fc" id="L155">        }</span>
+    }
+    /**
+     * Inner class MultiSetEntry.
+     */
+    protected static class MultiSetEntry&lt;E&gt; extends AbstractEntry&lt;E&gt; {
+
+        protected final Map.Entry&lt;E, MutableInteger&gt; parentEntry;
+
+        /**
+         * Constructs a new instance.
+         * @param parentEntry  the entry to decorate
+         */
+<span class="fc" id="L168">        protected MultiSetEntry(final Map.Entry&lt;E, MutableInteger&gt; parentEntry) {</span>
+<span class="fc" id="L169">            this.parentEntry = parentEntry;</span>
+<span class="fc" id="L170">        }</span>
+
+        @Override
+        public int getCount() {
+<span class="fc" id="L174">            return parentEntry.getValue().value;</span>
+        }
+
+        @Override
+        public E getElement() {
+<span class="fc" id="L179">            return parentEntry.getKey();</span>
+        }
+    }
+
+    /**
+     * Mutable integer class for storing the data.
+     */
+    protected static class MutableInteger {
+        /** The value of this mutable. */
+        protected int value;
+
+        /**
+         * Constructs a new instance.
+         * @param value the initial value
+         */
+<span class="fc" id="L194">        MutableInteger(final int value) {</span>
+<span class="fc" id="L195">            this.value = value;</span>
+<span class="fc" id="L196">        }</span>
+
+        @Override
+        public boolean equals(final Object obj) {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            if (!(obj instanceof MutableInteger)) {</span>
+<span class="nc" id="L201">                return false;</span>
+            }
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            return ((MutableInteger) obj).value == value;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L208">            return value;</span>
+        }
+    }
+
+    /**
+     * Inner class UniqueSetIterator.
+     */
+    protected static class UniqueSetIterator&lt;E&gt; extends AbstractIteratorDecorator&lt;E&gt; {
+
+        /** The parent multiset */
+        protected final AbstractMapMultiSet&lt;E&gt; parent;
+
+        /** The last returned element */
+        protected E lastElement;
+
+        /** Whether remove is allowed at present */
+        protected boolean canRemove;
+
+        /**
+         * Constructs a new instance.
+         * @param iterator  the iterator to decorate
+         * @param parent  the parent multiset
+         */
+        protected UniqueSetIterator(final Iterator&lt;E&gt; iterator, final AbstractMapMultiSet&lt;E&gt; parent) {
+<span class="nc" id="L232">            super(iterator);</span>
+<span class="nc" id="L233">            this.parent = parent;</span>
+<span class="nc" id="L234">        }</span>
+
+        @Override
+        public E next() {
+<span class="nc" id="L238">            lastElement = super.next();</span>
+<span class="nc" id="L239">            canRemove = true;</span>
+<span class="nc" id="L240">            return lastElement;</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="nc bnc" id="L245" title="All 2 branches missed.">            if (!canRemove) {</span>
+<span class="nc" id="L246">                throw new IllegalStateException(&quot;Iterator remove() can only be called once after next()&quot;);</span>
+            }
+<span class="nc" id="L248">            final int count = parent.getCount(lastElement);</span>
+<span class="nc" id="L249">            super.remove();</span>
+<span class="nc" id="L250">            parent.remove(lastElement, count);</span>
+<span class="nc" id="L251">            lastElement = null;</span>
+<span class="nc" id="L252">            canRemove = false;</span>
+<span class="nc" id="L253">        }</span>
+    }
+
+    /** The map to use to store the data */
+    private transient Map&lt;E, MutableInteger&gt; map;
+
+    /** The current total size of the multiset */
+    private transient int size;
+
+    /** The modification count for fail fast iterators */
+    private transient int modCount;
+
+    /**
+     * Constructor needed for subclass serialisation.
+     */
+<span class="fc" id="L268">    protected AbstractMapMultiSet() {</span>
+<span class="fc" id="L269">    }</span>
+
+    /**
+     * Constructor that assigns the specified Map as the backing store. The map
+     * must be empty and non-null.
+     *
+     * @param map the map to assign
+     */
+<span class="fc" id="L277">    protected AbstractMapMultiSet(final Map&lt;E, MutableInteger&gt; map) {</span>
+<span class="fc" id="L278">        this.map = map;</span>
+<span class="fc" id="L279">    }</span>
+
+    @Override
+    public int add(final E object, final int occurrences) {
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (occurrences &lt; 0) {</span>
+<span class="nc" id="L284">            throw new IllegalArgumentException(&quot;Occurrences must not be negative.&quot;);</span>
+        }
+
+<span class="fc" id="L287">        final MutableInteger mut = map.get(object);</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        final int oldCount = mut != null ? mut.value : 0;</span>
+
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">        if (occurrences &gt; 0) {</span>
+<span class="fc" id="L291">            modCount++;</span>
+<span class="fc" id="L292">            size += occurrences;</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">            if (mut == null) {</span>
+<span class="fc" id="L294">                map.put(object, new MutableInteger(occurrences));</span>
+            } else {
+<span class="fc" id="L296">                mut.value += occurrences;</span>
+            }
+        }
+<span class="fc" id="L299">        return oldCount;</span>
+    }
+
+    /**
+     * Clears the multiset by clearing the underlying map.
+     */
+    @Override
+    public void clear() {
+<span class="fc" id="L307">        modCount++;</span>
+<span class="fc" id="L308">        map.clear();</span>
+<span class="fc" id="L309">        size = 0;</span>
+<span class="fc" id="L310">    }</span>
+
+    /**
+     * Determines if the multiset contains the given element by checking if the
+     * underlying map contains the element as a key.
+     *
+     * @param object the object to search for
+     * @return true if the multiset contains the given element
+     */
+    @Override
+    public boolean contains(final Object object) {
+<span class="fc" id="L321">        return map.containsKey(object);</span>
+    }
+
+    @Override
+    protected Iterator&lt;Entry&lt;E&gt;&gt; createEntrySetIterator() {
+<span class="fc" id="L326">        return new EntrySetIterator&lt;&gt;(map.entrySet().iterator(), this);</span>
+    }
+
+    @Override
+    protected Iterator&lt;E&gt; createUniqueSetIterator() {
+<span class="nc" id="L331">        return new UniqueSetIterator&lt;&gt;(getMap().keySet().iterator(), this);</span>
+    }
+
+    /**
+     * Read the multiset in using a custom routine.
+     * @param in the input stream
+     * @throws IOException any of the usual I/O related exceptions
+     * @throws ClassNotFoundException if the stream contains an object which class can not be loaded
+     * @throws ClassCastException if the stream does not contain the correct objects
+     */
+    @Override
+    protected void doReadObject(final ObjectInputStream in)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L344">        final int entrySize = in.readInt();</span>
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        for (int i = 0; i &lt; entrySize; i++) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;) // This will fail at runtime if the stream is incorrect
+<span class="fc" id="L347">            final E obj = (E) in.readObject();</span>
+<span class="fc" id="L348">            final int count = in.readInt();</span>
+<span class="fc" id="L349">            map.put(obj, new MutableInteger(count));</span>
+<span class="fc" id="L350">            size += count;</span>
+        }
+<span class="fc" id="L352">    }</span>
+
+    /**
+     * Write the multiset out using a custom routine.
+     * @param out the output stream
+     * @throws IOException any of the usual I/O related exceptions
+     */
+    @Override
+    protected void doWriteObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L361">        out.writeInt(map.size());</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        for (final Map.Entry&lt;E, MutableInteger&gt; entry : map.entrySet()) {</span>
+<span class="fc" id="L363">            out.writeObject(entry.getKey());</span>
+<span class="fc" id="L364">            out.writeInt(entry.getValue().value);</span>
+<span class="fc" id="L365">        }</span>
+<span class="fc" id="L366">    }</span>
+
+    @Override
+    public boolean equals(final Object object) {
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        if (object == this) {</span>
+<span class="fc" id="L371">            return true;</span>
+        }
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        if (!(object instanceof MultiSet)) {</span>
+<span class="fc" id="L374">            return false;</span>
+        }
+<span class="fc" id="L376">        final MultiSet&lt;?&gt; other = (MultiSet&lt;?&gt;) object;</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        if (other.size() != size()) {</span>
+<span class="fc" id="L378">            return false;</span>
+        }
+<span class="fc bfc" id="L380" title="All 2 branches covered.">        for (final E element : map.keySet()) {</span>
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">            if (other.getCount(element) != getCount(element)) {</span>
+<span class="nc" id="L382">                return false;</span>
+            }
+<span class="fc" id="L384">        }</span>
+<span class="fc" id="L385">        return true;</span>
+    }
+
+    /**
+     * Returns the number of occurrence of the given element in this multiset by
+     * looking up its count in the underlying map.
+     *
+     * @param object the object to search for
+     * @return the number of occurrences of the object, zero if not found
+     */
+    @Override
+    public int getCount(final Object object) {
+<span class="fc" id="L397">        final MutableInteger count = map.get(object);</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        if (count != null) {</span>
+<span class="fc" id="L399">            return count.value;</span>
+        }
+<span class="fc" id="L401">        return 0;</span>
+    }
+
+    /**
+     * Utility method for implementations to access the map that backs this multiset.
+     * Not intended for interactive use outside of subclasses.
+     *
+     * @return the map being used by the MultiSet
+     */
+    protected Map&lt;E, MutableInteger&gt; getMap() {
+<span class="nc" id="L411">        return map;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L416">        int total = 0;</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        for (final Map.Entry&lt;E, MutableInteger&gt; entry : map.entrySet()) {</span>
+<span class="fc" id="L418">            final E element = entry.getKey();</span>
+<span class="fc" id="L419">            final MutableInteger count = entry.getValue();</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">            total += (element == null ? 0 : element.hashCode()) ^ count.value;</span>
+<span class="fc" id="L421">        }</span>
+<span class="fc" id="L422">        return total;</span>
+    }
+
+    /**
+     * Returns true if the underlying map is empty.
+     *
+     * @return true if multiset is empty
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="fc" id="L432">        return map.isEmpty();</span>
+    }
+
+    /**
+     * Gets an iterator over the multiset elements. Elements present in the
+     * MultiSet more than once will be returned repeatedly.
+     *
+     * @return the iterator
+     */
+    @Override
+    public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L443">        return new MapBasedMultiSetIterator&lt;&gt;(this);</span>
+    }
+
+    @Override
+    public int remove(final Object object, final int occurrences) {
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">        if (occurrences &lt; 0) {</span>
+<span class="nc" id="L449">            throw new IllegalArgumentException(&quot;Occurrences must not be negative.&quot;);</span>
+        }
+
+<span class="fc" id="L452">        final MutableInteger mut = map.get(object);</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        if (mut == null) {</span>
+<span class="fc" id="L454">            return 0;</span>
+        }
+<span class="fc" id="L456">        final int oldCount = mut.value;</span>
+<span class="fc bfc" id="L457" title="All 2 branches covered.">        if (occurrences &gt; 0) {</span>
+<span class="fc" id="L458">            modCount++;</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">            if (occurrences &lt; mut.value) {</span>
+<span class="fc" id="L460">                mut.value -= occurrences;</span>
+<span class="fc" id="L461">                size -= occurrences;</span>
+            } else {
+<span class="fc" id="L463">                map.remove(object);</span>
+<span class="fc" id="L464">                size -= mut.value;</span>
+<span class="fc" id="L465">                mut.value = 0;</span>
+            }
+        }
+<span class="fc" id="L468">        return oldCount;</span>
+    }
+
+    /**
+     * Sets the map being wrapped.
+     * &lt;p&gt;
+     * &lt;b&gt;NOTE:&lt;/b&gt; this method should only be used during deserialization
+     *
+     * @param map the map to wrap
+     */
+    protected void setMap(final Map&lt;E, MutableInteger&gt; map) {
+<span class="fc" id="L479">        this.map = map;</span>
+<span class="fc" id="L480">    }</span>
+
+    /**
+     * Returns the number of elements in this multiset.
+     *
+     * @return current size of the multiset
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L489">        return size;</span>
+    }
+
+    /**
+     * Returns an array of all of this multiset's elements.
+     *
+     * @return an array of all of this multiset's elements
+     */
+    @Override
+    public Object[] toArray() {
+<span class="fc" id="L499">        final Object[] result = new Object[size()];</span>
+<span class="fc" id="L500">        int i = 0;</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        for (final Map.Entry&lt;E, MutableInteger&gt; entry : map.entrySet()) {</span>
+<span class="fc" id="L502">            final E current = entry.getKey();</span>
+<span class="fc" id="L503">            final MutableInteger count = entry.getValue();</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">            for (int index = count.value; index &gt; 0; index--) {</span>
+<span class="fc" id="L505">                result[i++] = current;</span>
+            }
+<span class="fc" id="L507">        }</span>
+<span class="fc" id="L508">        return result;</span>
+    }
+
+    /**
+     * Returns an array of all of this multiset's elements.
+     * If the input array has more elements than are in the multiset,
+     * trailing elements will be set to null.
+     *
+     * @param &lt;T&gt; the type of the array elements
+     * @param array the array to populate
+     * @return an array of all of this multiset's elements
+     * @throws ArrayStoreException if the runtime type of the specified array is not
+     *   a supertype of the runtime type of the elements in this list
+     * @throws NullPointerException if the specified array is null
+     */
+    @Override
+    public &lt;T&gt; T[] toArray(T[] array) {
+<span class="fc" id="L525">        final int size = size();</span>
+<span class="fc bfc" id="L526" title="All 2 branches covered.">        if (array.length &lt; size) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;) // safe as both are of type T
+<span class="fc" id="L528">            final T[] unchecked = (T[]) Array.newInstance(array.getClass().getComponentType(), size);</span>
+<span class="fc" id="L529">            array = unchecked;</span>
+        }
+
+<span class="fc" id="L532">        int i = 0;</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        for (final Map.Entry&lt;E, MutableInteger&gt; entry : map.entrySet()) {</span>
+<span class="fc" id="L534">            final E current = entry.getKey();</span>
+<span class="fc" id="L535">            final MutableInteger count = entry.getValue();</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">            for (int index = count.value; index &gt; 0; index--) {</span>
+                // unsafe, will throw ArrayStoreException if types are not compatible, see Javadoc
+                @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L539">                final T unchecked = (T) current;</span>
+<span class="fc" id="L540">                array[i++] = unchecked;</span>
+            }
+<span class="fc" id="L542">        }</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">        while (i &lt; array.length) {</span>
+<span class="fc" id="L544">            array[i++] = null;</span>
+        }
+<span class="fc" id="L546">        return array;</span>
+    }
+
+    @Override
+    protected int uniqueElements() {
+<span class="fc" id="L551">        return map.size();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZippingIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.iterators</a> &gt; <span class="el_source">ZippingIterator.java</span></div><h1>ZippingIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.iterators;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+import org.apache.commons.collections4.FluentIterable;
+
+/**
+ * Provides an interleaved iteration over the elements contained in a
+ * collection of Iterators.
+ * &lt;p&gt;
+ * Given two {@link Iterator} instances {@code A} and {@code B}, the
+ * {@link #next} method on this iterator will switch between {@code A.next()}
+ * and {@code B.next()} until both iterators are exhausted.
+ * &lt;/p&gt;
+ *
+ * @param &lt;E&gt; the type of elements returned by this iterator.
+ * @since 4.1
+ */
+public class ZippingIterator&lt;E&gt; implements Iterator&lt;E&gt; {
+
+    /** The {@link Iterator}s to evaluate. */
+    private final Iterator&lt;Iterator&lt;? extends E&gt;&gt; iterators;
+
+    /** The next iterator to use for next(). */
+    private Iterator&lt;? extends E&gt; nextIterator;
+
+    /** The last iterator which was used for next(). */
+    private Iterator&lt;? extends E&gt; lastReturned;
+
+    /**
+     * Constructs a new {@code ZippingIterator} that will provide
+     * interleaved iteration of the specified iterators.
+     *
+     * @param iterators  the array of iterators
+     * @throws NullPointerException if any iterator is null
+     */
+<span class="fc" id="L57">    public ZippingIterator(final Iterator&lt;? extends E&gt;... iterators) {</span>
+        // create a mutable list to be able to remove exhausted iterators
+<span class="fc" id="L59">        final List&lt;Iterator&lt;? extends E&gt;&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (final Iterator&lt;? extends E&gt; iterator : iterators) {</span>
+<span class="fc" id="L61">            Objects.requireNonNull(iterator, &quot;iterator&quot;);</span>
+<span class="fc" id="L62">            list.add(iterator);</span>
+        }
+<span class="fc" id="L64">        this.iterators = FluentIterable.of(list).loop().iterator();</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Constructs a new {@code ZippingIterator} that will provide
+     * interleaved iteration over the two given iterators.
+     *
+     * @param a  the first child iterator
+     * @param b  the second child iterator
+     * @throws NullPointerException if either iterator is null
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public ZippingIterator(final Iterator&lt;? extends E&gt; a, final Iterator&lt;? extends E&gt; b) {
+<span class="fc" id="L77">        this(new Iterator[] {a, b});</span>
+<span class="fc" id="L78">    }</span>
+
+    /**
+     * Constructs a new {@code ZippingIterator} that will provide
+     * interleaved iteration over the three given iterators.
+     *
+     * @param a  the first child iterator
+     * @param b  the second child iterator
+     * @param c  the third child iterator
+     * @throws NullPointerException if either iterator is null
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public ZippingIterator(final Iterator&lt;? extends E&gt; a,
+                           final Iterator&lt;? extends E&gt; b,
+                           final Iterator&lt;? extends E&gt; c) {
+<span class="fc" id="L93">        this(new Iterator[] {a, b, c});</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Returns {@code true} if any child iterator has remaining elements.
+     *
+     * @return true if this iterator has remaining elements
+     */
+    @Override
+    public boolean hasNext() {
+        // the next iterator has already been determined
+        // this might happen if hasNext() is called multiple
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (nextIterator != null) {</span>
+<span class="fc" id="L106">            return true;</span>
+        }
+
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        while (iterators.hasNext()) {</span>
+<span class="fc" id="L110">            final Iterator&lt;? extends E&gt; childIterator = iterators.next();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (childIterator.hasNext()) {</span>
+<span class="fc" id="L112">                nextIterator = childIterator;</span>
+<span class="fc" id="L113">                return true;</span>
+            }
+            // iterator is exhausted, remove it
+<span class="fc" id="L116">            iterators.remove();</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">        return false;</span>
+    }
+
+    /**
+     * Returns the next element from a child iterator.
+     *
+     * @return the next interleaved element
+     * @throws NoSuchElementException if no child iterator has any more elements
+     */
+    @Override
+    public E next() throws NoSuchElementException {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (!hasNext()) {</span>
+<span class="fc" id="L130">            throw new NoSuchElementException();</span>
+        }
+
+<span class="fc" id="L133">        final E val = nextIterator.next();</span>
+<span class="fc" id="L134">        lastReturned = nextIterator;</span>
+<span class="fc" id="L135">        nextIterator = null;</span>
+<span class="fc" id="L136">        return val;</span>
+    }
+
+    /**
+     * Removes the last returned element from the child iterator that produced it.
+     *
+     * @throws IllegalStateException if there is no last returned element, or if
+     *   the last returned element has already been removed
+     */
+    @Override
+    public void remove() {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (lastReturned == null) {</span>
+<span class="fc" id="L148">            throw new IllegalStateException(&quot;No value can be removed at present&quot;);</span>
+        }
+<span class="fc" id="L150">        lastReturned.remove();</span>
+<span class="fc" id="L151">        lastReturned = null;</span>
+<span class="fc" id="L152">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

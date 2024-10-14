@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultConversionHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.convert</a> &gt; <span class="el_source">DefaultConversionHandler.java</span></div><h1>DefaultConversionHandler.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.convert;
+
+import java.lang.reflect.Array;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedList;
+
+import org.apache.commons.configuration2.ex.ConversionException;
+import org.apache.commons.configuration2.interpol.ConfigurationInterpolator;
+import org.apache.commons.lang3.ClassUtils;
+
+/**
+ * &lt;p&gt;
+ * A default implementation of the {@code ConversionHandler} interface.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class implements the standard data type conversions as used by {@code AbstractConfiguration} and derived
+ * classes. There is a central conversion method - {@code convert()} - for converting a passed in object to a given
+ * target class. The basic implementation already handles a bunch of standard data type conversions. If other
+ * conversions are to be supported, this method can be overridden.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The object passed to {@code convert()} can be a single value or a complex object (like an array, a collection, etc.)
+ * containing multiple values. It lies in the responsibility of {@code convert()} to deal with such complex objects. The
+ * implementation provided by this class tries to extract the first child element and then delegates to
+ * {@code convertValue()} which does the actual conversion.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+<span class="fc" id="L47">public class DefaultConversionHandler implements ConversionHandler {</span>
+
+    /**
+     * A default instance of this class. Because an instance of this class can be shared between arbitrary objects it is
+     * possible to make use of this default instance anywhere.
+     */
+<span class="fc" id="L53">    public static final DefaultConversionHandler INSTANCE = new DefaultConversionHandler();</span>
+
+    /** The default format for dates. */
+    public static final String DEFAULT_DATE_FORMAT = &quot;yyyy-MM-dd HH:mm:ss&quot;;
+
+    /**
+     * Constant for a default {@code ConfigurationInterpolator} to be used if none is provided by the caller.
+     */
+<span class="fc" id="L61">    private static final ConfigurationInterpolator NULL_INTERPOLATOR = new ConfigurationInterpolator() {</span>
+        @Override
+        public Object interpolate(final Object value) {
+<span class="fc" id="L64">            return value;</span>
+        }
+    };
+
+    /** The default {@link ListDelimiterHandler} used for extracting values from complex objects. */
+<span class="fc" id="L69">    static final ListDelimiterHandler LIST_DELIMITER_HANDLER = DisabledListDelimiterHandler.INSTANCE;</span>
+
+    /**
+     * Obtains a {@code ConfigurationInterpolator}. If the passed in one is not &lt;b&gt;null&lt;/b&gt;, it is used. Otherwise, a
+     * default one is returned.
+     *
+     * @param ci the {@code ConfigurationInterpolator} provided by the caller
+     * @return the {@code ConfigurationInterpolator} to be used
+     */
+    private static ConfigurationInterpolator fetchInterpolator(final ConfigurationInterpolator ci) {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        return ci != null ? ci : NULL_INTERPOLATOR;</span>
+    }
+
+    /** The current date format. */
+    private volatile String dateFormat;
+
+    /** The default {@link ListDelimiterHandler} used for extracting values from complex objects. */
+<span class="fc" id="L86">    private volatile ListDelimiterHandler listDelimiterHandler = DisabledListDelimiterHandler.INSTANCE;</span>
+
+    /**
+     * Performs the conversion from the passed in source object to the specified target class. This method is called for
+     * each conversion to be done. The source object has already been passed to the {@link ConfigurationInterpolator}, so
+     * interpolation does not have to be done again. (The passed in {@code ConfigurationInterpolator} may still be necessary
+     * for extracting values from complex objects; it is guaranteed to be non &lt;b&gt;null&lt;/b&gt;.) The source object may be a
+     * complex object, e.g. a collection or an array. This base implementation checks whether the source object is complex.
+     * If so, it delegates to {@link #extractConversionValue(Object, Class, ConfigurationInterpolator)} to obtain a single
+     * value. Eventually, {@link #convertValue(Object, Class, ConfigurationInterpolator)} is called with the single value to
+     * be converted.
+     *
+     * @param &lt;T&gt; the desired target type of the conversion
+     * @param src the source object to be converted
+     * @param targetCls the desired target class
+     * @param ci the {@code ConfigurationInterpolator} (not &lt;b&gt;null&lt;/b&gt;)
+     * @return the converted value
+     * @throws ConversionException if conversion is not possible
+     */
+    protected &lt;T&gt; T convert(final Object src, final Class&lt;T&gt; targetCls, final ConfigurationInterpolator ci) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        final Object conversionSrc = isComplexObject(src) ? extractConversionValue(src, targetCls, ci) : src;</span>
+<span class="fc" id="L107">        return convertValue(ci.interpolate(conversionSrc), targetCls, ci);</span>
+    }
+
+    /**
+     * Helper method for converting all values of a source object and storing them in a collection.
+     *
+     * @param &lt;T&gt; the target type of the conversion
+     * @param src the source object
+     * @param elemClass the target class of the conversion
+     * @param ci the {@code ConfigurationInterpolator}
+     * @param dest the collection in which to store the results
+     * @throws ConversionException if a conversion cannot be performed
+     */
+    private &lt;T&gt; void convertToCollection(final Object src, final Class&lt;T&gt; elemClass, final ConfigurationInterpolator ci, final Collection&lt;T&gt; dest) {
+<span class="fc" id="L121">        extractValues(ci.interpolate(src)).forEach(o -&gt; dest.add(convert(o, elemClass, ci)));</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Performs a conversion of a single value to the specified target class. The passed in source object is guaranteed to
+     * be a single value, but it can be &lt;b&gt;null&lt;/b&gt;. Derived classes that want to extend the available conversions, but are
+     * happy with the handling of complex objects, just need to override this method.
+     *
+     * @param &lt;T&gt; the desired target type of the conversion
+     * @param src the source object (a single value)
+     * @param targetCls the target class of the conversion
+     * @param ci the {@code ConfigurationInterpolator} (not &lt;b&gt;null&lt;/b&gt;)
+     * @return the converted value
+     * @throws ConversionException if conversion is not possible
+     */
+    protected &lt;T&gt; T convertValue(final Object src, final Class&lt;T&gt; targetCls, final ConfigurationInterpolator ci) {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (src == null) {</span>
+<span class="fc" id="L138">            return null;</span>
+        }
+
+        // This is a safe cast because PropertyConverter either returns an
+        // object of the correct class or throws an exception.
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L144">        final T result = (T) PropertyConverter.to(targetCls, src, this);</span>
+<span class="fc" id="L145">        return result;</span>
+    }
+
+    /**
+     * Extracts a single value from a complex object. This method is called by {@code convert()} if the source object is
+     * complex. This implementation extracts the first value from the complex object and returns it.
+     *
+     * @param container the complex object
+     * @param targetCls the target class of the conversion
+     * @param ci the {@code ConfigurationInterpolator} (not &lt;b&gt;null&lt;/b&gt;)
+     * @return the value to be converted (may be &lt;b&gt;null&lt;/b&gt; if no values are found)
+     */
+    protected Object extractConversionValue(final Object container, final Class&lt;?&gt; targetCls, final ConfigurationInterpolator ci) {
+<span class="fc" id="L158">        final Collection&lt;?&gt; values = extractValues(container, 1);</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        return values.isEmpty() ? null : ci.interpolate(values.iterator().next());</span>
+    }
+
+    /**
+     * Extracts all values contained in the given source object and returns them as a flat collection.
+     *
+     * @param source the source object (may be a single value or a complex object)
+     * @return a collection with all extracted values
+     */
+    protected Collection&lt;?&gt; extractValues(final Object source) {
+<span class="fc" id="L169">        return extractValues(source, Integer.MAX_VALUE);</span>
+    }
+
+    /**
+     * Extracts a maximum number of values contained in the given source object and returns them as flat collection. This
+     * method is useful if the caller only needs a subset of values, e.g. only the first one.
+     *
+     * @param source the source object (may be a single value or a complex object)
+     * @param limit the number of elements to extract
+     * @return a collection with all extracted values
+     */
+    protected Collection&lt;?&gt; extractValues(final Object source, final int limit) {
+<span class="fc" id="L181">        return listDelimiterHandler.flatten(source, limit);</span>
+    }
+
+    /**
+     * Gets the date format used by this conversion handler.
+     *
+     * @return the date format
+     */
+    public String getDateFormat() {
+<span class="fc" id="L190">        final String fmt = dateFormat;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        return fmt != null ? fmt : DEFAULT_DATE_FORMAT;</span>
+    }
+
+    /**
+     * Gets the {@link ListDelimiterHandler} used for extracting values from complex objects.
+     *
+     * @return the {@link ListDelimiterHandler} used for extracting values from complex objects, never null.
+     * @since 2.9.0
+     */
+    public ListDelimiterHandler getListDelimiterHandler() {
+<span class="fc" id="L201">        return listDelimiterHandler;</span>
+    }
+
+    /**
+     * Tests whether the passed in object is complex (which means that it contains multiple values). This method is called
+     * by {@link #convert(Object, Class, ConfigurationInterpolator)} to figure out whether a actions are required to extract
+     * a single value from a complex source object. This implementation considers the following objects as complex:
+     * &lt;ul&gt;
+     * &lt;li&gt;{@code Iterable} objects&lt;/li&gt;
+     * &lt;li&gt;{@code Iterator} objects&lt;/li&gt;
+     * &lt;li&gt;Arrays&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param src the source object
+     * @return &lt;b&gt;true&lt;/b&gt; if this is a complex object, &lt;b&gt;false&lt;/b&gt; otherwise
+     */
+    protected boolean isComplexObject(final Object src) {
+<span class="fc bfc" id="L218" title="All 8 branches covered.">        return src instanceof Iterator&lt;?&gt; || src instanceof Iterable&lt;?&gt; || src != null &amp;&amp; src.getClass().isArray();</span>
+    }
+
+    /**
+     * Tests whether the passed in object represents an empty element. This method is called by conversion methods to arrays
+     * or collections. If it returns &lt;b&gt;true&lt;/b&gt;, the resulting array or collection will be empty. This implementation
+     * returns &lt;b&gt;true&lt;/b&gt; if and only if the passed in object is an empty string. With this method it can be controlled if
+     * and how empty elements in configurations are handled.
+     *
+     * @param src the object to be tested
+     * @return a flag whether this object is an empty element
+     */
+    protected boolean isEmptyElement(final Object src) {
+<span class="fc bfc" id="L231" title="All 4 branches covered.">        return src instanceof CharSequence &amp;&amp; ((CharSequence) src).length() == 0;</span>
+    }
+
+    /**
+     * Sets the date format to be used by this conversion handler. This format is applied by conversions to {@code Date} or
+     * {@code Calendar} objects. The string is passed to the {@link java.text.SimpleDateFormat} class, so it must be
+     * compatible with this class. If no date format has been set, a default format is used.
+     *
+     * @param dateFormat the date format string
+     * @see #DEFAULT_DATE_FORMAT
+     */
+    public void setDateFormat(final String dateFormat) {
+<span class="fc" id="L243">        this.dateFormat = dateFormat;</span>
+<span class="fc" id="L244">    }</span>
+
+    /**
+     * Sets the {@link ListDelimiterHandler} used for extracting values from complex objects.
+     *
+     * @param listDelimiterHandler the {@link ListDelimiterHandler} used for extracting values from complex objects. Setting
+     *        the value to null resets the value to its default.
+     * @since 2.9.0
+     */
+    public void setListDelimiterHandler(final ListDelimiterHandler listDelimiterHandler) {
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        this.listDelimiterHandler = listDelimiterHandler != null ? listDelimiterHandler : LIST_DELIMITER_HANDLER;</span>
+<span class="fc" id="L255">    }</span>
+
+    @Override
+    public &lt;T&gt; T to(final Object src, final Class&lt;T&gt; targetCls, final ConfigurationInterpolator ci) {
+<span class="fc" id="L259">        final ConfigurationInterpolator interpolator = fetchInterpolator(ci);</span>
+<span class="fc" id="L260">        return convert(interpolator.interpolate(src), targetCls, interpolator);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation extracts all values stored in the passed in source object, converts them to the
+     * target type, and adds them to a result array. Arrays of objects and of primitive types are supported. If the source
+     * object is &lt;b&gt;null&lt;/b&gt;, result is &lt;b&gt;null&lt;/b&gt;, too.
+     */
+    @Override
+    public Object toArray(final Object src, final Class&lt;?&gt; elemClass, final ConfigurationInterpolator ci) {
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        if (src == null) {</span>
+<span class="fc" id="L271">            return null;</span>
+        }
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (isEmptyElement(src)) {</span>
+<span class="fc" id="L274">            return Array.newInstance(elemClass, 0);</span>
+        }
+
+<span class="fc" id="L277">        final ConfigurationInterpolator interpolator = fetchInterpolator(ci);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        return elemClass.isPrimitive() ? toPrimitiveArray(src, elemClass, interpolator) : toObjectArray(src, elemClass, interpolator);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation extracts all values stored in the passed in source object, converts them to the
+     * target type, and adds them to the target collection. The target collection must not be &lt;b&gt;null&lt;/b&gt;. If the source
+     * object is &lt;b&gt;null&lt;/b&gt;, nothing is added to the collection.
+     *
+     * @throws IllegalArgumentException if the target collection is &lt;b&gt;null&lt;/b&gt;
+     */
+    @Override
+    public &lt;T&gt; void toCollection(final Object src, final Class&lt;T&gt; elemClass, final ConfigurationInterpolator ci, final Collection&lt;T&gt; dest) {
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        if (dest == null) {</span>
+<span class="fc" id="L291">            throw new IllegalArgumentException(&quot;Target collection must not be null!&quot;);</span>
+        }
+
+<span class="fc bfc" id="L294" title="All 4 branches covered.">        if (src != null &amp;&amp; !isEmptyElement(src)) {</span>
+<span class="fc" id="L295">            convertToCollection(src, elemClass, fetchInterpolator(ci), dest);</span>
+        }
+<span class="fc" id="L297">    }</span>
+
+    /**
+     * Converts the given source object to an array of objects.
+     *
+     * @param src the source object
+     * @param elemClass the element class of the array
+     * @param ci the {@code ConfigurationInterpolator}
+     * @return the result array
+     * @throws ConversionException if a conversion cannot be performed
+     */
+    private &lt;T&gt; T[] toObjectArray(final Object src, final Class&lt;T&gt; elemClass, final ConfigurationInterpolator ci) {
+<span class="fc" id="L309">        final Collection&lt;T&gt; convertedCol = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L310">        convertToCollection(src, elemClass, ci, convertedCol);</span>
+        // Safe to cast because the element class is specified
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L313">        final T[] result = (T[]) Array.newInstance(elemClass, convertedCol.size());</span>
+<span class="fc" id="L314">        return convertedCol.toArray(result);</span>
+    }
+
+    /**
+     * Converts the given source object to an array of a primitive type. This method performs some checks whether the source
+     * object is already an array of the correct type or a corresponding wrapper type. If not, all values are extracted,
+     * converted one by one, and stored in a newly created array.
+     *
+     * @param src the source object
+     * @param elemClass the element class of the array
+     * @param ci the {@code ConfigurationInterpolator}
+     * @return the result array
+     * @throws ConversionException if a conversion cannot be performed
+     */
+    private Object toPrimitiveArray(final Object src, final Class&lt;?&gt; elemClass, final ConfigurationInterpolator ci) {
+<span class="fc bfc" id="L329" title="All 2 branches covered.">        if (src.getClass().isArray()) {</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">            if (src.getClass().getComponentType().equals(elemClass)) {</span>
+<span class="fc" id="L331">                return src;</span>
+            }
+
+<span class="fc bfc" id="L334" title="All 2 branches covered.">            if (src.getClass().getComponentType().equals(ClassUtils.primitiveToWrapper(elemClass))) {</span>
+                // the value is an array of the wrapper type derived from the
+                // specified primitive type
+<span class="fc" id="L337">                final int length = Array.getLength(src);</span>
+<span class="fc" id="L338">                final Object array = Array.newInstance(elemClass, length);</span>
+
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                for (int i = 0; i &lt; length; i++) {</span>
+<span class="fc" id="L341">                    Array.set(array, i, Array.get(src, i));</span>
+                }
+<span class="fc" id="L343">                return array;</span>
+            }
+        }
+
+<span class="fc" id="L347">        final Collection&lt;?&gt; values = extractValues(src);</span>
+<span class="fc" id="L348">        final Class&lt;?&gt; targetClass = ClassUtils.primitiveToWrapper(elemClass);</span>
+<span class="fc" id="L349">        final Object array = Array.newInstance(elemClass, values.size());</span>
+<span class="fc" id="L350">        int idx = 0;</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        for (final Object value : values) {</span>
+<span class="fc" id="L352">            Array.set(array, idx++, convertValue(ci.interpolate(value), targetClass, ci));</span>
+<span class="fc" id="L353">        }</span>
+<span class="fc" id="L354">        return array;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

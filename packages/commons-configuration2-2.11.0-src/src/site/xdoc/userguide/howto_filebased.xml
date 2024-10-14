@@ -1,0 +1,651 @@
+<?xml version="1.0"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+
+<document>
+
+ <properties>
+  <title>File-based Configurations</title>
+  <author email="oheger@apache.org">Oliver Heger</author>
+ </properties>
+
+<body>
+    <section name="File-based Configurations">
+        <p>
+          Often configuration properties are stored in files on the user's hard
+          disk, e.g. in .properties files or as XML documents. In order to
+          access this data, functionality is needed to select the configuration
+          files, load them into memory, and write changes back to disk. The
+          following sections describe how this can be done.
+        </p>
+
+        <subsection name="FileBasedConfigurationBuilder">
+        <p>
+          In <em>Commons Configuration</em> a specialized
+          <a href="howto_builders.html#Configuration_Builders">configuration
+          builder</a> implementation is responsible for the creation of
+          file-based configuration objects and the management of their
+          associated data files:
+          <code><a href="../apidocs/org/apache/commons/configuration2/builder/FileBasedConfigurationBuilder.html">
+          FileBasedConfigurationBuilder</a></code>. Usage of this class follows
+          the typical pattern for configuration builders, i.e. a builder
+          instance is created providing the class of the <code>Configuration</code>
+          object to be created, the <code>configure()</code> method is called
+          with initialization parameters, and finally <code>getConfiguration()</code>
+          returns an initialized instance of the configuration class. When
+          configuring the builder the file to be loaded can be specified; if this
+          was done, the <code>Configuration</code> object returned by the
+          builder contains all properties read from the underlying file.
+        </p>
+        <p>
+          In order to define the file to be loaded, a parameters object
+          implementing the
+          <code><a href="../apidocs/org/apache/commons/configuration2/builder/FileBasedBuilderProperties.html">
+          FileBasedBuilderProperties</a></code> interface can be passed to the
+          builder's <code>configure()</code> method. Using this interface the
+          location of the file to be loaded can be provided in multiple ways:
+          <ul>
+            <li>With the <code>setFile()</code> method the data file can be
+            specified as a <code>java.io.File</code> object.</li>
+            <li>The <code>setURL()</code> method takes a <code>java.net.URL</code>
+            as argument; the file will be loaded from this URL.</li>
+            <li>The methods <code>setFileName()</code> and <code>setBasePath()</code>
+            allow specifying the path of the data file. The base path is
+            important if relative paths are to be resolved based on this file.</li>
+            <li>With <code>setPath()</code> an absolute path to the file to be
+            loaded can be provided.</li>
+          </ul>
+          A parameters object for file-based configurations is typically obtained
+          from a <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Parameters.html">
+          Parameters</a></code> instance. Here the <code>fileBased()</code> method
+          or one of the methods returning parameter objects derived from
+          <code>FileBasedBuilderProperties</code> can be used. In addition to
+          the properties that define the location of the file to be loaded, the
+          parameters object support a couple of other properties, too, which
+          are mainly related to way how the file is resolved. This is described
+          later on in this chapter.
+        </p>
+        <p>
+          As an example for using a file-based configuration builder, the
+          following code fragment shows how a properties file can be read whose
+          location is specified using a <code>File</code> object:
+        </p>
+        <source><![CDATA[
+Parameters params = new Parameters();
+// Read data from this file
+File propertiesFile = new File("config.properties");
+
+FileBasedConfigurationBuilder<FileBasedConfiguration> builder =
+    new FileBasedConfigurationBuilder<FileBasedConfiguration>(PropertiesConfiguration.class)
+    .configure(params.fileBased()
+        .setFile(propertiesFile));
+try
+{
+    Configuration config = builder.getConfiguration();
+    // config contains all properties read from the file
+}
+catch(ConfigurationException cex)
+{
+    // loading of the configuration file failed
+}]]></source>
+        <p>
+          In this example a parameters object for file-based configurations
+          is obtained from a <code>Parameters</code> instance. We could of
+          course also have used a derived parameters class - when loading a
+          properties file a parameters object for properties configurations
+          would have been a logic choice. Here only a single parameter, the
+          file to be loaded, is set; but remember that all other initialization
+          parameters common to all configuration classes are available as well.
+        </p>
+	<p>
+	  A configuration instance created this way stays connected to its
+	  builder. Especially, the builder stores the location of the
+	  underlying configuration file. This comes in handy if changes on
+	  the configuration object are to be written back to disk. For this
+	  purpose, <code>FileBasedConfigurationBuilder</code> provides a
+	  convenient <code>save()</code> method. Calling this method stores
+	  the current content of the associated configuration into its original
+	  configuration file, overwriting the existing file on disk. This is
+	  demonstrated in the following code fragment which continues from the
+	  previous example:
+	</p>
+        <source><![CDATA[
+// Some manipulations on the configuration object
+config.addProperty("newProperty", "new");
+config.setProperty("updateProperty", "changedValue");
+
+// Make changes persistent
+try
+{
+    builder.save();
+}
+catch(ConfigurationException cex)
+{
+    // saving of the configuration file failed
+}]]></source>
+	<p>
+	  Note that the <code>save()</code> method of the builder does not
+	  expect a configuration object as parameter. It always operates on
+	  the instance managed by this builder. Because of this relationship
+	  it is typically better to store the builder object rather than the
+	  configuration. The configuration can always be obtained via the
+	  builder's <code>getConfiguration()</code> method, but operations
+	  related to the configuration file are only available through the
+	  builder.
+	</p>
+	<p>
+	  In addition to the <code>save()</code> method,
+	  <code>FileBasedConfigurationBuilder</code> offers functionality for
+	  automatically saving changes on its managed configuration. This can
+	  be used to ensure that every modification of a configuration object is
+	  immediately written to disk. This feature is enabled via the
+	  <code>setAutoSave()</code> method as shown in the following example:
+	</p>
+        <source><![CDATA[
+FileBasedConfigurationBuilder<FileBasedConfiguration> builder =
+    new FileBasedConfigurationBuilder<FileBasedConfiguration>(PropertiesConfiguration.class)
+    .configure(params.fileBased()
+        .setFile(new File("config.properties")));
+// enable auto save mode
+builder.setAutoSave(true);
+
+Configuration config = builder.getConfiguration();
+config.setProperty("colors.background", "#000000"); // the configuration is saved after this call
+]]></source>
+	<p>
+	  Be careful with this mode when you have many updates on your
+          configuration. This will lead to many I/O operations, too. Behind
+          the scenes, automatic saving is implemented via the
+          <a href="howto_events.html">event notification mechanism</a> available
+          for all configuration objects. A specialized event listener is
+          registered at the builder's managed configuration object which triggers
+          the <code>save()</code> method every time an update event is received.
+	</p>
+        </subsection>
+
+        <subsection name="Making it easier">
+        <p>
+          The code fragments presented so far in this chapter and the previous
+          one show that the fluent API offered by configuration builders in many
+          cases allows the creation and initialization of a configuration
+          builder in a single expression. Nevertheless, especially in simple
+          cases when no complex initialization is required, this approach tends
+          to become verbose. For instance, if just a configuration is to be
+          loaded from a file, you always have to create a file-based
+          parameters object, initialize it, create a builder, and pass the
+          parameters to its <code>configure()</code> method.
+        </p>
+        <p>
+          To support this frequent use case in a more convenient way, the
+          <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Configurations.html">
+          Configurations</a></code> class exists. This class contains a bunch
+          of convenience methods that simplify the creation of many standard
+          configurations from different sources like files or URLs. Using
+          this class, the code for the creation of a configuration builder can
+          be reduced. The example for loading a properties configuration
+          presented above becomes now:
+        </p>
+        <source><![CDATA[
+Configurations configs = new Configurations();
+// Read data from this file
+File propertiesFile = new File("config.properties");
+
+FileBasedConfigurationBuilder<PropertiesConfiguration> builder =
+    configs.propertiesBuilder(propertiesFile);
+]]></source>
+        <p>
+          From this builder the properties configuration can be obtained in the
+          usual way. It is even possible to by-pass the builder at all:
+        </p>
+        <source><![CDATA[
+Configurations configs = new Configurations();
+// Read data from this file
+File propertiesFile = new File("config.properties");
+
+PropertiesConfiguration config = configs.properties(propertiesFile);
+]]></source>
+        <p>
+          Here behind the scenes a configuration builder is created and
+          initialized; then its managed configuration is queried and returned
+          to the caller. A <code>ConfigurationException</code> is thrown if
+          an error occurs. Skipping the configuration builder and accessing the
+          configuration directly is recommended only for simple use cases. A
+          builder typically offers more flexibility for the handling and
+          management of configuration objects.
+        </p>
+        <p>
+          In these examples, a <code>java.io.File</code> object was used to
+          access configuration data. There are overloaded methods for
+          specifying the data to be loaded in alternative ways: using URLs or
+          file names/paths. In addition to properties configurations, the
+          <code>Configurations</code> class supports a couple of other
+          frequently used configuration formats. For instance, the methods
+          <code>xml()</code> and <code>xmlBuilder()</code> provide easy access
+          to XML documents.
+        </p>
+        <p>
+          Even if there is no direct support for a specific configuration
+          implementation, with the generic <code>fileBased()</code> or
+          <code>fileBasedBuilder()</code> methods, access to all kinds of
+          file-based configurations can be simplified. We take the
+          <code><a href="../apidocs/org/apache/commons/configuration2/plist/PropertyListConfiguration.html">
+          PropertyListConfiguration</a></code> class as an example for which no
+          specific access methods exist. The code fragment below shows how a
+          builder for such a configuration can be constructed using a generic
+          method:
+        </p>
+        <source><![CDATA[
+Configurations configs = new Configurations();
+// Read data from this URL
+URL sourceURL = ...;
+
+FileBasedConfigurationBuilder<PropertyListConfiguration> builder =
+    configs.fileBasedBuilder(PropertyListConfiguration.class, sourceURL);
+PropertyListConfiguration config = builder.getConfiguration();
+]]></source>
+        <p>
+          <code>Configurations</code> instances are thread-safe and can be stored
+          centrally by an application. So they can be used as a central configuration
+          factory - of course, with limited flexibility; this is the price to
+          be payed for simplicity. However, these restrictions can be partly
+          circumvented by making use of
+          <a href="howto_builders.html#Default_Initialization_Parameters">default
+          initialization parameters</a>. An instance is associated with a
+          <code><a href="../apidocs/org/apache/commons/configuration2/builder/fluent/Parameters.html">
+          Parameters</a></code> object which is used to construct parameter
+          objects for the created configuration builders. By assigning default
+          parameters to this object the default settings used for the created
+          builders can be tweaked. Note however, that the class typically
+          creates only generic parameter objects; file-based parameters rather
+          than, say, specialized parameters for properties configurations. This
+          makes default settings only possible for basic parameters.
+        </p>
+        </subsection>
+
+        <subsection name="File Operations on Configurations">
+        <p>
+          With <code>FileBasedConfigurationBuilder</code> a single configuration
+          file is assigned to a configuration instance. For some use cases a
+          more flexible approach is required. For instance, a modified
+          configuration is to be stored in another file, or multiple configuration
+          files should be loaded into the same instance. To achieve this, the
+          underlying mechanisms for dealing with files have to be used.
+        </p>
+        <p>
+          I/O operations on files are controlled by the
+          <code><a href="../apidocs/org/apache/commons/configuration2/io/FileHandler.html">
+          FileHandler</a></code> class. Basically, this class connects a location
+          of a configuration file (and some other meta information like the
+          file's encoding) with an object which can read data from or write data
+          to this location. <code>FileHandler</code> defines the typical
+          properties for defining the file to be loaded, i.e. the location can be
+          specified as a URL, a File, an absolute path, etc.
+        </p>
+        <p>
+          The object which actually reads and writes the data is represented by the
+          <code><a href="../apidocs/org/apache/commons/configuration2/io/FileBased.html">
+          FileBased</a></code> interface. This is a pretty lean interface
+          consisting of only two methods for reading data from a Reader and
+          writing data to a Writer. All configuration implementations that can
+          be initialized from configuration files implement this interface; but
+          in theory the <code>FileHandler</code> could interact with other
+          objects implementing <code>FileBased</code> as well.
+        </p>
+        <p>
+          <code>FileHandler</code> has the two methods <code>load()</code> and
+          <code>save()</code>. They work as follows:
+          <ul>
+            <li>The location of the managed file is evaluated, and a corresponding
+            stream is opened. Depending on the way the location was specified,
+            this could mean opening a connection on a URL, opening a stream to
+            a <code>File</code> or an absolute path name, resolving relative
+            file names, etc.</li>
+            <li>The resulting stream is then passed to the associated
+            <code>FileBased</code>'s <code>read()</code> or <code>write()</code>
+            method.</li>
+          </ul>
+        </p>
+        <p>
+          Next to these simple <code>load()</code> and <code>save()</code>
+          methods a number of overloaded methods exists which expect additional
+          parameters defining the source or target of the operation. For
+          instance, there is a <code>load(URL)</code> method which reads data
+          directly from the passed in URL ignoring the location stored in the
+          <code>FileHandler</code> instance. In fact, there are overloaded
+          methods for all the supported variants for defining a file. When
+          making use of these methods the following points have to be kept in
+          mind:
+          <ul>
+            <li>The location stored in the <code>FileHandler</code> instance is
+            not changed; it is completely by-passed by these methods. Only
+            explicit calls to the various setter methods modify the location.</li>
+            <li>The <code>load()</code> methods eventually call the target
+            object's <code>read()</code> method, no matter if it has already been
+            called before. For configuration objects as target this means that
+            the configuration is not cleared before new data is loaded.
+            (Actually a <code>FileHandler</code> is not aware which kind of
+            target object it is serving; so it has no chance to clear it first.)
+            This behavior makes it easy to construct union configurations by
+            simply executing multiple load operations. But if you want to reuse
+            a configuration object and load a different file, remember to call the
+            <code>clear()</code> method first to ensure that old properties are
+            wiped out.</li>
+          </ul>
+        </p>
+        <p>
+          When constructing a <code>FileHandler</code> instance the
+          <code>FileBased</code> object it operates on has to be passed to the
+          constructor. With this information we are now able to look at a
+          concrete example. The goal is to create a configuration for a
+          properties file, read in another properties file (so that a union of
+          the properties is constructed), and finally write the resulting
+          configuration to a new file. The code can look as follows (the
+          handling of exceptions has been omitted):
+        </p>
+        <source><![CDATA[
+// Read first file directly via the builder
+FileBasedConfigurationBuilder<PropertiesConfiguration> builder =
+    new FileBasedConfigurationBuilder<PropertiesConfiguration>(PropertiesConfiguration.class)
+    .configure(params.fileBased()
+        .setFile(new File("config.properties")));
+PropertiesConfiguration config = builder.getConfiguration();
+
+// Create a file handler and associate it with the configuration
+FileHandler handler = new FileHandler(config);
+
+// Load another configuration source, for instance from a relative path
+handler.load("user.properties");
+
+// Store the resulting configuration in a new file
+File out = new File("union.properties");
+handler.save(out);
+]]></source>
+	<p>
+	  The <code>FileHandler</code> class is thread-safe; it is no problem
+	  for instance to define a file location in one thread and then call
+	  <code>load()</code> on another thread. It is also possible to have
+	  multiple <code>FileHandler</code> objects associated with the same
+	  target object. Here concurrent I/O operations could cause problems.
+	  Therefore, <code>FileHandler</code> checks whether the target object
+	  implements the
+	  <code><a href="../apidocs/org/apache/commons/configuration2/sync/SynchronizerSupport.html">
+          SynchronizerSupport</a></code> interface. If this is the case, proper
+          synchronization for load and save operations can be performed. Because
+          all configuration implementations implement <code>SynchronizerSupport</code>
+          they can safely be used together with <code>FileHandler</code>.
+	</p>
+        <p>
+          Another important class related to file access is
+          <code><a href="../apidocs/org/apache/commons/configuration2/io/FileLocator.html">
+          FileLocator</a></code>. An instance stores all information
+          required for resolving a file to be accessed. <code>FileHandler</code>
+          uses a <code>FileLocator</code> instance to maintain this part of
+          file-related information. If you need to customize the access to
+          configuration files, you sometimes have to deal with
+          <code>FileLocator</code> objects because the files to be operated on are
+          described in terms of such objects.
+        </p>
+        </subsection>
+
+        <subsection name="Customizing File Access">
+        <p>
+          When working with file-based configurations application code has multiple
+          ways to specify the location of the file to be loaded. If a URL
+          is provided, the source file to be loaded is defined in a pretty
+          unambiguous way. If relative file names or paths are used, situation
+          is less obvious.
+        </p>
+        <p>
+          <em>Commons Configuration</em> provides two mechanisms to customize the
+          way configuration files are accessed:
+          <ul>
+            <li>File systems</li>
+            <li>File location strategies</li>
+          </ul>
+          They are described in the following sub sections.
+        </p>
+        </subsection>
+
+      <subsection name="File Systems">
+      <p>
+        In its default mode of operation <em>Commons Configuration</em> supports retrieving and storing
+        configuration files either on a local file system or via http. However, <em>Commons
+        Configuration</em> provides support for allowing other File System adapters. All file
+        access is accomplished through the <code><a href="../apidocs/org/apache/commons/configuration2/io/FileSystem.html">
+        FileSystem</a></code> class so accessing files using other mechanisms is possible.
+      </p>
+      <p>
+        <em>Commons Configuration</em> also provides a second <code>FileSystem</code> implementation which allows retrieval using
+        <a href="https://commons.apache.org/vfs">Apache Commons VFS</a>. As of this writing
+        Commons VFS supports 18 protocols for manipulating files.
+      </p>
+      <p>
+        The <code>FileSystem</code> used by <em>Commons Configuration</em> can be set in
+        the builder's parameter object, together with other properties defining
+        the file to be loaded. When working with
+        <a href="howto_combinedconfiguration.html">CombinedConfigurationBuilder</a>
+        it is also possible to
+        define the file system in the configuration definition file to be
+        processed by the builder - in both a global way and for each referenced
+        sub configuration. The following listing shows a configuration definition
+        file for a combined builder making use of this functionality. Per
+        default, the <code><a href="../apidocs/org/apache/commons/configuration2/io/VFSFileSystem.html">
+        VFSFileSystem</a></code> is used, but the included XML
+        configuration is loaded via a
+        <code><a href="../apidocs/org/apache/commons/configuration2/io/DefaultFileSystem.html">
+        DefaultFileSystem</a></code> instance:
+      </p>
+     <source><![CDATA[
+<configuration>
+  <header>
+    <fileSystem config-class="org.apache.commons.configuration2.io.VFSFileSystem"/>
+  </header>
+  <override>
+    <xml fileName="settings.xml" config-name="xml">
+      <fileSystem config-class="org.apache.commons.configuration2.io.DefaultFileSystem"/>
+    </xml>
+
+    <!-- Other sources omitted -->
+  </override>
+</configuration>
+]]></source>
+      <p>
+        Commons VFS allows options to the underlying file systems being used. <em>Commons Configuration</em>
+        allows applications to provide these by implementing the
+        <code><a href="../apidocs/org/apache/commons/configuration2/io/FileOptionsProvider.html">
+        FileOptionsProvider</a></code> interface
+        and registering the provider with the <code>FileSystem</code>. <code>FileOptionsProvider</code>
+        has a single method that must be implemented, <code>getOptions()</code>, which returns a Map
+        containing the keys and values that the <code>FileSystem</code> might use. The <code>getOptions()</code>
+        method is called as each configuration uses VFS to create a <code>FileOjbect</code> to
+        access the file. The map returned does not have to contain the same keys and/or values
+        each time it is called. For example, the value of the <code>currentUser</code> key can be
+        set to the id of the currently logged in user to allow a WebDAV save to record the userid
+        as a file attribute.
+      </p>
+      </subsection>
+
+      <subsection name="File Location Strategies">
+      <p>
+        Before a file can be accessed it has to be located first. In the 1.x
+        versions of <em>Commons Configuration</em>, there was a hard-coded
+        algorithm for looking up configuration files defined by a file name
+        and an optional base path in various places. Starting with version 2.0,
+        it is now possible to adapt this algorithm. The key to this is the
+        <code><a href="../apidocs/org/apache/commons/configuration2/io/FileLocationStrategy.html">
+        FileLocationStrategy</a></code> interface. The interface defines
+        a single method:
+      </p>
+     <source><![CDATA[
+URL locate(FileSystem fileSystem, FileLocator locator);
+]]></source>
+      <p>
+        The purpose of this method is to resolve a file described by the passed
+        in <code><a href="../apidocs/org/apache/commons/configuration2/io/FileLocator.html">
+        FileLocator</a></code> object and return a URL for it. If
+        required, the provided <code>FileSystem</code> can be used. The URL
+        yielded by a successful locate operation is directly used to access
+        the affected file. If the file could not be resolved, a
+        <code>FileLocationStrategy</code> implementation should not throw an
+        exception, but return <b>null</b> instead. This allows multiple
+        strategies to be chained so that different locations can be searched for
+        the file one after the other.
+      </p>
+      <p>
+        <em>Commons Configuration</em> ships with a set of standard
+        <code>FileLocationStrategy</code> implementations. They are pretty
+        specialized, meaning that a single implementation focuses on a very
+        specific search algorithm. The true power lies in combining these
+        strategies in a way suitable for an application or use case. The
+        following table describes the available <code>FileLocationStrategy</code>
+        implementations:
+      </p>
+      <p>
+        <table>
+          <tr>
+            <th>Location Strategy class</th>
+            <th>Description</th>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/ProvidedURLLocationStrategy.html">
+              ProvidedURLLocationStrategy</a></code>
+            </td>
+            <td>
+              Directly returns the URL stored in the passed in
+              <code>FileLocator</code>. Unless an application needs some
+              special URL transformation, a file locator's URL - if defined -
+              can typically be used directly to access a file. So it makes
+              sense to use this strategy at the very beginning of your chain
+              of strategies.
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/FileSystemLocationStrategy.html">
+              FileSystemLocationStrategy</a></code>
+            </td>
+            <td>
+              Passes the base path and the file name stored in the passed in
+              <code>FileLocator</code> to the <code>locateFromURL()</code>
+              method of the current <code>FileSystem</code>. This gives the file
+              system the opportunity to perform a special resolution.
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/AbsoluteNameLocationStrategy.html">
+              AbsoluteNameLocationStrategy</a></code>
+            </td>
+            <td>
+              Checks whether the file name stored in the passed in
+              <code>FileLocator</code> is actually an absolute path name
+              pointing to an existing file. If this is the case, the URL to
+              this file is returned.
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/BasePathLocationStrategy.html">
+              BasePathLocationStrategy</a></code>
+            </td>
+            <td>
+              This strategy creates a concatenation of the base path and file
+              name stored in the passed in <code>FileLocator</code> (of course,
+              only if both are defined). If this results in a path pointing to
+              an existing file, this file's URL is returned.
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/HomeDirectoryLocationStrategy.html">
+              HomeDirectoryLocationStrategy</a></code>
+            </td>
+            <td>
+              Searches for the referenced file in the current system user's home
+              directory. It is also possible to specify a different directory
+              in which the strategy should search; the path to the target
+              directory can be passed to the constructor.
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/ClasspathLocationStrategy.html">
+              ClasspathLocationStrategy</a></code>
+            </td>
+            <td>
+              Interprets the file name stored in the passed in
+              <code>FileLocator</code> as a resource name and tries to look it
+              up on the current classpath.
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">
+              <code><a href="../apidocs/org/apache/commons/configuration2/io/CombinedLocationStrategy.html">
+              CombinedLocationStrategy</a></code>
+            </td>
+            <td>
+              This is a kind of meta strategy which allows combining an arbitrary
+              number of other <code>FileLocationStrategy</code> objects. At
+              construction time a collection with sub strategies has to be
+              passed in. In its implementation of the <code>locate()</code>
+              method, the strategy iterates over all its sub strategies (in the
+              order they were passed to the constructor) until one returns a
+              non <b>null</b> URL. This URL is returned.
+            </td>
+          </tr>
+        </table>
+      </p>
+      <p>
+        As an example, consider that an application wants configuration files
+        to be looked up (in this order)
+        <ul>
+          <li>by their URL</li>
+          <li>by the file system (which will evaluate base path and file name)</li>
+          <li>on the classpath</li>
+        </ul>
+        Then a concrete location strategy could be constructed as follows:
+      </p>
+     <source><![CDATA[
+List<FileLocationStrategy> subs = Arrays.asList(
+  new ProvidedURLLocationStrategy(),
+  new FileSystemLocationStrategy(),
+  new ClasspathLocationStrategy());
+FileLocationStrategy strategy = new CombinedLocationStrategy(subs);
+]]></source>
+      <p>
+        This strategy can now be passed to a file-based configuration builder.
+        If no strategy is passed to a builder, a default one is used. This
+        default strategy is almost identical to the hard-coded search algorithm
+        that was used in earlier versions of <em>Commons Configuration</em>.
+        In fact, the pre-defined basic <code>FileLocationStrategy</code>
+        implementations were extracted from this algorithm.
+      </p>
+      <p>
+        Because the <code>FileLocationStrategy</code> interface is very simple
+        it should be easy to create a custom implementation. The specific
+        search algorithm just has to be coded into the <code>locate()</code>
+        method. Then this custom strategy implementation can be combined with
+        other standard strategies by making use of a
+        <code>CombinedLocationStrategy</code>.
+      </p>
+      </subsection>
+    </section>
+
+</body>
+
+</document>

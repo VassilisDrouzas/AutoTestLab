@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LazyIteratorChain.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.iterators</a> &gt; <span class="el_source">LazyIteratorChain.java</span></div><h1>LazyIteratorChain.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.iterators;
+
+import java.util.Iterator;
+
+/**
+ * An LazyIteratorChain is an Iterator that wraps a number of Iterators in a lazy manner.
+ * &lt;p&gt;
+ * This class makes multiple iterators look like one to the caller. When any
+ * method from the Iterator interface is called, the LazyIteratorChain will delegate
+ * to a single underlying Iterator. The LazyIteratorChain will invoke the Iterators
+ * in sequence until all Iterators are exhausted.
+ * &lt;p&gt;
+ * The Iterators are provided by {@link #nextIterator(int)} which has to be overridden by
+ * subclasses and allows to lazily create the Iterators as they are accessed:
+ * &lt;pre&gt;
+ * return new LazyIteratorChain&amp;lt;String&amp;gt;() {
+ *     protected Iterator&amp;lt;String&amp;gt; nextIterator(int count) {
+ *         return count == 1 ? Arrays.asList(&quot;foo&quot;, &quot;bar&quot;).iterator() : null;
+ *     }
+ * };
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * Once the inner Iterator's {@link Iterator#hasNext()} method returns false,
+ * {@link #nextIterator(int)} will be called to obtain another iterator, and so on
+ * until {@link #nextIterator(int)} returns null, indicating that the chain is exhausted.
+ * &lt;p&gt;
+ * NOTE: The LazyIteratorChain may contain no iterators. In this case the class will
+ * function as an empty iterator.
+ *
+ * @param &lt;E&gt; the type of elements in this iterator.
+ * @since 4.0
+ */
+<span class="fc" id="L49">public abstract class LazyIteratorChain&lt;E&gt; implements Iterator&lt;E&gt; {</span>
+
+    /** The number of times {@link #next()} was already called. */
+    private int callCounter;
+
+    /** Indicates that the Iterator chain has been exhausted. */
+    private boolean chainExhausted;
+
+    /** The current iterator. */
+    private Iterator&lt;? extends E&gt; currentIterator;
+
+    /**
+     * The &quot;last used&quot; Iterator is the Iterator upon which next() or hasNext()
+     * was most recently called used for the remove() operation only.
+     */
+    private Iterator&lt;? extends E&gt; lastUsedIterator;
+
+    /**
+     * Return true if any Iterator in the chain has a remaining element.
+     *
+     * @return true if elements remain
+     */
+    @Override
+    public boolean hasNext() {
+<span class="fc" id="L73">        updateCurrentIterator();</span>
+<span class="fc" id="L74">        lastUsedIterator = currentIterator;</span>
+
+<span class="fc" id="L76">        return currentIterator.hasNext();</span>
+    }
+
+    /**
+     * Returns the next element of the current Iterator
+     *
+     * @return element from the current Iterator
+     * @throws java.util.NoSuchElementException if all the Iterators are exhausted
+     */
+    @Override
+    public E next() {
+<span class="fc" id="L87">        updateCurrentIterator();</span>
+<span class="fc" id="L88">        lastUsedIterator = currentIterator;</span>
+
+<span class="fc" id="L90">        return currentIterator.next();</span>
+    }
+
+    /**
+     * Gets the next iterator after the previous one has been exhausted.
+     * &lt;p&gt;
+     * This method &lt;b&gt;MUST&lt;/b&gt; return null when there are no more iterators.
+     *
+     * @param count the number of time this method has been called (starts with 1)
+     * @return the next iterator, or null if there are no more.
+     */
+    protected abstract Iterator&lt;? extends E&gt; nextIterator(int count);
+
+    /**
+     * Removes from the underlying collection the last element returned by the Iterator.
+     * &lt;p&gt;
+     * As with next() and hasNext(), this method calls remove() on the underlying Iterator.
+     * Therefore, this method may throw an UnsupportedOperationException if the underlying
+     * Iterator does not support this method.
+     *
+     * @throws UnsupportedOperationException if the remove operator is not
+     *   supported by the underlying Iterator
+     * @throws IllegalStateException if the next method has not yet been called,
+     *   or the remove method has already been called after the last call to the next method.
+     */
+    @Override
+    public void remove() {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (currentIterator == null) {</span>
+<span class="fc" id="L118">            updateCurrentIterator();</span>
+        }
+<span class="fc" id="L120">        lastUsedIterator.remove();</span>
+<span class="fc" id="L121">    }</span>
+
+    /**
+     * Updates the current iterator field to ensure that the current Iterator
+     * is not exhausted.
+     */
+    private void updateCurrentIterator() {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (callCounter == 0) {</span>
+<span class="fc" id="L129">            currentIterator = nextIterator(++callCounter);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (currentIterator == null) {</span>
+<span class="fc" id="L131">                currentIterator = EmptyIterator.&lt;E&gt;emptyIterator();</span>
+<span class="fc" id="L132">                chainExhausted = true;</span>
+            }
+            // set last used iterator here, in case the user calls remove
+            // before calling hasNext() or next() (although they shouldn't)
+<span class="fc" id="L136">            lastUsedIterator = currentIterator;</span>
+        }
+
+<span class="fc bfc" id="L139" title="All 4 branches covered.">        while (!currentIterator.hasNext() &amp;&amp; !chainExhausted) {</span>
+<span class="fc" id="L140">            final Iterator&lt;? extends E&gt; nextIterator = nextIterator(++callCounter);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (nextIterator != null) {</span>
+<span class="fc" id="L142">                currentIterator = nextIterator;</span>
+            } else {
+<span class="fc" id="L144">                chainExhausted = true;</span>
+            }
+<span class="fc" id="L146">        }</span>
+<span class="fc" id="L147">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

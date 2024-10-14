@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>URLCodec.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Codec</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.codec.net</a> &gt; <span class="el_source">URLCodec.java</span></div><h1>URLCodec.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.codec.net;
+
+import java.io.ByteArrayOutputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.BitSet;
+
+import org.apache.commons.codec.BinaryDecoder;
+import org.apache.commons.codec.BinaryEncoder;
+import org.apache.commons.codec.CharEncoding;
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.StringDecoder;
+import org.apache.commons.codec.StringEncoder;
+import org.apache.commons.codec.binary.StringUtils;
+
+/**
+ * Implements the 'www-form-urlencoded' encoding scheme, also misleadingly known as URL encoding.
+ * &lt;p&gt;
+ * This codec is meant to be a replacement for standard Java classes {@link java.net.URLEncoder} and
+ * {@link java.net.URLDecoder} on older Java platforms, as these classes in Java versions below
+ * 1.4 rely on the platform's default charset encoding.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is thread-safe as of 1.11
+ * &lt;/p&gt;
+ *
+ * @see &lt;a href=&quot;http://www.w3.org/TR/html4/interact/forms.html#h-17.13.4.1&quot;&gt;Chapter 17.13.4 Form content types&lt;/a&gt;
+ *           of the &lt;a href=&quot;http://www.w3.org/TR/html4/&quot;&gt;HTML 4.01 Specification&lt;/a&gt;
+ *
+ * @since 1.2
+ */
+public class URLCodec implements BinaryEncoder, BinaryDecoder, StringEncoder, StringDecoder {
+
+    /**
+     * Release 1.5 made this field final.
+     */
+    protected static final byte ESCAPE_CHAR = '%';
+
+    /**
+     * BitSet of www-form-url safe characters.
+     * This is a copy of the internal BitSet which is now used for the conversion.
+     * Changes to this field are ignored.
+     * @deprecated 1.11 Will be removed in 2.0 (CODEC-230)
+     */
+    @Deprecated
+    protected static final BitSet WWW_FORM_URL;
+
+<span class="fc" id="L65">    private static final BitSet WWW_FORM_URL_SAFE = new BitSet(256);</span>
+
+    // Static initializer for www_form_url
+    static {
+        // alpha characters
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (int i = 'a'; i &lt;= 'z'; i++) {</span>
+<span class="fc" id="L71">            WWW_FORM_URL_SAFE.set(i);</span>
+        }
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (int i = 'A'; i &lt;= 'Z'; i++) {</span>
+<span class="fc" id="L74">            WWW_FORM_URL_SAFE.set(i);</span>
+        }
+        // numeric characters
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (int i = '0'; i &lt;= '9'; i++) {</span>
+<span class="fc" id="L78">            WWW_FORM_URL_SAFE.set(i);</span>
+        }
+        // special chars
+<span class="fc" id="L81">        WWW_FORM_URL_SAFE.set('-');</span>
+<span class="fc" id="L82">        WWW_FORM_URL_SAFE.set('_');</span>
+<span class="fc" id="L83">        WWW_FORM_URL_SAFE.set('.');</span>
+<span class="fc" id="L84">        WWW_FORM_URL_SAFE.set('*');</span>
+        // blank to be replaced with +
+<span class="fc" id="L86">        WWW_FORM_URL_SAFE.set(' ');</span>
+
+        // Create a copy in case anyone (ab)uses it
+<span class="fc" id="L89">        WWW_FORM_URL = (BitSet) WWW_FORM_URL_SAFE.clone();</span>
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * Decodes an array of URL safe 7-bit characters into an array of original bytes. Escaped characters are converted
+     * back to their original representation.
+     *
+     * @param bytes
+     *            array of URL safe characters
+     * @return array of original bytes
+     * @throws DecoderException
+     *             Thrown if URL decoding is unsuccessful
+     */
+    public static final byte[] decodeUrl(final byte[] bytes) throws DecoderException {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (bytes == null) {</span>
+<span class="fc" id="L104">            return null;</span>
+        }
+<span class="fc" id="L106">        final ByteArrayOutputStream buffer = new ByteArrayOutputStream();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (int i = 0; i &lt; bytes.length; i++) {</span>
+<span class="fc" id="L108">            final int b = bytes[i];</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (b == '+') {</span>
+<span class="fc" id="L110">                buffer.write(' ');</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            } else if (b == ESCAPE_CHAR) {</span>
+                try {
+<span class="fc" id="L113">                    final int u = Utils.digit16(bytes[++i]);</span>
+<span class="fc" id="L114">                    final int l = Utils.digit16(bytes[++i]);</span>
+<span class="fc" id="L115">                    buffer.write((char) ((u &lt;&lt; 4) + l));</span>
+<span class="fc" id="L116">                } catch (final ArrayIndexOutOfBoundsException e) {</span>
+<span class="fc" id="L117">                    throw new DecoderException(&quot;Invalid URL encoding: &quot;, e);</span>
+<span class="fc" id="L118">                }</span>
+            } else {
+<span class="fc" id="L120">                buffer.write(b);</span>
+            }
+        }
+<span class="fc" id="L123">        return buffer.toByteArray();</span>
+    }
+
+    /**
+     * Encodes an array of bytes into an array of URL safe 7-bit characters. Unsafe characters are escaped.
+     *
+     * @param urlsafe
+     *            bitset of characters deemed URL safe
+     * @param bytes
+     *            array of bytes to convert to URL safe characters
+     * @return array of bytes containing URL safe characters
+     */
+    public static final byte[] encodeUrl(BitSet urlsafe, final byte[] bytes) {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (bytes == null) {</span>
+<span class="fc" id="L137">            return null;</span>
+        }
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (urlsafe == null) {</span>
+<span class="fc" id="L140">            urlsafe = WWW_FORM_URL_SAFE;</span>
+        }
+
+<span class="fc" id="L143">        final ByteArrayOutputStream buffer = new ByteArrayOutputStream();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        for (final byte c : bytes) {</span>
+<span class="fc" id="L145">            int b = c;</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (b &lt; 0) {</span>
+<span class="fc" id="L147">                b = 256 + b;</span>
+            }
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (urlsafe.get(b)) {</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (b == ' ') {</span>
+<span class="fc" id="L151">                    b = '+';</span>
+                }
+<span class="fc" id="L153">                buffer.write(b);</span>
+            } else {
+<span class="fc" id="L155">                buffer.write(ESCAPE_CHAR);</span>
+<span class="fc" id="L156">                final char hex1 = Utils.hexDigit(b &gt;&gt; 4);</span>
+<span class="fc" id="L157">                final char hex2 = Utils.hexDigit(b);</span>
+<span class="fc" id="L158">                buffer.write(hex1);</span>
+<span class="fc" id="L159">                buffer.write(hex2);</span>
+            }
+        }
+<span class="fc" id="L162">        return buffer.toByteArray();</span>
+    }
+
+    /**
+     * The default charset used for string decoding and encoding.
+     *
+     * @deprecated TODO: This field will be changed to a private final Charset in 2.0. (CODEC-126)
+     */
+    @Deprecated
+    protected volatile String charset; // added volatile: see CODEC-232
+
+    /**
+     * Default constructor.
+     */
+    public URLCodec() {
+<span class="fc" id="L177">        this(CharEncoding.UTF_8);</span>
+<span class="fc" id="L178">    }</span>
+
+    /**
+     * Constructor which allows for the selection of a default charset.
+     *
+     * @param charset the default string charset to use.
+     */
+<span class="fc" id="L185">    public URLCodec(final String charset) {</span>
+<span class="fc" id="L186">        this.charset = charset;</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Decodes an array of URL safe 7-bit characters into an array of original bytes. Escaped characters are converted
+     * back to their original representation.
+     *
+     * @param bytes
+     *            array of URL safe characters
+     * @return array of original bytes
+     * @throws DecoderException
+     *             Thrown if URL decoding is unsuccessful
+     */
+    @Override
+    public byte[] decode(final byte[] bytes) throws DecoderException {
+<span class="fc" id="L201">        return decodeUrl(bytes);</span>
+    }
+
+    /**
+     * Decodes a URL safe object into its original form. Escaped characters are converted back to their original
+     * representation.
+     *
+     * @param obj
+     *            URL safe object to convert into its original form
+     * @return original object
+     * @throws DecoderException
+     *             Thrown if the argument is not a {@code String} or {@code byte[]}. Thrown if a failure
+     *             condition is encountered during the decode process.
+     */
+    @Override
+    public Object decode(final Object obj) throws DecoderException {
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (obj == null) {</span>
+<span class="fc" id="L218">            return null;</span>
+        }
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (obj instanceof byte[]) {</span>
+<span class="fc" id="L221">            return decode((byte[]) obj);</span>
+        }
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (obj instanceof String) {</span>
+<span class="fc" id="L224">            return decode((String) obj);</span>
+        }
+<span class="fc" id="L226">        throw new DecoderException(&quot;Objects of type &quot; + obj.getClass().getName() + &quot; cannot be URL decoded&quot;);</span>
+    }
+
+    /**
+     * Decodes a URL safe string into its original form using the default string charset. Escaped characters are
+     * converted back to their original representation.
+     *
+     * @param str
+     *            URL safe string to convert into its original form
+     * @return original string
+     * @throws DecoderException
+     *             Thrown if URL decoding is unsuccessful
+     * @see #getDefaultCharset()
+     */
+    @Override
+    public String decode(final String str) throws DecoderException {
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (str == null) {</span>
+<span class="fc" id="L243">            return null;</span>
+        }
+        try {
+<span class="fc" id="L246">            return decode(str, getDefaultCharset());</span>
+<span class="fc" id="L247">        } catch (final UnsupportedEncodingException e) {</span>
+<span class="fc" id="L248">            throw new DecoderException(e.getMessage(), e);</span>
+        }
+    }
+
+    /**
+     * Decodes a URL safe string into its original form using the specified encoding. Escaped characters are converted
+     * back to their original representation.
+     *
+     * @param str
+     *            URL safe string to convert into its original form
+     * @param charsetName
+     *            the original string charset
+     * @return original string
+     * @throws DecoderException
+     *             Thrown if URL decoding is unsuccessful
+     * @throws UnsupportedEncodingException
+     *             Thrown if charset is not supported
+     */
+    public String decode(final String str, final String charsetName)
+            throws DecoderException, UnsupportedEncodingException {
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (str == null) {</span>
+<span class="fc" id="L269">            return null;</span>
+        }
+<span class="fc" id="L271">        return new String(decode(StringUtils.getBytesUsAscii(str)), charsetName);</span>
+    }
+
+    /**
+     * Encodes an array of bytes into an array of URL safe 7-bit characters. Unsafe characters are escaped.
+     *
+     * @param bytes
+     *            array of bytes to convert to URL safe characters
+     * @return array of bytes containing URL safe characters
+     */
+    @Override
+    public byte[] encode(final byte[] bytes) {
+<span class="fc" id="L283">        return encodeUrl(WWW_FORM_URL_SAFE, bytes);</span>
+    }
+
+    /**
+     * Encodes an object into its URL safe form. Unsafe characters are escaped.
+     *
+     * @param obj
+     *            string to convert to a URL safe form
+     * @return URL safe object
+     * @throws EncoderException
+     *             Thrown if URL encoding is not applicable to objects of this type or if encoding is unsuccessful
+     */
+    @Override
+    public Object encode(final Object obj) throws EncoderException {
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (obj == null) {</span>
+<span class="fc" id="L298">            return null;</span>
+        }
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (obj instanceof byte[]) {</span>
+<span class="fc" id="L301">            return encode((byte[]) obj);</span>
+        }
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (obj instanceof String) {</span>
+<span class="fc" id="L304">            return encode((String) obj);</span>
+        }
+<span class="fc" id="L306">        throw new EncoderException(&quot;Objects of type &quot; + obj.getClass().getName() + &quot; cannot be URL encoded&quot;);</span>
+    }
+
+    /**
+     * Encodes a string into its URL safe form using the default string charset. Unsafe characters are escaped.
+     *
+     * @param str
+     *            string to convert to a URL safe form
+     * @return URL safe string
+     * @throws EncoderException
+     *             Thrown if URL encoding is unsuccessful
+     *
+     * @see #getDefaultCharset()
+     */
+    @Override
+    public String encode(final String str) throws EncoderException {
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (str == null) {</span>
+<span class="fc" id="L323">            return null;</span>
+        }
+        try {
+<span class="fc" id="L326">            return encode(str, getDefaultCharset());</span>
+<span class="fc" id="L327">        } catch (final UnsupportedEncodingException e) {</span>
+<span class="fc" id="L328">            throw new EncoderException(e.getMessage(), e);</span>
+        }
+    }
+
+    /**
+     * Encodes a string into its URL safe form using the specified string charset. Unsafe characters are escaped.
+     *
+     * @param str
+     *            string to convert to a URL safe form
+     * @param charsetName
+     *            the charset for str
+     * @return URL safe string
+     * @throws UnsupportedEncodingException
+     *             Thrown if charset is not supported
+     */
+    public String encode(final String str, final String charsetName) throws UnsupportedEncodingException {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (str == null) {</span>
+<span class="fc" id="L345">            return null;</span>
+        }
+<span class="fc" id="L347">        return StringUtils.newStringUsAscii(encode(str.getBytes(charsetName)));</span>
+    }
+
+    /**
+     * The default charset used for string decoding and encoding.
+     *
+     * @return the default string charset.
+     */
+    public String getDefaultCharset() {
+<span class="fc" id="L356">        return this.charset;</span>
+    }
+
+    /**
+     * The {@code String} encoding used for decoding and encoding.
+     *
+     * @return Returns the encoding.
+     *
+     * @deprecated Use {@link #getDefaultCharset()}, will be removed in 2.0.
+     */
+    @Deprecated
+    public String getEncoding() {
+<span class="nc" id="L368">        return this.charset;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

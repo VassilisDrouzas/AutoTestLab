@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultFileSystem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.io</a> &gt; <span class="el_source">DefaultFileSystem.java</span></div><h1>DefaultFileSystem.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.io;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+
+import org.apache.commons.configuration2.ex.ConfigurationException;
+
+/**
+ * FileSystem that uses java.io.File or HttpClient.
+ *
+ * @since 1.7
+ */
+<span class="fc" id="L37">public class DefaultFileSystem extends FileSystem {</span>
+
+    /**
+     * Wraps the output stream so errors can be detected in the HTTP response.
+     *
+     * @since 1.7
+     */
+    private static final class HttpOutputStream extends VerifiableOutputStream {
+        /** The wrapped OutputStream */
+        private final OutputStream stream;
+
+        /** The HttpURLConnection */
+        private final HttpURLConnection connection;
+
+<span class="fc" id="L51">        public HttpOutputStream(final OutputStream stream, final HttpURLConnection connection) {</span>
+<span class="fc" id="L52">            this.stream = stream;</span>
+<span class="fc" id="L53">            this.connection = connection;</span>
+<span class="fc" id="L54">        }</span>
+
+        @Override
+        public void close() throws IOException {
+<span class="fc" id="L58">            stream.close();</span>
+<span class="fc" id="L59">        }</span>
+
+        @Override
+        public void flush() throws IOException {
+<span class="fc" id="L63">            stream.flush();</span>
+<span class="fc" id="L64">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L68">            return stream.toString();</span>
+        }
+
+        @Override
+        public void verify() throws IOException {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (connection.getResponseCode() &gt;= HttpURLConnection.HTTP_BAD_REQUEST) {</span>
+<span class="fc" id="L74">                throw new IOException(&quot;HTTP Error &quot; + connection.getResponseCode() + &quot; &quot; + connection.getResponseMessage());</span>
+            }
+<span class="fc" id="L76">        }</span>
+
+        @Override
+        public void write(final byte[] bytes) throws IOException {
+<span class="nc" id="L80">            stream.write(bytes);</span>
+<span class="nc" id="L81">        }</span>
+
+        @Override
+        public void write(final byte[] bytes, final int i, final int i1) throws IOException {
+<span class="fc" id="L85">            stream.write(bytes, i, i1);</span>
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public void write(final int i) throws IOException {
+<span class="nc" id="L90">            stream.write(i);</span>
+<span class="nc" id="L91">        }</span>
+    }
+
+    /**
+     * Create the path to the specified file.
+     *
+     * @param file the target file
+     * @throws ConfigurationException if the path cannot be created
+     */
+    private void createPath(final File file) throws ConfigurationException {
+        // create the path to the file if the file doesn't exist
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">        if (file != null &amp;&amp; !file.exists()) {</span>
+<span class="fc" id="L103">            final File parent = file.getParentFile();</span>
+<span class="pc bpc" id="L104" title="3 of 6 branches missed.">            if (parent != null &amp;&amp; !parent.exists() &amp;&amp; !parent.mkdirs()) {</span>
+<span class="nc" id="L105">                throw new ConfigurationException(&quot;Cannot create path: &quot; + parent);</span>
+            }
+        }
+<span class="fc" id="L108">    }</span>
+
+    @Override
+    public String getBasePath(final String path) {
+        final URL url;
+        try {
+<span class="nc" id="L114">            url = getURL(null, path);</span>
+<span class="nc" id="L115">            return FileLocatorUtils.getBasePath(url);</span>
+<span class="nc" id="L116">        } catch (final Exception e) {</span>
+<span class="nc" id="L117">            return null;</span>
+        }
+    }
+
+    @Override
+    public String getFileName(final String path) {
+        final URL url;
+        try {
+<span class="nc" id="L125">            url = getURL(null, path);</span>
+<span class="nc" id="L126">            return FileLocatorUtils.getFileName(url);</span>
+<span class="nc" id="L127">        } catch (final Exception e) {</span>
+<span class="nc" id="L128">            return null;</span>
+        }
+    }
+
+    @Override
+    public InputStream getInputStream(final URL url) throws ConfigurationException {
+<span class="fc" id="L134">        return getInputStream(url, null);</span>
+    }
+
+    @Override
+    public InputStream getInputStream(final URL url, final URLConnectionOptions urlConnectionOptions) throws ConfigurationException {
+        // throw an exception if the target URL is a directory
+<span class="fc" id="L140">        final File file = FileLocatorUtils.fileFromURL(url);</span>
+<span class="fc bfc" id="L141" title="All 4 branches covered.">        if (file != null &amp;&amp; file.isDirectory()) {</span>
+<span class="fc" id="L142">            throw new ConfigurationException(&quot;Cannot load a configuration from a directory&quot;);</span>
+        }
+
+        try {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            return urlConnectionOptions == null ? url.openStream() : urlConnectionOptions.openConnection(url).getInputStream();</span>
+<span class="fc" id="L147">        } catch (final Exception e) {</span>
+<span class="fc" id="L148">            throw new ConfigurationException(&quot;Unable to load the configuration from the URL &quot; + url, e);</span>
+        }
+    }
+
+    @Override
+    public OutputStream getOutputStream(final File file) throws ConfigurationException {
+        try {
+            // create the file if necessary
+<span class="fc" id="L156">            createPath(file);</span>
+<span class="fc" id="L157">            return new FileOutputStream(file);</span>
+<span class="fc" id="L158">        } catch (final FileNotFoundException e) {</span>
+<span class="fc" id="L159">            throw new ConfigurationException(&quot;Unable to save to file &quot; + file, e);</span>
+        }
+    }
+
+    @Override
+    public OutputStream getOutputStream(final URL url) throws ConfigurationException {
+        // file URLs have to be converted to Files since FileURLConnection is
+        // read only (https://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4191800)
+<span class="fc" id="L167">        final File file = FileLocatorUtils.fileFromURL(url);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (file != null) {</span>
+<span class="fc" id="L169">            return getOutputStream(file);</span>
+        }
+        // for non file URLs save through an URLConnection
+        OutputStream out;
+        try {
+<span class="fc" id="L174">            final URLConnection connection = url.openConnection();</span>
+<span class="fc" id="L175">            connection.setDoOutput(true);</span>
+
+            // use the PUT method for http URLs
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (connection instanceof HttpURLConnection) {</span>
+<span class="fc" id="L179">                final HttpURLConnection conn = (HttpURLConnection) connection;</span>
+<span class="fc" id="L180">                conn.setRequestMethod(&quot;PUT&quot;);</span>
+            }
+
+<span class="fc" id="L183">            out = connection.getOutputStream();</span>
+
+            // check the response code for http URLs and throw an exception if an error occurred
+<span class="fc bfc" id="L186" title="All 2 branches covered.">            if (connection instanceof HttpURLConnection) {</span>
+<span class="fc" id="L187">                out = new HttpOutputStream(out, (HttpURLConnection) connection);</span>
+            }
+<span class="fc" id="L189">            return out;</span>
+<span class="nc" id="L190">        } catch (final IOException e) {</span>
+<span class="nc" id="L191">            throw new ConfigurationException(&quot;Could not save to URL &quot; + url, e);</span>
+        }
+    }
+
+    @Override
+    public String getPath(final File file, final URL url, final String basePath, final String fileName) {
+<span class="fc" id="L197">        String path = null;</span>
+        // if resource was loaded from jar file may be null
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (file != null) {</span>
+<span class="fc" id="L200">            path = file.getAbsolutePath();</span>
+        }
+
+        // try to see if file was loaded from a jar
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (path == null) {</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">            if (url != null) {</span>
+<span class="nc" id="L206">                path = url.getPath();</span>
+            } else {
+                try {
+<span class="nc" id="L209">                    path = getURL(basePath, fileName).getPath();</span>
+<span class="fc" id="L210">                } catch (final Exception e) {</span>
+                    // simply ignore it and return null
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                    if (getLogger().isDebugEnabled()) {</span>
+<span class="nc" id="L213">                        getLogger().debug(String.format(&quot;Could not determine URL for &quot; + &quot;basePath = %s, fileName = %s: %s&quot;, basePath, fileName, e));</span>
+                    }
+<span class="nc" id="L215">                }</span>
+            }
+        }
+
+<span class="fc" id="L219">        return path;</span>
+    }
+
+    @Override
+    public URL getURL(final String basePath, final String file) throws MalformedURLException {
+<span class="fc" id="L224">        final File f = new File(file);</span>
+        // already absolute?
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (f.isAbsolute()) {</span>
+<span class="fc" id="L227">            return FileLocatorUtils.toURL(f);</span>
+        }
+
+        try {
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">            if (basePath == null) {</span>
+<span class="nc" id="L232">                return new URL(file);</span>
+            }
+<span class="fc" id="L234">            final URL base = new URL(basePath);</span>
+<span class="fc" id="L235">            return new URL(base, file);</span>
+<span class="fc" id="L236">        } catch (final MalformedURLException uex) {</span>
+<span class="fc" id="L237">            return FileLocatorUtils.toURL(FileLocatorUtils.constructFile(basePath, file));</span>
+        }
+    }
+
+    @Override
+    public URL locateFromURL(final String basePath, final String fileName) {
+        try {
+            final URL url;
+<span class="fc bfc" id="L245" title="All 2 branches covered.">            if (basePath == null) {</span>
+<span class="fc" id="L246">                return new URL(fileName);</span>
+                // url = new URL(name);
+            }
+<span class="fc" id="L249">            final URL baseURL = new URL(basePath);</span>
+<span class="fc" id="L250">            url = new URL(baseURL, fileName);</span>
+
+            // check if the file exists
+<span class="fc" id="L253">            try (InputStream in = url.openStream()) {</span>
+                // nothing
+<span class="fc" id="L255">                in.available();</span>
+            }
+<span class="fc" id="L257">            return url;</span>
+<span class="fc" id="L258">        } catch (final IOException e) {</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">            if (getLogger().isDebugEnabled()) {</span>
+<span class="nc" id="L260">                getLogger().debug(&quot;Could not locate file &quot; + fileName + &quot; at &quot; + basePath + &quot;: &quot; + e.getMessage());</span>
+            }
+<span class="fc" id="L262">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

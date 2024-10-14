@@ -1,0 +1,1501 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Conversion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3</a> &gt; <span class="el_source">Conversion.java</span></div><h1>Conversion.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3;
+
+import java.util.UUID;
+
+/**
+ * Static methods to convert a type into another, with endianness and bit ordering awareness.
+ *
+ * &lt;p&gt;
+ * The methods names follow a naming rule:&lt;br&gt;
+ * {@code &lt;source type&gt;[source endianness][source bit ordering]To&lt;destination type&gt;[destination endianness][destination bit ordering]}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Source/destination type fields is one of the following:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;binary: an array of booleans&lt;/li&gt;
+ * &lt;li&gt;byte or byteArray&lt;/li&gt;
+ * &lt;li&gt;int or intArray&lt;/li&gt;
+ * &lt;li&gt;long or longArray&lt;/li&gt;
+ * &lt;li&gt;hex: a String containing hexadecimal digits (lowercase in destination)&lt;/li&gt;
+ * &lt;li&gt;hexDigit: a Char containing a hexadecimal digit (lowercase in destination)&lt;/li&gt;
+ * &lt;li&gt;uuid&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Endianness field: little-endian is the default, in this case the field is absent. In case of
+ * big-endian, the field is &quot;Be&quot;.&lt;br&gt; Bit ordering: Lsb0 is the default, in this case the field
+ * is absent. In case of Msb0, the field is &quot;Msb0&quot;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Example: intBeMsb0ToHex convert an int with big-endian byte order and Msb0 bit order into its
+ * hexadecimal string representation
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Most of the methods provide only default encoding for destination, this limits the number of
+ * ways to do one thing. Unless you are dealing with data from/to outside of the JVM platform,
+ * you should not need to use &quot;Be&quot; and &quot;Msb0&quot; methods.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Development status: work on going, only a part of the little-endian, Lsb0 methods implemented
+ * so far.
+ * &lt;/p&gt;
+ *
+ * @since 3.2
+ */
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">public class Conversion {</span>
+
+<span class="fc" id="L63">    private static final boolean[] TTTT = {true, true, true, true};</span>
+<span class="fc" id="L64">    private static final boolean[] FTTT = {false, true, true, true};</span>
+<span class="fc" id="L65">    private static final boolean[] TFTT = {true, false, true, true};</span>
+<span class="fc" id="L66">    private static final boolean[] FFTT = {false, false, true, true};</span>
+<span class="fc" id="L67">    private static final boolean[] TTFT = {true, true, false, true};</span>
+<span class="fc" id="L68">    private static final boolean[] FTFT = {false, true, false, true};</span>
+<span class="fc" id="L69">    private static final boolean[] TFFT = {true, false, false, true};</span>
+<span class="fc" id="L70">    private static final boolean[] FFFT = {false, false, false, true};</span>
+<span class="fc" id="L71">    private static final boolean[] TTTF = {true, true, true, false};</span>
+<span class="fc" id="L72">    private static final boolean[] FTTF = {false, true, true, false};</span>
+<span class="fc" id="L73">    private static final boolean[] TFTF = {true, false, true, false};</span>
+<span class="fc" id="L74">    private static final boolean[] FFTF = {false, false, true, false};</span>
+<span class="fc" id="L75">    private static final boolean[] TTFF = {true, true, false, false};</span>
+<span class="fc" id="L76">    private static final boolean[] FTFF = {false, true, false, false};</span>
+<span class="fc" id="L77">    private static final boolean[] TFFF = {true, false, false, false};</span>
+<span class="fc" id="L78">    private static final boolean[] FFFF = {false, false, false, false};</span>
+
+    /**
+     * Converts the first 4 bits of a binary (represented as boolean array) in big-endian Msb0
+     * bit ordering to a hexadecimal digit.
+     *
+     * &lt;p&gt;
+     * (1, 0, 0, 0) is converted as follow: '8' (1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0) is converted
+     * to '4'
+     * &lt;/p&gt;
+     *
+     * @param src the binary to convert
+     * @return a hexadecimal digit representing the selected bits
+     * @throws IllegalArgumentException if {@code src} is empty
+     * @throws NullPointerException if {@code src} is {@code null}
+     */
+    public static char binaryBeMsb0ToHexDigit(final boolean[] src) {
+<span class="fc" id="L95">        return binaryBeMsb0ToHexDigit(src, 0);</span>
+    }
+
+    /**
+     * Converts a binary (represented as boolean array) in big-endian Msb0 bit ordering to a
+     * hexadecimal digit.
+     *
+     * &lt;p&gt;
+     * (1, 0, 0, 0) with srcPos = 0 is converted as follow: '8' (1, 0, 0, 0, 0, 0, 0, 0,
+     * 0, 0, 0, 1, 0, 1, 0, 0) with srcPos = 2 is converted to '5'
+     * &lt;/p&gt;
+     *
+     * @param src the binary to convert
+     * @param srcPos the position of the lsb to start the conversion
+     * @return a hexadecimal digit representing the selected bits
+     * @throws IllegalArgumentException if {@code src} is empty
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IndexOutOfBoundsException if {@code srcPos} is outside the array.
+     */
+    public static char binaryBeMsb0ToHexDigit(final boolean[] src, final int srcPos) {
+        // JDK 9: Objects.checkIndex(int index, int length)
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (Integer.compareUnsigned(srcPos, src.length) &gt;= 0) {</span>
+            // Throw the correct exception
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (src.length == 0) {</span>
+<span class="fc" id="L119">                throw new IllegalArgumentException(&quot;Cannot convert an empty array.&quot;);</span>
+            }
+<span class="fc" id="L121">            throw new IndexOutOfBoundsException(srcPos + &quot; is not within array length &quot; + src.length);</span>
+        }
+        // Little-endian bit 0 position
+<span class="fc" id="L124">        final int pos = src.length - 1 - srcPos;</span>
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        if (3 &lt;= pos &amp;&amp; src[pos - 3]) {</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (src[pos - 2]) {</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                if (src[pos - 1]) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                    return src[pos] ? 'f' : 'e';</span>
+                }
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                return src[pos] ? 'd' : 'c';</span>
+            }
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (src[pos - 1]) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                return src[pos] ? 'b' : 'a';</span>
+            }
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            return src[pos] ? '9' : '8';</span>
+        }
+<span class="fc bfc" id="L137" title="All 4 branches covered.">        if (2 &lt;= pos &amp;&amp; src[pos - 2]) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (src[pos - 1]) {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                return src[pos] ? '7' : '6';</span>
+            }
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            return src[pos] ? '5' : '4';</span>
+        }
+<span class="fc bfc" id="L143" title="All 4 branches covered.">        if (1 &lt;= pos &amp;&amp; src[pos - 1]) {</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            return src[pos] ? '3' : '2';</span>
+        }
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        return src[pos] ? '1' : '0';</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) into a byte using the default (little
+     * endian, Lsb0) byte and bit ordering.
+     *
+     * @param src the binary to convert
+     * @param srcPos the position in {@code src}, in boolean unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination byte
+     * @param dstPos the position of the lsb, in bits, in the result byte
+     * @param nBools the number of booleans to convert
+     * @return a byte containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+dstPos &gt;= 8}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBools &gt; src.length}
+     */
+    public static byte binaryToByte(final boolean[] src, final int srcPos, final byte dstInit, final int dstPos,
+            final int nBools) {
+<span class="pc bpc" id="L166" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBools) {</span>
+<span class="fc" id="L167">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (nBools - 1 + dstPos &gt;= 8) {</span>
+<span class="nc" id="L170">            throw new IllegalArgumentException(&quot;nBools-1+dstPos is greater or equal to than 8&quot;);</span>
+        }
+<span class="fc" id="L172">        byte out = dstInit;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L174">            final int shift = i + dstPos;</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            final int bits = (src[i + srcPos] ? 1 : 0) &lt;&lt; shift;</span>
+<span class="fc" id="L176">            final int mask = 0x1 &lt;&lt; shift;</span>
+<span class="fc" id="L177">            out = (byte) (out &amp; ~mask | bits);</span>
+        }
+<span class="fc" id="L179">        return out;</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) to a hexadecimal digit using the default
+     * (Lsb0) bit ordering.
+     *
+     * &lt;p&gt;
+     * (1, 0, 0, 0) is converted as follow: '1'
+     * &lt;/p&gt;
+     *
+     * @param src the binary to convert
+     * @return a hexadecimal digit representing the selected bits
+     * @throws IllegalArgumentException if {@code src} is empty
+     * @throws NullPointerException if {@code src} is {@code null}
+     */
+    public static char binaryToHexDigit(final boolean[] src) {
+<span class="fc" id="L196">        return binaryToHexDigit(src, 0);</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) to a hexadecimal digit using the default
+     * (Lsb0) bit ordering.
+     *
+     * &lt;p&gt;
+     * (1, 0, 0, 0) is converted as follow: '1'
+     * &lt;/p&gt;
+     *
+     * @param src the binary to convert
+     * @param srcPos the position of the lsb to start the conversion
+     * @return a hexadecimal digit representing the selected bits
+     * @throws IllegalArgumentException if {@code src} is empty
+     * @throws NullPointerException if {@code src} is {@code null}
+     */
+    public static char binaryToHexDigit(final boolean[] src, final int srcPos) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (src.length == 0) {</span>
+<span class="fc" id="L215">            throw new IllegalArgumentException(&quot;Cannot convert an empty array.&quot;);</span>
+        }
+<span class="fc bfc" id="L217" title="All 4 branches covered.">        if (src.length &gt; srcPos + 3 &amp;&amp; src[srcPos + 3]) {</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            if (src[srcPos + 2]) {</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                    return src[srcPos] ? 'f' : 'e';</span>
+                }
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                return src[srcPos] ? 'd' : 'c';</span>
+            }
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                return src[srcPos] ? 'b' : 'a';</span>
+            }
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            return src[srcPos] ? '9' : '8';</span>
+        }
+<span class="fc bfc" id="L229" title="All 4 branches covered.">        if (src.length &gt; srcPos + 2 &amp;&amp; src[srcPos + 2]) {</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">            if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                return src[srcPos] ? '7' : '6';</span>
+            }
+<span class="fc bfc" id="L233" title="All 2 branches covered.">            return src[srcPos] ? '5' : '4';</span>
+        }
+<span class="fc bfc" id="L235" title="All 4 branches covered.">        if (src.length &gt; srcPos + 1 &amp;&amp; src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            return src[srcPos] ? '3' : '2';</span>
+        }
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        return src[srcPos] ? '1' : '0';</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) to a hexadecimal digit using the Msb0 bit
+     * ordering.
+     *
+     * &lt;p&gt;
+     * (1, 0, 0, 0) is converted as follow: '8'
+     * &lt;/p&gt;
+     *
+     * @param src the binary to convert
+     * @return a hexadecimal digit representing the selected bits
+     * @throws IllegalArgumentException if {@code src} is empty, {@code src.length &lt; 4} or
+     *             {@code src.length &gt; 8}
+     * @throws NullPointerException if {@code src} is {@code null}
+     */
+    public static char binaryToHexDigitMsb0_4bits(final boolean[] src) {
+<span class="fc" id="L256">        return binaryToHexDigitMsb0_4bits(src, 0);</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) to a hexadecimal digit using the Msb0 bit
+     * ordering.
+     *
+     * &lt;p&gt;
+     * (1, 0, 0, 0) is converted as follow: '8' (1, 0, 0, 1, 1, 0, 1, 0) with srcPos = 3 is converted
+     * to 'D'
+     * &lt;/p&gt;
+     *
+     * @param src the binary to convert
+     * @param srcPos the position of the lsb to start the conversion
+     * @return a hexadecimal digit representing the selected bits
+     * @throws IllegalArgumentException if {@code src} is empty, {@code src.length &gt; 8} or
+     *             {@code src.length - srcPos &lt; 4}
+     * @throws NullPointerException if {@code src} is {@code null}
+     */
+    public static char binaryToHexDigitMsb0_4bits(final boolean[] src, final int srcPos) {
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (src.length &gt; 8) {</span>
+<span class="nc" id="L277">            throw new IllegalArgumentException(&quot;src.length&gt;8: src.length=&quot; + src.length);</span>
+        }
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        if (src.length - srcPos &lt; 4) {</span>
+<span class="fc" id="L280">            throw new IllegalArgumentException(&quot;src.length-srcPos&lt;4: src.length=&quot; + src.length + &quot;, srcPos=&quot; + srcPos);</span>
+        }
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (src[srcPos + 3]) {</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">            if (src[srcPos + 2]) {</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                    return src[srcPos] ? 'f' : '7';</span>
+                }
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                return src[srcPos] ? 'b' : '3';</span>
+            }
+<span class="fc bfc" id="L289" title="All 2 branches covered.">            if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                return src[srcPos] ? 'd' : '5';</span>
+            }
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            return src[srcPos] ? '9' : '1';</span>
+        }
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (src[srcPos + 2]) {</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">            if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">                return src[srcPos] ? 'e' : '6';</span>
+            }
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            return src[srcPos] ? 'a' : '2';</span>
+        }
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (src[srcPos + 1]) {</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">            return src[srcPos] ? 'c' : '4';</span>
+        }
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        return src[srcPos] ? '8' : '0';</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) into an int using the default (little
+     * endian, Lsb0) byte and bit ordering.
+     *
+     * @param src the binary to convert
+     * @param srcPos the position in {@code src}, in boolean unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination int
+     * @param dstPos the position of the lsb, in bits, in the result int
+     * @param nBools the number of booleans to convert
+     * @return an int containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+dstPos &gt;= 32}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBools &gt; src.length}
+     */
+    public static int binaryToInt(final boolean[] src, final int srcPos, final int dstInit, final int dstPos,
+            final int nBools) {
+<span class="pc bpc" id="L323" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBools) {</span>
+<span class="fc" id="L324">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">        if (nBools - 1 + dstPos &gt;= 32) {</span>
+<span class="nc" id="L327">            throw new IllegalArgumentException(&quot;nBools-1+dstPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc" id="L329">        int out = dstInit;</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L331">            final int shift = i + dstPos;</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            final int bits = (src[i + srcPos] ? 1 : 0) &lt;&lt; shift;</span>
+<span class="fc" id="L333">            final int mask = 0x1 &lt;&lt; shift;</span>
+<span class="fc" id="L334">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L336">        return out;</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) into a long using the default (little
+     * endian, Lsb0) byte and bit ordering.
+     *
+     * @param src the binary to convert
+     * @param srcPos the position in {@code src}, in boolean unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination long
+     * @param dstPos the position of the lsb, in bits, in the result long
+     * @param nBools the number of booleans to convert
+     * @return a long containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+dstPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBools &gt; src.length}
+     */
+    public static long binaryToLong(final boolean[] src, final int srcPos, final long dstInit, final int dstPos,
+            final int nBools) {
+<span class="pc bpc" id="L356" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBools) {</span>
+<span class="fc" id="L357">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        if (nBools - 1 + dstPos &gt;= 64) {</span>
+<span class="nc" id="L360">            throw new IllegalArgumentException(&quot;nBools-1+dstPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc" id="L362">        long out = dstInit;</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L364">            final int shift = i + dstPos;</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">            final long bits = (src[i + srcPos] ? 1L : 0) &lt;&lt; shift;</span>
+<span class="fc" id="L366">            final long mask = 0x1L &lt;&lt; shift;</span>
+<span class="fc" id="L367">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L369">        return out;</span>
+    }
+
+    /**
+     * Converts binary (represented as boolean array) into a short using the default (little
+     * endian, Lsb0) byte and bit ordering.
+     *
+     * @param src the binary to convert
+     * @param srcPos the position in {@code src}, in boolean unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination short
+     * @param dstPos the position of the lsb, in bits, in the result short
+     * @param nBools the number of booleans to convert
+     * @return a short containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+dstPos &gt;= 16}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBools &gt; src.length}
+     */
+    public static short binaryToShort(final boolean[] src, final int srcPos, final short dstInit, final int dstPos,
+            final int nBools) {
+<span class="pc bpc" id="L389" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBools) {</span>
+<span class="fc" id="L390">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">        if (nBools - 1 + dstPos &gt;= 16) {</span>
+<span class="nc" id="L393">            throw new IllegalArgumentException(&quot;nBools-1+dstPos is greater or equal to than 16&quot;);</span>
+        }
+<span class="fc" id="L395">        short out = dstInit;</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L397">            final int shift = i + dstPos;</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">            final int bits = (src[i + srcPos] ? 1 : 0) &lt;&lt; shift;</span>
+<span class="fc" id="L399">            final int mask = 0x1 &lt;&lt; shift;</span>
+<span class="fc" id="L400">            out = (short) (out &amp; ~mask | bits);</span>
+        }
+<span class="fc" id="L402">        return out;</span>
+    }
+
+    /**
+     * Converts an array of byte into an int using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the byte array to convert
+     * @param srcPos the position in {@code src}, in byte unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination int
+     * @param dstPos the position of the lsb, in bits, in the result int
+     * @param nBytes the number of bytes to convert
+     * @return an int containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code (nBytes-1)*8+dstPos &gt;= 32}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBytes &gt; src.length}
+     */
+    public static int byteArrayToInt(final byte[] src, final int srcPos, final int dstInit, final int dstPos,
+            final int nBytes) {
+<span class="pc bpc" id="L422" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBytes) {</span>
+<span class="fc" id="L423">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">        if ((nBytes - 1) * 8 + dstPos &gt;= 32) {</span>
+<span class="nc" id="L426">            throw new IllegalArgumentException(&quot;(nBytes-1)*8+dstPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc" id="L428">        int out = dstInit;</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">        for (int i = 0; i &lt; nBytes; i++) {</span>
+<span class="fc" id="L430">            final int shift = i * 8 + dstPos;</span>
+<span class="fc" id="L431">            final int bits = (0xff &amp; src[i + srcPos]) &lt;&lt; shift;</span>
+<span class="fc" id="L432">            final int mask = 0xff &lt;&lt; shift;</span>
+<span class="fc" id="L433">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L435">        return out;</span>
+    }
+
+    /**
+     * Converts an array of byte into a long using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the byte array to convert
+     * @param srcPos the position in {@code src}, in byte unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination long
+     * @param dstPos the position of the lsb, in bits, in the result long
+     * @param nBytes the number of bytes to convert
+     * @return a long containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code (nBytes-1)*8+dstPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBytes &gt; src.length}
+     */
+    public static long byteArrayToLong(final byte[] src, final int srcPos, final long dstInit, final int dstPos,
+            final int nBytes) {
+<span class="pc bpc" id="L455" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBytes) {</span>
+<span class="fc" id="L456">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">        if ((nBytes - 1) * 8 + dstPos &gt;= 64) {</span>
+<span class="nc" id="L459">            throw new IllegalArgumentException(&quot;(nBytes-1)*8+dstPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc" id="L461">        long out = dstInit;</span>
+<span class="fc bfc" id="L462" title="All 2 branches covered.">        for (int i = 0; i &lt; nBytes; i++) {</span>
+<span class="fc" id="L463">            final int shift = i * 8 + dstPos;</span>
+<span class="fc" id="L464">            final long bits = (0xffL &amp; src[i + srcPos]) &lt;&lt; shift;</span>
+<span class="fc" id="L465">            final long mask = 0xffL &lt;&lt; shift;</span>
+<span class="fc" id="L466">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L468">        return out;</span>
+    }
+
+    /**
+     * Converts an array of byte into a short using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the byte array to convert
+     * @param srcPos the position in {@code src}, in byte unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination short
+     * @param dstPos the position of the lsb, in bits, in the result short
+     * @param nBytes the number of bytes to convert
+     * @return a short containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code (nBytes-1)*8+dstPos &gt;= 16}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nBytes &gt; src.length}
+     */
+    public static short byteArrayToShort(final byte[] src, final int srcPos, final short dstInit, final int dstPos,
+            final int nBytes) {
+<span class="pc bpc" id="L488" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nBytes) {</span>
+<span class="fc" id="L489">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L491" title="1 of 2 branches missed.">        if ((nBytes - 1) * 8 + dstPos &gt;= 16) {</span>
+<span class="nc" id="L492">            throw new IllegalArgumentException(&quot;(nBytes-1)*8+dstPos is greater or equal to than 16&quot;);</span>
+        }
+<span class="fc" id="L494">        short out = dstInit;</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        for (int i = 0; i &lt; nBytes; i++) {</span>
+<span class="fc" id="L496">            final int shift = i * 8 + dstPos;</span>
+<span class="fc" id="L497">            final int bits = (0xff &amp; src[i + srcPos]) &lt;&lt; shift;</span>
+<span class="fc" id="L498">            final int mask = 0xff &lt;&lt; shift;</span>
+<span class="fc" id="L499">            out = (short) (out &amp; ~mask | bits);</span>
+        }
+<span class="fc" id="L501">        return out;</span>
+    }
+
+    /**
+     * Converts bytes from an array into a UUID using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the byte array to convert
+     * @param srcPos the position in {@code src} where to copy the result from
+     * @return a UUID
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if array does not contain at least 16 bytes beginning
+     *             with {@code srcPos}
+     */
+    public static UUID byteArrayToUuid(final byte[] src, final int srcPos) {
+<span class="pc bpc" id="L516" title="1 of 2 branches missed.">        if (src.length - srcPos &lt; 16) {</span>
+<span class="nc" id="L517">            throw new IllegalArgumentException(&quot;Need at least 16 bytes for UUID&quot;);</span>
+        }
+<span class="fc" id="L519">        return new UUID(byteArrayToLong(src, srcPos, 0, 0, 8), byteArrayToLong(src, srcPos + 8, 0, 0, 8));</span>
+    }
+
+    /**
+     * Converts a byte into an array of boolean using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the byte to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBools the number of booleans to copy to {@code dst}, must be smaller or equal to
+     *            the width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+srcPos &gt;= 8}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBools &gt; dst.length}
+     */
+    public static boolean[] byteToBinary(final byte src, final int srcPos, final boolean[] dst, final int dstPos,
+            final int nBools) {
+<span class="fc bfc" id="L539" title="All 2 branches covered.">        if (0 == nBools) {</span>
+<span class="fc" id="L540">            return dst;</span>
+        }
+<span class="pc bpc" id="L542" title="1 of 2 branches missed.">        if (nBools - 1 + srcPos &gt;= 8) {</span>
+<span class="nc" id="L543">            throw new IllegalArgumentException(&quot;nBools-1+srcPos is greater or equal to than 8&quot;);</span>
+        }
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L546">            final int shift = i + srcPos;</span>
+<span class="fc bfc" id="L547" title="All 2 branches covered.">            dst[dstPos + i] = (0x1 &amp; src &gt;&gt; shift) != 0;</span>
+        }
+<span class="fc" id="L549">        return dst;</span>
+    }
+
+    /**
+     * Converts a byte into an array of Char using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the byte to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dstInit the initial value for the result String
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nHexs the number of Chars to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+srcPos &gt;= 8}
+     * @throws StringIndexOutOfBoundsException if {@code dst.init.length() &lt; dstPos}
+     */
+    public static String byteToHex(final byte src, final int srcPos, final String dstInit, final int dstPos,
+            final int nHexs) {
+<span class="fc bfc" id="L568" title="All 2 branches covered.">        if (0 == nHexs) {</span>
+<span class="fc" id="L569">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L571" title="1 of 2 branches missed.">        if ((nHexs - 1) * 4 + srcPos &gt;= 8) {</span>
+<span class="nc" id="L572">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+srcPos is greater or equal to than 8&quot;);</span>
+        }
+<span class="fc" id="L574">        final StringBuilder sb = new StringBuilder(dstInit);</span>
+<span class="fc" id="L575">        int append = sb.length();</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">        for (int i = 0; i &lt; nHexs; i++) {</span>
+<span class="fc" id="L577">            final int shift = i * 4 + srcPos;</span>
+<span class="fc" id="L578">            final int bits = 0xF &amp; src &gt;&gt; shift;</span>
+<span class="fc bfc" id="L579" title="All 2 branches covered.">            if (dstPos + i == append) {</span>
+<span class="fc" id="L580">                ++append;</span>
+<span class="fc" id="L581">                sb.append(intToHexDigit(bits));</span>
+            } else {
+<span class="fc" id="L583">                sb.setCharAt(dstPos + i, intToHexDigit(bits));</span>
+            }
+        }
+<span class="fc" id="L586">        return sb.toString();</span>
+    }
+
+    /**
+     * Converts a hexadecimal digit into binary (represented as boolean array) using the Msb0
+     * bit ordering.
+     *
+     * &lt;p&gt;
+     * '1' is converted as follow: (0, 0, 0, 1)
+     * &lt;/p&gt;
+     *
+     * @param hexDigit the hexadecimal digit to convert
+     * @return a boolean array with the binary representation of {@code hexDigit}
+     * @throws IllegalArgumentException if {@code hexDigit} is not a hexadecimal digit
+     */
+    public static boolean[] hexDigitMsb0ToBinary(final char hexDigit) {
+<span class="fc bfc" id="L602" title="All 17 branches covered.">        switch (hexDigit) {</span>
+        case '0':
+<span class="fc" id="L604">            return FFFF.clone();</span>
+        case '1':
+<span class="fc" id="L606">            return FFFT.clone();</span>
+        case '2':
+<span class="fc" id="L608">            return FFTF.clone();</span>
+        case '3':
+<span class="fc" id="L610">            return FFTT.clone();</span>
+        case '4':
+<span class="fc" id="L612">            return FTFF.clone();</span>
+        case '5':
+<span class="fc" id="L614">            return FTFT.clone();</span>
+        case '6':
+<span class="fc" id="L616">            return FTTF.clone();</span>
+        case '7':
+<span class="fc" id="L618">            return FTTT.clone();</span>
+        case '8':
+<span class="fc" id="L620">            return TFFF.clone();</span>
+        case '9':
+<span class="fc" id="L622">            return TFFT.clone();</span>
+        case 'a':// fall through
+        case 'A':
+<span class="fc" id="L625">            return TFTF.clone();</span>
+        case 'b':// fall through
+        case 'B':
+<span class="fc" id="L628">            return TFTT.clone();</span>
+        case 'c':// fall through
+        case 'C':
+<span class="fc" id="L631">            return TTFF.clone();</span>
+        case 'd':// fall through
+        case 'D':
+<span class="fc" id="L634">            return TTFT.clone();</span>
+        case 'e':// fall through
+        case 'E':
+<span class="fc" id="L637">            return TTTF.clone();</span>
+        case 'f':// fall through
+        case 'F':
+<span class="fc" id="L640">            return TTTT.clone();</span>
+        default:
+<span class="fc" id="L642">            throw new IllegalArgumentException(&quot;Cannot interpret '&quot; + hexDigit + &quot;' as a hexadecimal digit&quot;);</span>
+        }
+    }
+
+    /**
+     * Converts a hexadecimal digit into an int using the Msb0 bit ordering.
+     *
+     * &lt;p&gt;
+     * '1' is converted to 8
+     * &lt;/p&gt;
+     *
+     * @param hexDigit the hexadecimal digit to convert
+     * @return an int equals to {@code hexDigit}
+     * @throws IllegalArgumentException if {@code hexDigit} is not a hexadecimal digit
+     */
+    public static int hexDigitMsb0ToInt(final char hexDigit) {
+<span class="fc bfc" id="L658" title="All 17 branches covered.">        switch (hexDigit) {</span>
+        case '0':
+<span class="fc" id="L660">            return 0x0;</span>
+        case '1':
+<span class="fc" id="L662">            return 0x8;</span>
+        case '2':
+<span class="fc" id="L664">            return 0x4;</span>
+        case '3':
+<span class="fc" id="L666">            return 0xC;</span>
+        case '4':
+<span class="fc" id="L668">            return 0x2;</span>
+        case '5':
+<span class="fc" id="L670">            return 0xA;</span>
+        case '6':
+<span class="fc" id="L672">            return 0x6;</span>
+        case '7':
+<span class="fc" id="L674">            return 0xE;</span>
+        case '8':
+<span class="fc" id="L676">            return 0x1;</span>
+        case '9':
+<span class="fc" id="L678">            return 0x9;</span>
+        case 'a':// fall through
+        case 'A':
+<span class="fc" id="L681">            return 0x5;</span>
+        case 'b':// fall through
+        case 'B':
+<span class="fc" id="L684">            return 0xD;</span>
+        case 'c':// fall through
+        case 'C':
+<span class="fc" id="L687">            return 0x3;</span>
+        case 'd':// fall through
+        case 'D':
+<span class="fc" id="L690">            return 0xB;</span>
+        case 'e':// fall through
+        case 'E':
+<span class="fc" id="L693">            return 0x7;</span>
+        case 'f':// fall through
+        case 'F':
+<span class="fc" id="L696">            return 0xF;</span>
+        default:
+<span class="fc" id="L698">            throw new IllegalArgumentException(&quot;Cannot interpret '&quot; + hexDigit + &quot;' as a hexadecimal digit&quot;);</span>
+        }
+    }
+
+    /**
+     * Converts a hexadecimal digit into binary (represented as boolean array) using the default
+     * (Lsb0) bit ordering.
+     *
+     * &lt;p&gt;
+     * '1' is converted as follow: (1, 0, 0, 0)
+     * &lt;/p&gt;
+     *
+     * @param hexDigit the hexadecimal digit to convert
+     * @return a boolean array with the binary representation of {@code hexDigit}
+     * @throws IllegalArgumentException if {@code hexDigit} is not a hexadecimal digit
+     */
+    public static boolean[] hexDigitToBinary(final char hexDigit) {
+<span class="fc bfc" id="L715" title="All 17 branches covered.">        switch (hexDigit) {</span>
+        case '0':
+<span class="fc" id="L717">            return FFFF.clone();</span>
+        case '1':
+<span class="fc" id="L719">            return TFFF.clone();</span>
+        case '2':
+<span class="fc" id="L721">            return FTFF.clone();</span>
+        case '3':
+<span class="fc" id="L723">            return TTFF.clone();</span>
+        case '4':
+<span class="fc" id="L725">            return FFTF.clone();</span>
+        case '5':
+<span class="fc" id="L727">            return TFTF.clone();</span>
+        case '6':
+<span class="fc" id="L729">            return FTTF.clone();</span>
+        case '7':
+<span class="fc" id="L731">            return TTTF.clone();</span>
+        case '8':
+<span class="fc" id="L733">            return FFFT.clone();</span>
+        case '9':
+<span class="fc" id="L735">            return TFFT.clone();</span>
+        case 'a':// fall through
+        case 'A':
+<span class="fc" id="L738">            return FTFT.clone();</span>
+        case 'b':// fall through
+        case 'B':
+<span class="fc" id="L741">            return TTFT.clone();</span>
+        case 'c':// fall through
+        case 'C':
+<span class="fc" id="L744">            return FFTT.clone();</span>
+        case 'd':// fall through
+        case 'D':
+<span class="fc" id="L747">            return TFTT.clone();</span>
+        case 'e':// fall through
+        case 'E':
+<span class="fc" id="L750">            return FTTT.clone();</span>
+        case 'f':// fall through
+        case 'F':
+<span class="fc" id="L753">            return TTTT.clone();</span>
+        default:
+<span class="fc" id="L755">            throw new IllegalArgumentException(&quot;Cannot interpret '&quot; + hexDigit + &quot;' as a hexadecimal digit&quot;);</span>
+        }
+    }
+
+    /**
+     * Converts a hexadecimal digit into an int using the default (Lsb0) bit ordering.
+     *
+     * &lt;p&gt;
+     * '1' is converted to 1
+     * &lt;/p&gt;
+     *
+     * @param hexDigit the hexadecimal digit to convert
+     * @return an int equals to {@code hexDigit}
+     * @throws IllegalArgumentException if {@code hexDigit} is not a hexadecimal digit
+     */
+    public static int hexDigitToInt(final char hexDigit) {
+<span class="fc" id="L771">        final int digit = Character.digit(hexDigit, 16);</span>
+<span class="fc bfc" id="L772" title="All 2 branches covered.">        if (digit &lt; 0) {</span>
+<span class="fc" id="L773">            throw new IllegalArgumentException(&quot;Cannot interpret '&quot; + hexDigit + &quot;' as a hexadecimal digit&quot;);</span>
+        }
+<span class="fc" id="L775">        return digit;</span>
+    }
+
+    /**
+     * Converts a hexadecimal string into a byte using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the hexadecimal string to convert
+     * @param srcPos the position in {@code src}, in Char unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination byte
+     * @param dstPos the position of the lsb, in bits, in the result byte
+     * @param nHex the number of Chars to convert
+     * @return a byte containing the selected bits
+     * @throws IllegalArgumentException if {@code (nHex-1)*4+dstPos &gt;= 8}
+     */
+    public static byte hexToByte(final String src, final int srcPos, final byte dstInit, final int dstPos,
+            final int nHex) {
+<span class="fc bfc" id="L793" title="All 2 branches covered.">        if (0 == nHex) {</span>
+<span class="fc" id="L794">            return dstInit;</span>
+        }
+<span class="fc bfc" id="L796" title="All 2 branches covered.">        if ((nHex - 1) * 4 + dstPos &gt;= 8) {</span>
+<span class="fc" id="L797">            throw new IllegalArgumentException(&quot;(nHex-1)*4+dstPos is greater than or equal to 8&quot;);</span>
+        }
+<span class="fc" id="L799">        byte out = dstInit;</span>
+<span class="fc bfc" id="L800" title="All 2 branches covered.">        for (int i = 0; i &lt; nHex; i++) {</span>
+<span class="fc" id="L801">            final int shift = i * 4 + dstPos;</span>
+<span class="fc" id="L802">            final int bits = (0xf &amp; hexDigitToInt(src.charAt(i + srcPos))) &lt;&lt; shift;</span>
+<span class="fc" id="L803">            final int mask = 0xf &lt;&lt; shift;</span>
+<span class="fc" id="L804">            out = (byte) (out &amp; ~mask | bits);</span>
+        }
+<span class="fc" id="L806">        return out;</span>
+    }
+
+    /**
+     * Converts an array of Char into an int using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the hexadecimal string to convert
+     * @param srcPos the position in {@code src}, in Char unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination int
+     * @param dstPos the position of the lsb, in bits, in the result int
+     * @param nHex the number of Chars to convert
+     * @return an int containing the selected bits
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+dstPos &gt;= 32}
+     */
+    public static int hexToInt(final String src, final int srcPos, final int dstInit, final int dstPos, final int nHex) {
+<span class="fc bfc" id="L823" title="All 2 branches covered.">        if (0 == nHex) {</span>
+<span class="fc" id="L824">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L826" title="1 of 2 branches missed.">        if ((nHex - 1) * 4 + dstPos &gt;= 32) {</span>
+<span class="nc" id="L827">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+dstPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc" id="L829">        int out = dstInit;</span>
+<span class="fc bfc" id="L830" title="All 2 branches covered.">        for (int i = 0; i &lt; nHex; i++) {</span>
+<span class="fc" id="L831">            final int shift = i * 4 + dstPos;</span>
+<span class="fc" id="L832">            final int bits = (0xf &amp; hexDigitToInt(src.charAt(i + srcPos))) &lt;&lt; shift;</span>
+<span class="fc" id="L833">            final int mask = 0xf &lt;&lt; shift;</span>
+<span class="fc" id="L834">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L836">        return out;</span>
+    }
+
+    /**
+     * Converts an array of Char into a long using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the hexadecimal string to convert
+     * @param srcPos the position in {@code src}, in Char unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination long
+     * @param dstPos the position of the lsb, in bits, in the result long
+     * @param nHex the number of Chars to convert
+     * @return a long containing the selected bits
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+dstPos &gt;= 64}
+     */
+    public static long hexToLong(final String src, final int srcPos, final long dstInit, final int dstPos,
+            final int nHex) {
+<span class="fc bfc" id="L854" title="All 2 branches covered.">        if (0 == nHex) {</span>
+<span class="fc" id="L855">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L857" title="1 of 2 branches missed.">        if ((nHex - 1) * 4 + dstPos &gt;= 64) {</span>
+<span class="nc" id="L858">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+dstPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc" id="L860">        long out = dstInit;</span>
+<span class="fc bfc" id="L861" title="All 2 branches covered.">        for (int i = 0; i &lt; nHex; i++) {</span>
+<span class="fc" id="L862">            final int shift = i * 4 + dstPos;</span>
+<span class="fc" id="L863">            final long bits = (0xfL &amp; hexDigitToInt(src.charAt(i + srcPos))) &lt;&lt; shift;</span>
+<span class="fc" id="L864">            final long mask = 0xfL &lt;&lt; shift;</span>
+<span class="fc" id="L865">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L867">        return out;</span>
+    }
+
+    /**
+     * Converts an array of Char into a short using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the hexadecimal string to convert
+     * @param srcPos the position in {@code src}, in Char unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination short
+     * @param dstPos the position of the lsb, in bits, in the result short
+     * @param nHex the number of Chars to convert
+     * @return a short containing the selected bits
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+dstPos &gt;= 16}
+     */
+    public static short hexToShort(final String src, final int srcPos, final short dstInit, final int dstPos,
+            final int nHex) {
+<span class="fc bfc" id="L885" title="All 2 branches covered.">        if (0 == nHex) {</span>
+<span class="fc" id="L886">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L888" title="1 of 2 branches missed.">        if ((nHex - 1) * 4 + dstPos &gt;= 16) {</span>
+<span class="nc" id="L889">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+dstPos is greater or equal to than 16&quot;);</span>
+        }
+<span class="fc" id="L891">        short out = dstInit;</span>
+<span class="fc bfc" id="L892" title="All 2 branches covered.">        for (int i = 0; i &lt; nHex; i++) {</span>
+<span class="fc" id="L893">            final int shift = i * 4 + dstPos;</span>
+<span class="fc" id="L894">            final int bits = (0xf &amp; hexDigitToInt(src.charAt(i + srcPos))) &lt;&lt; shift;</span>
+<span class="fc" id="L895">            final int mask = 0xf &lt;&lt; shift;</span>
+<span class="fc" id="L896">            out = (short) (out &amp; ~mask | bits);</span>
+        }
+<span class="fc" id="L898">        return out;</span>
+    }
+
+    /**
+     * Converts an array of int into a long using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the int array to convert
+     * @param srcPos the position in {@code src}, in int unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination long
+     * @param dstPos the position of the lsb, in bits, in the result long
+     * @param nInts the number of ints to convert
+     * @return a long containing the selected bits
+     * @throws IllegalArgumentException if {@code (nInts-1)*32+dstPos &gt;= 64}
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nInts &gt; src.length}
+     */
+    public static long intArrayToLong(final int[] src, final int srcPos, final long dstInit, final int dstPos,
+            final int nInts) {
+<span class="pc bpc" id="L918" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nInts) {</span>
+<span class="fc" id="L919">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L921" title="1 of 2 branches missed.">        if ((nInts - 1) * 32 + dstPos &gt;= 64) {</span>
+<span class="nc" id="L922">            throw new IllegalArgumentException(&quot;(nInts-1)*32+dstPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc" id="L924">        long out = dstInit;</span>
+<span class="fc bfc" id="L925" title="All 2 branches covered.">        for (int i = 0; i &lt; nInts; i++) {</span>
+<span class="fc" id="L926">            final int shift = i * 32 + dstPos;</span>
+<span class="fc" id="L927">            final long bits = (0xffffffffL &amp; src[i + srcPos]) &lt;&lt; shift;</span>
+<span class="fc" id="L928">            final long mask = 0xffffffffL &lt;&lt; shift;</span>
+<span class="fc" id="L929">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L931">        return out;</span>
+    }
+
+    /**
+     * Converts an int into an array of boolean using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the int to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBools the number of booleans to copy to {@code dst}, must be smaller or equal to
+     *            the width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+srcPos &gt;= 32}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBools &gt; dst.length}
+     */
+    public static boolean[] intToBinary(final int src, final int srcPos, final boolean[] dst, final int dstPos,
+            final int nBools) {
+<span class="fc bfc" id="L951" title="All 2 branches covered.">        if (0 == nBools) {</span>
+<span class="fc" id="L952">            return dst;</span>
+        }
+<span class="pc bpc" id="L954" title="1 of 2 branches missed.">        if (nBools - 1 + srcPos &gt;= 32) {</span>
+<span class="nc" id="L955">            throw new IllegalArgumentException(&quot;nBools-1+srcPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc bfc" id="L957" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L958">            final int shift = i + srcPos;</span>
+<span class="fc bfc" id="L959" title="All 2 branches covered.">            dst[dstPos + i] = (0x1 &amp; src &gt;&gt; shift) != 0;</span>
+        }
+<span class="fc" id="L961">        return dst;</span>
+    }
+
+    /**
+     * Converts an int into an array of byte using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the int to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBytes the number of bytes to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code (nBytes-1)*8+srcPos &gt;= 32}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBytes &gt; dst.length}
+     */
+    public static byte[] intToByteArray(final int src, final int srcPos, final byte[] dst, final int dstPos,
+            final int nBytes) {
+<span class="fc bfc" id="L981" title="All 2 branches covered.">        if (0 == nBytes) {</span>
+<span class="fc" id="L982">            return dst;</span>
+        }
+<span class="pc bpc" id="L984" title="1 of 2 branches missed.">        if ((nBytes - 1) * 8 + srcPos &gt;= 32) {</span>
+<span class="nc" id="L985">            throw new IllegalArgumentException(&quot;(nBytes-1)*8+srcPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc bfc" id="L987" title="All 2 branches covered.">        for (int i = 0; i &lt; nBytes; i++) {</span>
+<span class="fc" id="L988">            final int shift = i * 8 + srcPos;</span>
+<span class="fc" id="L989">            dst[dstPos + i] = (byte) (0xff &amp; src &gt;&gt; shift);</span>
+        }
+<span class="fc" id="L991">        return dst;</span>
+    }
+
+    /**
+     * Converts an int into an array of Char using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the int to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dstInit the initial value for the result String
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nHexs the number of Chars to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+srcPos &gt;= 32}
+     * @throws StringIndexOutOfBoundsException if {@code dst.init.length() &lt; dstPos}
+     */
+    public static String intToHex(final int src, final int srcPos, final String dstInit, final int dstPos,
+            final int nHexs) {
+<span class="fc bfc" id="L1010" title="All 2 branches covered.">        if (0 == nHexs) {</span>
+<span class="fc" id="L1011">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L1013" title="1 of 2 branches missed.">        if ((nHexs - 1) * 4 + srcPos &gt;= 32) {</span>
+<span class="nc" id="L1014">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+srcPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc" id="L1016">        final StringBuilder sb = new StringBuilder(dstInit);</span>
+<span class="fc" id="L1017">        int append = sb.length();</span>
+<span class="fc bfc" id="L1018" title="All 2 branches covered.">        for (int i = 0; i &lt; nHexs; i++) {</span>
+<span class="fc" id="L1019">            final int shift = i * 4 + srcPos;</span>
+<span class="fc" id="L1020">            final int bits = 0xF &amp; src &gt;&gt; shift;</span>
+<span class="fc bfc" id="L1021" title="All 2 branches covered.">            if (dstPos + i == append) {</span>
+<span class="fc" id="L1022">                ++append;</span>
+<span class="fc" id="L1023">                sb.append(intToHexDigit(bits));</span>
+            } else {
+<span class="fc" id="L1025">                sb.setCharAt(dstPos + i, intToHexDigit(bits));</span>
+            }
+        }
+<span class="fc" id="L1028">        return sb.toString();</span>
+    }
+
+    /**
+     * Converts the 4 lsb of an int to a hexadecimal digit.
+     *
+     * &lt;p&gt;
+     * 0 returns '0'
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * 1 returns '1'
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * 10 returns 'A' and so on...
+     * &lt;/p&gt;
+     *
+     * @param nibble the 4 bits to convert
+     * @return a hexadecimal digit representing the 4 lsb of {@code nibble}
+     * @throws IllegalArgumentException if {@code nibble &lt; 0} or {@code nibble &gt; 15}
+     */
+    public static char intToHexDigit(final int nibble) {
+<span class="fc" id="L1049">        final char c = Character.forDigit(nibble, 16);</span>
+<span class="fc bfc" id="L1050" title="All 2 branches covered.">        if (c == Character.MIN_VALUE) {</span>
+<span class="fc" id="L1051">            throw new IllegalArgumentException(&quot;nibble value not between 0 and 15: &quot; + nibble);</span>
+        }
+<span class="fc" id="L1053">        return c;</span>
+    }
+
+    /**
+     * Converts the 4 lsb of an int to a hexadecimal digit encoded using the Msb0 bit ordering.
+     *
+     * &lt;p&gt;
+     * 0 returns '0'
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * 1 returns '8'
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * 10 returns '5' and so on...
+     * &lt;/p&gt;
+     *
+     * @param nibble the 4 bits to convert
+     * @return a hexadecimal digit representing the 4 lsb of {@code nibble}
+     * @throws IllegalArgumentException if {@code nibble &lt; 0} or {@code nibble &gt; 15}
+     */
+    public static char intToHexDigitMsb0(final int nibble) {
+<span class="fc bfc" id="L1074" title="All 17 branches covered.">        switch (nibble) {</span>
+        case 0x0:
+<span class="fc" id="L1076">            return '0';</span>
+        case 0x1:
+<span class="fc" id="L1078">            return '8';</span>
+        case 0x2:
+<span class="fc" id="L1080">            return '4';</span>
+        case 0x3:
+<span class="fc" id="L1082">            return 'c';</span>
+        case 0x4:
+<span class="fc" id="L1084">            return '2';</span>
+        case 0x5:
+<span class="fc" id="L1086">            return 'a';</span>
+        case 0x6:
+<span class="fc" id="L1088">            return '6';</span>
+        case 0x7:
+<span class="fc" id="L1090">            return 'e';</span>
+        case 0x8:
+<span class="fc" id="L1092">            return '1';</span>
+        case 0x9:
+<span class="fc" id="L1094">            return '9';</span>
+        case 0xA:
+<span class="fc" id="L1096">            return '5';</span>
+        case 0xB:
+<span class="fc" id="L1098">            return 'd';</span>
+        case 0xC:
+<span class="fc" id="L1100">            return '3';</span>
+        case 0xD:
+<span class="fc" id="L1102">            return 'b';</span>
+        case 0xE:
+<span class="fc" id="L1104">            return '7';</span>
+        case 0xF:
+<span class="fc" id="L1106">            return 'f';</span>
+        default:
+<span class="fc" id="L1108">            throw new IllegalArgumentException(&quot;nibble value not between 0 and 15: &quot; + nibble);</span>
+        }
+    }
+
+    /**
+     * Converts an int into an array of short using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the int to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nShorts the number of shorts to copy to {@code dst}, must be smaller or equal to
+     *            the width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code (nShorts-1)*16+srcPos &gt;= 32}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nShorts &gt; dst.length}
+     */
+    public static short[] intToShortArray(final int src, final int srcPos, final short[] dst, final int dstPos,
+            final int nShorts) {
+<span class="fc bfc" id="L1129" title="All 2 branches covered.">        if (0 == nShorts) {</span>
+<span class="fc" id="L1130">            return dst;</span>
+        }
+<span class="pc bpc" id="L1132" title="1 of 2 branches missed.">        if ((nShorts - 1) * 16 + srcPos &gt;= 32) {</span>
+<span class="nc" id="L1133">            throw new IllegalArgumentException(&quot;(nShorts-1)*16+srcPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc bfc" id="L1135" title="All 2 branches covered.">        for (int i = 0; i &lt; nShorts; i++) {</span>
+<span class="fc" id="L1136">            final int shift = i * 16 + srcPos;</span>
+<span class="fc" id="L1137">            dst[dstPos + i] = (short) (0xffff &amp; src &gt;&gt; shift);</span>
+        }
+<span class="fc" id="L1139">        return dst;</span>
+    }
+
+    /**
+     * Converts a long into an array of boolean using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the long to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBools the number of booleans to copy to {@code dst}, must be smaller or equal to
+     *            the width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+srcPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBools &gt; dst.length}
+     */
+    public static boolean[] longToBinary(final long src, final int srcPos, final boolean[] dst, final int dstPos,
+            final int nBools) {
+<span class="fc bfc" id="L1159" title="All 2 branches covered.">        if (0 == nBools) {</span>
+<span class="fc" id="L1160">            return dst;</span>
+        }
+<span class="pc bpc" id="L1162" title="1 of 2 branches missed.">        if (nBools - 1 + srcPos &gt;= 64) {</span>
+<span class="nc" id="L1163">            throw new IllegalArgumentException(&quot;nBools-1+srcPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc bfc" id="L1165" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L1166">            final int shift = i + srcPos;</span>
+<span class="fc bfc" id="L1167" title="All 2 branches covered.">            dst[dstPos + i] = (0x1 &amp; src &gt;&gt; shift) != 0;</span>
+        }
+<span class="fc" id="L1169">        return dst;</span>
+    }
+
+    /**
+     * Converts a long into an array of byte using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the long to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBytes the number of bytes to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code (nBytes-1)*8+srcPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBytes &gt; dst.length}
+     */
+    public static byte[] longToByteArray(final long src, final int srcPos, final byte[] dst, final int dstPos,
+            final int nBytes) {
+<span class="fc bfc" id="L1189" title="All 2 branches covered.">        if (0 == nBytes) {</span>
+<span class="fc" id="L1190">            return dst;</span>
+        }
+<span class="pc bpc" id="L1192" title="1 of 2 branches missed.">        if ((nBytes - 1) * 8 + srcPos &gt;= 64) {</span>
+<span class="nc" id="L1193">            throw new IllegalArgumentException(&quot;(nBytes-1)*8+srcPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc bfc" id="L1195" title="All 2 branches covered.">        for (int i = 0; i &lt; nBytes; i++) {</span>
+<span class="fc" id="L1196">            final int shift = i * 8 + srcPos;</span>
+<span class="fc" id="L1197">            dst[dstPos + i] = (byte) (0xff &amp; src &gt;&gt; shift);</span>
+        }
+<span class="fc" id="L1199">        return dst;</span>
+    }
+
+    /**
+     * Converts a long into an array of Char using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the long to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dstInit the initial value for the result String
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nHexs the number of Chars to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+srcPos &gt;= 64}
+     * @throws StringIndexOutOfBoundsException if {@code dst.init.length() &lt; dstPos}
+     */
+    public static String longToHex(final long src, final int srcPos, final String dstInit, final int dstPos,
+            final int nHexs) {
+<span class="fc bfc" id="L1218" title="All 2 branches covered.">        if (0 == nHexs) {</span>
+<span class="fc" id="L1219">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L1221" title="1 of 2 branches missed.">        if ((nHexs - 1) * 4 + srcPos &gt;= 64) {</span>
+<span class="nc" id="L1222">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+srcPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc" id="L1224">        final StringBuilder sb = new StringBuilder(dstInit);</span>
+<span class="fc" id="L1225">        int append = sb.length();</span>
+<span class="fc bfc" id="L1226" title="All 2 branches covered.">        for (int i = 0; i &lt; nHexs; i++) {</span>
+<span class="fc" id="L1227">            final int shift = i * 4 + srcPos;</span>
+<span class="fc" id="L1228">            final int bits = (int) (0xF &amp; src &gt;&gt; shift);</span>
+<span class="fc bfc" id="L1229" title="All 2 branches covered.">            if (dstPos + i == append) {</span>
+<span class="fc" id="L1230">                ++append;</span>
+<span class="fc" id="L1231">                sb.append(intToHexDigit(bits));</span>
+            } else {
+<span class="fc" id="L1233">                sb.setCharAt(dstPos + i, intToHexDigit(bits));</span>
+            }
+        }
+<span class="fc" id="L1236">        return sb.toString();</span>
+    }
+
+    /**
+     * Converts a long into an array of int using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the long to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nInts the number of ints to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null} and {@code nInts &gt; 0}
+     * @throws IllegalArgumentException if {@code (nInts-1)*32+srcPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nInts &gt; dst.length}
+     */
+    public static int[] longToIntArray(final long src, final int srcPos, final int[] dst, final int dstPos,
+            final int nInts) {
+<span class="fc bfc" id="L1256" title="All 2 branches covered.">        if (0 == nInts) {</span>
+<span class="fc" id="L1257">            return dst;</span>
+        }
+<span class="pc bpc" id="L1259" title="1 of 2 branches missed.">        if ((nInts - 1) * 32 + srcPos &gt;= 64) {</span>
+<span class="nc" id="L1260">            throw new IllegalArgumentException(&quot;(nInts-1)*32+srcPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc bfc" id="L1262" title="All 2 branches covered.">        for (int i = 0; i &lt; nInts; i++) {</span>
+<span class="fc" id="L1263">            final int shift = i * 32 + srcPos;</span>
+<span class="fc" id="L1264">            dst[dstPos + i] = (int) (0xffffffff &amp; src &gt;&gt; shift);</span>
+        }
+<span class="fc" id="L1266">        return dst;</span>
+    }
+
+    /**
+     * Converts a long into an array of short using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the long to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nShorts the number of shorts to copy to {@code dst}, must be smaller or equal to
+     *            the width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code (nShorts-1)*16+srcPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nShorts &gt; dst.length}
+     */
+    public static short[] longToShortArray(final long src, final int srcPos, final short[] dst, final int dstPos,
+            final int nShorts) {
+<span class="fc bfc" id="L1286" title="All 2 branches covered.">        if (0 == nShorts) {</span>
+<span class="fc" id="L1287">            return dst;</span>
+        }
+<span class="pc bpc" id="L1289" title="1 of 2 branches missed.">        if ((nShorts - 1) * 16 + srcPos &gt;= 64) {</span>
+<span class="nc" id="L1290">            throw new IllegalArgumentException(&quot;(nShorts-1)*16+srcPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc bfc" id="L1292" title="All 2 branches covered.">        for (int i = 0; i &lt; nShorts; i++) {</span>
+<span class="fc" id="L1293">            final int shift = i * 16 + srcPos;</span>
+<span class="fc" id="L1294">            dst[dstPos + i] = (short) (0xffff &amp; src &gt;&gt; shift);</span>
+        }
+<span class="fc" id="L1296">        return dst;</span>
+    }
+
+    /**
+     * Converts an array of short into an int using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the short array to convert
+     * @param srcPos the position in {@code src}, in short unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination int
+     * @param dstPos the position of the lsb, in bits, in the result int
+     * @param nShorts the number of shorts to convert
+     * @return an int containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code (nShorts-1)*16+dstPos &gt;= 32}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nShorts &gt; src.length}
+     */
+    public static int shortArrayToInt(final short[] src, final int srcPos, final int dstInit, final int dstPos,
+            final int nShorts) {
+<span class="pc bpc" id="L1316" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nShorts) {</span>
+<span class="fc" id="L1317">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L1319" title="1 of 2 branches missed.">        if ((nShorts - 1) * 16 + dstPos &gt;= 32) {</span>
+<span class="nc" id="L1320">            throw new IllegalArgumentException(&quot;(nShorts-1)*16+dstPos is greater or equal to than 32&quot;);</span>
+        }
+<span class="fc" id="L1322">        int out = dstInit;</span>
+<span class="fc bfc" id="L1323" title="All 2 branches covered.">        for (int i = 0; i &lt; nShorts; i++) {</span>
+<span class="fc" id="L1324">            final int shift = i * 16 + dstPos;</span>
+<span class="fc" id="L1325">            final int bits = (0xffff &amp; src[i + srcPos]) &lt;&lt; shift;</span>
+<span class="fc" id="L1326">            final int mask = 0xffff &lt;&lt; shift;</span>
+<span class="fc" id="L1327">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L1329">        return out;</span>
+    }
+
+    /**
+     * Converts an array of short into a long using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the short array to convert
+     * @param srcPos the position in {@code src}, in short unit, from where to start the
+     *            conversion
+     * @param dstInit initial value of the destination long
+     * @param dstPos the position of the lsb, in bits, in the result long
+     * @param nShorts the number of shorts to convert
+     * @return a long containing the selected bits
+     * @throws NullPointerException if {@code src} is {@code null}
+     * @throws IllegalArgumentException if {@code (nShorts-1)*16+dstPos &gt;= 64}
+     * @throws ArrayIndexOutOfBoundsException if {@code srcPos + nShorts &gt; src.length}
+     */
+    public static long shortArrayToLong(final short[] src, final int srcPos, final long dstInit, final int dstPos,
+            final int nShorts) {
+<span class="pc bpc" id="L1349" title="3 of 6 branches missed.">        if (src.length == 0 &amp;&amp; srcPos == 0 || 0 == nShorts) {</span>
+<span class="fc" id="L1350">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L1352" title="1 of 2 branches missed.">        if ((nShorts - 1) * 16 + dstPos &gt;= 64) {</span>
+<span class="nc" id="L1353">            throw new IllegalArgumentException(&quot;(nShorts-1)*16+dstPos is greater or equal to than 64&quot;);</span>
+        }
+<span class="fc" id="L1355">        long out = dstInit;</span>
+<span class="fc bfc" id="L1356" title="All 2 branches covered.">        for (int i = 0; i &lt; nShorts; i++) {</span>
+<span class="fc" id="L1357">            final int shift = i * 16 + dstPos;</span>
+<span class="fc" id="L1358">            final long bits = (0xffffL &amp; src[i + srcPos]) &lt;&lt; shift;</span>
+<span class="fc" id="L1359">            final long mask = 0xffffL &lt;&lt; shift;</span>
+<span class="fc" id="L1360">            out = out &amp; ~mask | bits;</span>
+        }
+<span class="fc" id="L1362">        return out;</span>
+    }
+
+    /**
+     * Converts a short into an array of boolean using the default (little-endian, Lsb0) byte
+     * and bit ordering.
+     *
+     * @param src the short to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBools the number of booleans to copy to {@code dst}, must be smaller or equal to
+     *            the width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code nBools-1+srcPos &gt;= 16}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBools &gt; dst.length}
+     */
+    public static boolean[] shortToBinary(final short src, final int srcPos, final boolean[] dst, final int dstPos,
+            final int nBools) {
+<span class="fc bfc" id="L1382" title="All 2 branches covered.">        if (0 == nBools) {</span>
+<span class="fc" id="L1383">            return dst;</span>
+        }
+<span class="pc bpc" id="L1385" title="1 of 2 branches missed.">        if (nBools - 1 + srcPos &gt;= 16) {</span>
+<span class="nc" id="L1386">            throw new IllegalArgumentException(&quot;nBools-1+srcPos is greater or equal to than 16&quot;);</span>
+        }
+<span class="pc bpc" id="L1388" title="2 of 4 branches missed.">        assert nBools - 1 &lt; 16 - srcPos;</span>
+<span class="fc bfc" id="L1389" title="All 2 branches covered.">        for (int i = 0; i &lt; nBools; i++) {</span>
+<span class="fc" id="L1390">            final int shift = i + srcPos;</span>
+<span class="fc bfc" id="L1391" title="All 2 branches covered.">            dst[dstPos + i] = (0x1 &amp; src &gt;&gt; shift) != 0;</span>
+        }
+<span class="fc" id="L1393">        return dst;</span>
+    }
+
+    /**
+     * Converts a short into an array of byte using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the short to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBytes the number of bytes to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code (nBytes-1)*8+srcPos &gt;= 16}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBytes &gt; dst.length}
+     */
+    public static byte[] shortToByteArray(final short src, final int srcPos, final byte[] dst, final int dstPos,
+            final int nBytes) {
+<span class="fc bfc" id="L1413" title="All 2 branches covered.">        if (0 == nBytes) {</span>
+<span class="fc" id="L1414">            return dst;</span>
+        }
+<span class="pc bpc" id="L1416" title="1 of 2 branches missed.">        if ((nBytes - 1) * 8 + srcPos &gt;= 16) {</span>
+<span class="nc" id="L1417">            throw new IllegalArgumentException(&quot;(nBytes-1)*8+srcPos is greater or equal to than 16&quot;);</span>
+        }
+<span class="fc bfc" id="L1419" title="All 2 branches covered.">        for (int i = 0; i &lt; nBytes; i++) {</span>
+<span class="fc" id="L1420">            final int shift = i * 8 + srcPos;</span>
+<span class="fc" id="L1421">            dst[dstPos + i] = (byte) (0xff &amp; src &gt;&gt; shift);</span>
+        }
+<span class="fc" id="L1423">        return dst;</span>
+    }
+
+    /**
+     * Converts a short into an array of Char using the default (little-endian, Lsb0) byte and
+     * bit ordering.
+     *
+     * @param src the short to convert
+     * @param srcPos the position in {@code src}, in bits, from where to start the conversion
+     * @param dstInit the initial value for the result String
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nHexs the number of Chars to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws IllegalArgumentException if {@code (nHexs-1)*4+srcPos &gt;= 16}
+     * @throws StringIndexOutOfBoundsException if {@code dst.init.length() &lt; dstPos}
+     */
+    public static String shortToHex(final short src, final int srcPos, final String dstInit, final int dstPos,
+            final int nHexs) {
+<span class="fc bfc" id="L1442" title="All 2 branches covered.">        if (0 == nHexs) {</span>
+<span class="fc" id="L1443">            return dstInit;</span>
+        }
+<span class="pc bpc" id="L1445" title="1 of 2 branches missed.">        if ((nHexs - 1) * 4 + srcPos &gt;= 16) {</span>
+<span class="nc" id="L1446">            throw new IllegalArgumentException(&quot;(nHexs-1)*4+srcPos is greater or equal to than 16&quot;);</span>
+        }
+<span class="fc" id="L1448">        final StringBuilder sb = new StringBuilder(dstInit);</span>
+<span class="fc" id="L1449">        int append = sb.length();</span>
+<span class="fc bfc" id="L1450" title="All 2 branches covered.">        for (int i = 0; i &lt; nHexs; i++) {</span>
+<span class="fc" id="L1451">            final int shift = i * 4 + srcPos;</span>
+<span class="fc" id="L1452">            final int bits = 0xF &amp; src &gt;&gt; shift;</span>
+<span class="fc bfc" id="L1453" title="All 2 branches covered.">            if (dstPos + i == append) {</span>
+<span class="fc" id="L1454">                ++append;</span>
+<span class="fc" id="L1455">                sb.append(intToHexDigit(bits));</span>
+            } else {
+<span class="fc" id="L1457">                sb.setCharAt(dstPos + i, intToHexDigit(bits));</span>
+            }
+        }
+<span class="fc" id="L1460">        return sb.toString();</span>
+    }
+
+    /**
+     * Converts UUID into an array of byte using the default (little-endian, Lsb0) byte and bit
+     * ordering.
+     *
+     * @param src the UUID to convert
+     * @param dst the destination array
+     * @param dstPos the position in {@code dst} where to copy the result
+     * @param nBytes the number of bytes to copy to {@code dst}, must be smaller or equal to the
+     *            width of the input (from srcPos to msb)
+     * @return {@code dst}
+     * @throws NullPointerException if {@code dst} is {@code null}
+     * @throws IllegalArgumentException if {@code nBytes &gt; 16}
+     * @throws ArrayIndexOutOfBoundsException if {@code dstPos + nBytes &gt; dst.length}
+     */
+    public static byte[] uuidToByteArray(final UUID src, final byte[] dst, final int dstPos, final int nBytes) {
+<span class="pc bpc" id="L1478" title="1 of 2 branches missed.">        if (0 == nBytes) {</span>
+<span class="nc" id="L1479">            return dst;</span>
+        }
+<span class="pc bpc" id="L1481" title="1 of 2 branches missed.">        if (nBytes &gt; 16) {</span>
+<span class="nc" id="L1482">            throw new IllegalArgumentException(&quot;nBytes is greater than 16&quot;);</span>
+        }
+<span class="fc" id="L1484">        longToByteArray(src.getMostSignificantBits(), 0, dst, dstPos, Math.min(nBytes, 8));</span>
+<span class="pc bpc" id="L1485" title="1 of 2 branches missed.">        if (nBytes &gt;= 8) {</span>
+<span class="fc" id="L1486">            longToByteArray(src.getLeastSignificantBits(), 0, dst, dstPos + 8, nBytes - 8);</span>
+        }
+<span class="fc" id="L1488">        return dst;</span>
+    }
+
+    /**
+     * Constructs a new instance.
+     *
+     * @deprecated Will be removed in 4.0.0.
+     */
+    @Deprecated
+<span class="nc" id="L1497">    public Conversion() {</span>
+        // empty
+<span class="nc" id="L1499">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

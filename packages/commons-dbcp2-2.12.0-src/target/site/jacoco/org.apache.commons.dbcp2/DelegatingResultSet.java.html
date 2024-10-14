@@ -1,0 +1,2076 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DelegatingResultSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons DBCP</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.dbcp2</a> &gt; <span class="el_source">DelegatingResultSet.java</span></div><h1>DelegatingResultSet.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.dbcp2;
+
+import java.io.InputStream;
+import java.io.Reader;
+import java.math.BigDecimal;
+import java.sql.Array;
+import java.sql.Blob;
+import java.sql.Clob;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.NClob;
+import java.sql.Ref;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.RowId;
+import java.sql.SQLException;
+import java.sql.SQLType;
+import java.sql.SQLWarning;
+import java.sql.SQLXML;
+import java.sql.Statement;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.Calendar;
+import java.util.Map;
+
+/**
+ * A base delegating implementation of {@link ResultSet}.
+ * &lt;p&gt;
+ * All of the methods from the {@link ResultSet} interface simply call the corresponding method on the &quot;delegate&quot;
+ * provided in my constructor.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Extends AbandonedTrace to implement result set tracking and logging of code which created the ResultSet. Tracking the
+ * ResultSet ensures that the Statement which created it can close any open ResultSet's on Statement close.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public final class DelegatingResultSet extends AbandonedTrace implements ResultSet {
+
+    /**
+     * Wraps the given result set in a delegate.
+     *
+     * @param connection
+     *            The Connection which created the ResultSet.
+     * @param resultSet
+     *            The ResultSet to wrap.
+     * @return a new delegate.
+     */
+    public static ResultSet wrapResultSet(final Connection connection, final ResultSet resultSet) {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (null == resultSet) {</span>
+<span class="fc" id="L68">            return null;</span>
+        }
+<span class="fc" id="L70">        return new DelegatingResultSet(connection, resultSet);</span>
+    }
+
+    /**
+     * Wraps the given result set in a delegate.
+     *
+     * @param statement
+     *            The Statement which created the ResultSet.
+     * @param resultSet
+     *            The ResultSet to wrap.
+     * @return a new delegate.
+     */
+    public static ResultSet wrapResultSet(final Statement statement, final ResultSet resultSet) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (null == resultSet) {</span>
+<span class="fc" id="L84">            return null;</span>
+        }
+<span class="fc" id="L86">        return new DelegatingResultSet(statement, resultSet);</span>
+    }
+
+    /** My delegate. **/
+    private final ResultSet resultSet;
+
+    /** The Statement that created me, if any. **/
+    private Statement statement;
+
+    /** The Connection that created me, if any. **/
+    private Connection connection;
+
+    /**
+     * Creates a wrapper for the ResultSet which traces this ResultSet to the Connection which created it (via, for
+     * example DatabaseMetadata), and the code which created it.
+     * &lt;p&gt;
+     * Private to ensure all construction is {@link #wrapResultSet(Connection, ResultSet)}
+     * &lt;/p&gt;
+     *
+     * @param connection
+     *            Connection which created this ResultSet
+     * @param resultSet
+     *            ResultSet to wrap
+     */
+    private DelegatingResultSet(final Connection connection, final ResultSet resultSet) {
+<span class="fc" id="L111">        super((AbandonedTrace) connection);</span>
+<span class="fc" id="L112">        this.connection = connection;</span>
+<span class="fc" id="L113">        this.resultSet = resultSet;</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Creates a wrapper for the ResultSet which traces this ResultSet to the Statement which created it and the code
+     * which created it.
+     * &lt;p&gt;
+     * Private to ensure all construction is {@link #wrapResultSet(Statement, ResultSet)}
+     * &lt;/p&gt;
+     *
+     * @param statement
+     *            The Statement which created the ResultSet.
+     * @param resultSet
+     *            The ResultSet to wrap.
+     */
+    private DelegatingResultSet(final Statement statement, final ResultSet resultSet) {
+<span class="fc" id="L129">        super((AbandonedTrace) statement);</span>
+<span class="fc" id="L130">        this.statement = statement;</span>
+<span class="fc" id="L131">        this.resultSet = resultSet;</span>
+<span class="fc" id="L132">    }</span>
+
+    @Override
+    public boolean absolute(final int row) throws SQLException {
+        try {
+<span class="fc" id="L137">            return resultSet.absolute(row);</span>
+<span class="nc" id="L138">        } catch (final SQLException e) {</span>
+<span class="nc" id="L139">            handleException(e);</span>
+<span class="nc" id="L140">            return false;</span>
+        }
+    }
+
+    @Override
+    public void afterLast() throws SQLException {
+        try {
+<span class="fc" id="L147">            resultSet.afterLast();</span>
+<span class="nc" id="L148">        } catch (final SQLException e) {</span>
+<span class="nc" id="L149">            handleException(e);</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">    }</span>
+
+    @Override
+    public void beforeFirst() throws SQLException {
+        try {
+<span class="fc" id="L156">            resultSet.beforeFirst();</span>
+<span class="nc" id="L157">        } catch (final SQLException e) {</span>
+<span class="nc" id="L158">            handleException(e);</span>
+<span class="fc" id="L159">        }</span>
+<span class="fc" id="L160">    }</span>
+
+    @Override
+    public void cancelRowUpdates() throws SQLException {
+        try {
+<span class="fc" id="L165">            resultSet.cancelRowUpdates();</span>
+<span class="nc" id="L166">        } catch (final SQLException e) {</span>
+<span class="nc" id="L167">            handleException(e);</span>
+<span class="fc" id="L168">        }</span>
+<span class="fc" id="L169">    }</span>
+
+    @Override
+    public void clearWarnings() throws SQLException {
+        try {
+<span class="fc" id="L174">            resultSet.clearWarnings();</span>
+<span class="nc" id="L175">        } catch (final SQLException e) {</span>
+<span class="nc" id="L176">            handleException(e);</span>
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">    }</span>
+
+    /**
+     * Wrapper for close of ResultSet which removes this result set from being traced then calls close on the original
+     * ResultSet.
+     */
+    @Override
+    public void close() throws SQLException {
+        try {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (statement != null) {</span>
+<span class="fc" id="L188">                removeThisTrace(statement);</span>
+<span class="fc" id="L189">                statement = null;</span>
+            }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (connection != null) {</span>
+<span class="fc" id="L192">                removeThisTrace(connection);</span>
+<span class="fc" id="L193">                connection = null;</span>
+            }
+<span class="fc" id="L195">            resultSet.close();</span>
+<span class="nc" id="L196">        } catch (final SQLException e) {</span>
+<span class="nc" id="L197">            handleException(e);</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc" id="L199">    }</span>
+
+    @Override
+    public void deleteRow() throws SQLException {
+        try {
+<span class="fc" id="L204">            resultSet.deleteRow();</span>
+<span class="nc" id="L205">        } catch (final SQLException e) {</span>
+<span class="nc" id="L206">            handleException(e);</span>
+<span class="fc" id="L207">        }</span>
+<span class="fc" id="L208">    }</span>
+
+    @Override
+    public int findColumn(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L213">            return resultSet.findColumn(columnName);</span>
+<span class="nc" id="L214">        } catch (final SQLException e) {</span>
+<span class="nc" id="L215">            handleException(e);</span>
+<span class="nc" id="L216">            return 0;</span>
+        }
+    }
+
+    @Override
+    public boolean first() throws SQLException {
+        try {
+<span class="fc" id="L223">            return resultSet.first();</span>
+<span class="nc" id="L224">        } catch (final SQLException e) {</span>
+<span class="nc" id="L225">            handleException(e);</span>
+<span class="nc" id="L226">            return false;</span>
+        }
+    }
+
+    @Override
+    public Array getArray(final int i) throws SQLException {
+        try {
+<span class="fc" id="L233">            return resultSet.getArray(i);</span>
+<span class="nc" id="L234">        } catch (final SQLException e) {</span>
+<span class="nc" id="L235">            handleException(e);</span>
+<span class="nc" id="L236">            return null;</span>
+        }
+    }
+
+    @Override
+    public Array getArray(final String colName) throws SQLException {
+        try {
+<span class="fc" id="L243">            return resultSet.getArray(colName);</span>
+<span class="nc" id="L244">        } catch (final SQLException e) {</span>
+<span class="nc" id="L245">            handleException(e);</span>
+<span class="nc" id="L246">            return null;</span>
+        }
+    }
+
+    @Override
+    public InputStream getAsciiStream(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L253">            return resultSet.getAsciiStream(columnIndex);</span>
+<span class="nc" id="L254">        } catch (final SQLException e) {</span>
+<span class="nc" id="L255">            handleException(e);</span>
+<span class="nc" id="L256">            return null;</span>
+        }
+    }
+
+    @Override
+    public InputStream getAsciiStream(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L263">            return resultSet.getAsciiStream(columnName);</span>
+<span class="nc" id="L264">        } catch (final SQLException e) {</span>
+<span class="nc" id="L265">            handleException(e);</span>
+<span class="nc" id="L266">            return null;</span>
+        }
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L273">            return resultSet.getBigDecimal(columnIndex);</span>
+<span class="nc" id="L274">        } catch (final SQLException e) {</span>
+<span class="nc" id="L275">            handleException(e);</span>
+<span class="nc" id="L276">            return null;</span>
+        }
+    }
+
+    /** @deprecated Use {@link #getBigDecimal(int)} */
+    @Deprecated
+    @Override
+    public BigDecimal getBigDecimal(final int columnIndex, final int scale) throws SQLException {
+        try {
+<span class="nc" id="L285">            return resultSet.getBigDecimal(columnIndex);</span>
+<span class="nc" id="L286">        } catch (final SQLException e) {</span>
+<span class="nc" id="L287">            handleException(e);</span>
+<span class="nc" id="L288">            return null;</span>
+        }
+    }
+
+    @Override
+    public BigDecimal getBigDecimal(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L295">            return resultSet.getBigDecimal(columnName);</span>
+<span class="nc" id="L296">        } catch (final SQLException e) {</span>
+<span class="nc" id="L297">            handleException(e);</span>
+<span class="nc" id="L298">            return null;</span>
+        }
+    }
+
+    /** @deprecated Use {@link #getBigDecimal(String)} */
+    @Deprecated
+    @Override
+    public BigDecimal getBigDecimal(final String columnName, final int scale) throws SQLException {
+        try {
+<span class="nc" id="L307">            return resultSet.getBigDecimal(columnName);</span>
+<span class="nc" id="L308">        } catch (final SQLException e) {</span>
+<span class="nc" id="L309">            handleException(e);</span>
+<span class="nc" id="L310">            return null;</span>
+        }
+    }
+
+    @Override
+    public InputStream getBinaryStream(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L317">            return resultSet.getBinaryStream(columnIndex);</span>
+<span class="nc" id="L318">        } catch (final SQLException e) {</span>
+<span class="nc" id="L319">            handleException(e);</span>
+<span class="nc" id="L320">            return null;</span>
+        }
+    }
+
+    @Override
+    public InputStream getBinaryStream(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L327">            return resultSet.getBinaryStream(columnName);</span>
+<span class="nc" id="L328">        } catch (final SQLException e) {</span>
+<span class="nc" id="L329">            handleException(e);</span>
+<span class="nc" id="L330">            return null;</span>
+        }
+    }
+
+    @Override
+    public Blob getBlob(final int i) throws SQLException {
+        try {
+<span class="fc" id="L337">            return resultSet.getBlob(i);</span>
+<span class="nc" id="L338">        } catch (final SQLException e) {</span>
+<span class="nc" id="L339">            handleException(e);</span>
+<span class="nc" id="L340">            return null;</span>
+        }
+    }
+
+    @Override
+    public Blob getBlob(final String colName) throws SQLException {
+        try {
+<span class="fc" id="L347">            return resultSet.getBlob(colName);</span>
+<span class="nc" id="L348">        } catch (final SQLException e) {</span>
+<span class="nc" id="L349">            handleException(e);</span>
+<span class="nc" id="L350">            return null;</span>
+        }
+    }
+
+    @Override
+    public boolean getBoolean(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L357">            return resultSet.getBoolean(columnIndex);</span>
+<span class="nc" id="L358">        } catch (final SQLException e) {</span>
+<span class="nc" id="L359">            handleException(e);</span>
+<span class="nc" id="L360">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean getBoolean(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L367">            return resultSet.getBoolean(columnName);</span>
+<span class="nc" id="L368">        } catch (final SQLException e) {</span>
+<span class="nc" id="L369">            handleException(e);</span>
+<span class="nc" id="L370">            return false;</span>
+        }
+    }
+
+    @Override
+    public byte getByte(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L377">            return resultSet.getByte(columnIndex);</span>
+<span class="nc" id="L378">        } catch (final SQLException e) {</span>
+<span class="nc" id="L379">            handleException(e);</span>
+<span class="nc" id="L380">            return 0;</span>
+        }
+    }
+
+    @Override
+    public byte getByte(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L387">            return resultSet.getByte(columnName);</span>
+<span class="nc" id="L388">        } catch (final SQLException e) {</span>
+<span class="nc" id="L389">            handleException(e);</span>
+<span class="nc" id="L390">            return 0;</span>
+        }
+    }
+
+    @Override
+    public byte[] getBytes(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L397">            return resultSet.getBytes(columnIndex);</span>
+<span class="nc" id="L398">        } catch (final SQLException e) {</span>
+<span class="nc" id="L399">            handleException(e);</span>
+<span class="nc" id="L400">            return null;</span>
+        }
+    }
+
+    @Override
+    public byte[] getBytes(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L407">            return resultSet.getBytes(columnName);</span>
+<span class="nc" id="L408">        } catch (final SQLException e) {</span>
+<span class="nc" id="L409">            handleException(e);</span>
+<span class="nc" id="L410">            return null;</span>
+        }
+    }
+
+    @Override
+    public Reader getCharacterStream(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L417">            return resultSet.getCharacterStream(columnIndex);</span>
+<span class="nc" id="L418">        } catch (final SQLException e) {</span>
+<span class="nc" id="L419">            handleException(e);</span>
+<span class="nc" id="L420">            return null;</span>
+        }
+    }
+
+    @Override
+    public Reader getCharacterStream(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L427">            return resultSet.getCharacterStream(columnName);</span>
+<span class="nc" id="L428">        } catch (final SQLException e) {</span>
+<span class="nc" id="L429">            handleException(e);</span>
+<span class="nc" id="L430">            return null;</span>
+        }
+    }
+
+    @Override
+    public Clob getClob(final int i) throws SQLException {
+        try {
+<span class="fc" id="L437">            return resultSet.getClob(i);</span>
+<span class="nc" id="L438">        } catch (final SQLException e) {</span>
+<span class="nc" id="L439">            handleException(e);</span>
+<span class="nc" id="L440">            return null;</span>
+        }
+    }
+
+    @Override
+    public Clob getClob(final String colName) throws SQLException {
+        try {
+<span class="fc" id="L447">            return resultSet.getClob(colName);</span>
+<span class="nc" id="L448">        } catch (final SQLException e) {</span>
+<span class="nc" id="L449">            handleException(e);</span>
+<span class="nc" id="L450">            return null;</span>
+        }
+    }
+
+    @Override
+    public int getConcurrency() throws SQLException {
+        try {
+<span class="fc" id="L457">            return resultSet.getConcurrency();</span>
+<span class="nc" id="L458">        } catch (final SQLException e) {</span>
+<span class="nc" id="L459">            handleException(e);</span>
+<span class="nc" id="L460">            return 0;</span>
+        }
+    }
+
+    @Override
+    public String getCursorName() throws SQLException {
+        try {
+<span class="fc" id="L467">            return resultSet.getCursorName();</span>
+<span class="nc" id="L468">        } catch (final SQLException e) {</span>
+<span class="nc" id="L469">            handleException(e);</span>
+<span class="nc" id="L470">            return null;</span>
+        }
+    }
+
+    @Override
+    public Date getDate(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L477">            return resultSet.getDate(columnIndex);</span>
+<span class="nc" id="L478">        } catch (final SQLException e) {</span>
+<span class="nc" id="L479">            handleException(e);</span>
+<span class="nc" id="L480">            return null;</span>
+        }
+    }
+
+    @Override
+    public Date getDate(final int columnIndex, final Calendar cal) throws SQLException {
+        try {
+<span class="fc" id="L487">            return resultSet.getDate(columnIndex, cal);</span>
+<span class="nc" id="L488">        } catch (final SQLException e) {</span>
+<span class="nc" id="L489">            handleException(e);</span>
+<span class="nc" id="L490">            return null;</span>
+        }
+    }
+
+    @Override
+    public Date getDate(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L497">            return resultSet.getDate(columnName);</span>
+<span class="nc" id="L498">        } catch (final SQLException e) {</span>
+<span class="nc" id="L499">            handleException(e);</span>
+<span class="nc" id="L500">            return null;</span>
+        }
+    }
+
+    @Override
+    public Date getDate(final String columnName, final Calendar cal) throws SQLException {
+        try {
+<span class="fc" id="L507">            return resultSet.getDate(columnName, cal);</span>
+<span class="nc" id="L508">        } catch (final SQLException e) {</span>
+<span class="nc" id="L509">            handleException(e);</span>
+<span class="nc" id="L510">            return null;</span>
+        }
+    }
+
+    /**
+     * Gets my delegate.
+     *
+     * @return my delegate.
+     */
+    public ResultSet getDelegate() {
+<span class="nc" id="L520">        return resultSet;</span>
+    }
+
+    @Override
+    public double getDouble(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L526">            return resultSet.getDouble(columnIndex);</span>
+<span class="nc" id="L527">        } catch (final SQLException e) {</span>
+<span class="nc" id="L528">            handleException(e);</span>
+<span class="nc" id="L529">            return 0;</span>
+        }
+    }
+
+    @Override
+    public double getDouble(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L536">            return resultSet.getDouble(columnName);</span>
+<span class="nc" id="L537">        } catch (final SQLException e) {</span>
+<span class="nc" id="L538">            handleException(e);</span>
+<span class="nc" id="L539">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getFetchDirection() throws SQLException {
+        try {
+<span class="fc" id="L546">            return resultSet.getFetchDirection();</span>
+<span class="nc" id="L547">        } catch (final SQLException e) {</span>
+<span class="nc" id="L548">            handleException(e);</span>
+<span class="nc" id="L549">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getFetchSize() throws SQLException {
+        try {
+<span class="fc" id="L556">            return resultSet.getFetchSize();</span>
+<span class="nc" id="L557">        } catch (final SQLException e) {</span>
+<span class="nc" id="L558">            handleException(e);</span>
+<span class="nc" id="L559">            return 0;</span>
+        }
+    }
+
+    @Override
+    public float getFloat(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L566">            return resultSet.getFloat(columnIndex);</span>
+<span class="nc" id="L567">        } catch (final SQLException e) {</span>
+<span class="nc" id="L568">            handleException(e);</span>
+<span class="nc" id="L569">            return 0;</span>
+        }
+    }
+
+    @Override
+    public float getFloat(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L576">            return resultSet.getFloat(columnName);</span>
+<span class="nc" id="L577">        } catch (final SQLException e) {</span>
+<span class="nc" id="L578">            handleException(e);</span>
+<span class="nc" id="L579">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getHoldability() throws SQLException {
+        try {
+<span class="fc" id="L586">            return resultSet.getHoldability();</span>
+<span class="nc" id="L587">        } catch (final SQLException e) {</span>
+<span class="nc" id="L588">            handleException(e);</span>
+<span class="nc" id="L589">            return 0;</span>
+        }
+    }
+
+    /**
+     * If my underlying {@link ResultSet} is not a {@code DelegatingResultSet}, returns it, otherwise recursively
+     * invokes this method on my delegate.
+     * &lt;p&gt;
+     * Hence this method will return the first delegate that is not a {@code DelegatingResultSet}, or {@code null} when
+     * no non-{@code DelegatingResultSet} delegate can be found by traversing this chain.
+     * &lt;/p&gt;
+     * &lt;p&gt;
+     * This method is useful when you may have nested {@code DelegatingResultSet}s, and you want to make sure to obtain
+     * a &quot;genuine&quot; {@link ResultSet}.
+     * &lt;/p&gt;
+     *
+     * @return the innermost delegate.
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    public ResultSet getInnermostDelegate() {
+<span class="nc" id="L609">        ResultSet r = resultSet;</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">        while (r instanceof DelegatingResultSet) {</span>
+<span class="nc" id="L611">            r = ((DelegatingResultSet) r).getDelegate();</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">            if (this == r) {</span>
+<span class="nc" id="L613">                return null;</span>
+            }
+        }
+<span class="nc" id="L616">        return r;</span>
+    }
+
+    @Override
+    public int getInt(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L622">            return resultSet.getInt(columnIndex);</span>
+<span class="nc" id="L623">        } catch (final SQLException e) {</span>
+<span class="nc" id="L624">            handleException(e);</span>
+<span class="nc" id="L625">            return 0;</span>
+        }
+    }
+
+    @Override
+    public int getInt(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L632">            return resultSet.getInt(columnName);</span>
+<span class="nc" id="L633">        } catch (final SQLException e) {</span>
+<span class="nc" id="L634">            handleException(e);</span>
+<span class="nc" id="L635">            return 0;</span>
+        }
+    }
+
+    @Override
+    public long getLong(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L642">            return resultSet.getLong(columnIndex);</span>
+<span class="nc" id="L643">        } catch (final SQLException e) {</span>
+<span class="nc" id="L644">            handleException(e);</span>
+<span class="nc" id="L645">            return 0;</span>
+        }
+    }
+
+    @Override
+    public long getLong(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L652">            return resultSet.getLong(columnName);</span>
+<span class="nc" id="L653">        } catch (final SQLException e) {</span>
+<span class="nc" id="L654">            handleException(e);</span>
+<span class="nc" id="L655">            return 0;</span>
+        }
+    }
+
+    @Override
+    public ResultSetMetaData getMetaData() throws SQLException {
+        try {
+<span class="fc" id="L662">            return resultSet.getMetaData();</span>
+<span class="nc" id="L663">        } catch (final SQLException e) {</span>
+<span class="nc" id="L664">            handleException(e);</span>
+<span class="nc" id="L665">            return null;</span>
+        }
+    }
+
+    @Override
+    public Reader getNCharacterStream(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L672">            return resultSet.getNCharacterStream(columnIndex);</span>
+<span class="nc" id="L673">        } catch (final SQLException e) {</span>
+<span class="nc" id="L674">            handleException(e);</span>
+<span class="nc" id="L675">            return null;</span>
+        }
+    }
+
+    @Override
+    public Reader getNCharacterStream(final String columnLabel) throws SQLException {
+        try {
+<span class="fc" id="L682">            return resultSet.getNCharacterStream(columnLabel);</span>
+<span class="nc" id="L683">        } catch (final SQLException e) {</span>
+<span class="nc" id="L684">            handleException(e);</span>
+<span class="nc" id="L685">            return null;</span>
+        }
+    }
+
+    @Override
+    public NClob getNClob(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L692">            return resultSet.getNClob(columnIndex);</span>
+<span class="nc" id="L693">        } catch (final SQLException e) {</span>
+<span class="nc" id="L694">            handleException(e);</span>
+<span class="nc" id="L695">            return null;</span>
+        }
+    }
+
+    @Override
+    public NClob getNClob(final String columnLabel) throws SQLException {
+        try {
+<span class="fc" id="L702">            return resultSet.getNClob(columnLabel);</span>
+<span class="nc" id="L703">        } catch (final SQLException e) {</span>
+<span class="nc" id="L704">            handleException(e);</span>
+<span class="nc" id="L705">            return null;</span>
+        }
+    }
+
+    @Override
+    public String getNString(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L712">            return resultSet.getNString(columnIndex);</span>
+<span class="nc" id="L713">        } catch (final SQLException e) {</span>
+<span class="nc" id="L714">            handleException(e);</span>
+<span class="nc" id="L715">            return null;</span>
+        }
+    }
+
+    @Override
+    public String getNString(final String columnLabel) throws SQLException {
+        try {
+<span class="fc" id="L722">            return resultSet.getNString(columnLabel);</span>
+<span class="nc" id="L723">        } catch (final SQLException e) {</span>
+<span class="nc" id="L724">            handleException(e);</span>
+<span class="nc" id="L725">            return null;</span>
+        }
+    }
+
+    @Override
+    public Object getObject(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L732">            return resultSet.getObject(columnIndex);</span>
+<span class="nc" id="L733">        } catch (final SQLException e) {</span>
+<span class="nc" id="L734">            handleException(e);</span>
+<span class="nc" id="L735">            return null;</span>
+        }
+    }
+
+    @Override
+    public &lt;T&gt; T getObject(final int columnIndex, final Class&lt;T&gt; type) throws SQLException {
+        try {
+<span class="fc" id="L742">            return Jdbc41Bridge.getObject(resultSet, columnIndex, type);</span>
+<span class="nc" id="L743">        } catch (final SQLException e) {</span>
+<span class="nc" id="L744">            handleException(e);</span>
+<span class="nc" id="L745">            return null;</span>
+        }
+    }
+
+    @Override
+    public Object getObject(final int i, final Map&lt;String, Class&lt;?&gt;&gt; map) throws SQLException {
+        try {
+<span class="fc" id="L752">            return resultSet.getObject(i, map);</span>
+<span class="nc" id="L753">        } catch (final SQLException e) {</span>
+<span class="nc" id="L754">            handleException(e);</span>
+<span class="nc" id="L755">            return null;</span>
+        }
+    }
+
+    @Override
+    public Object getObject(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L762">            return resultSet.getObject(columnName);</span>
+<span class="nc" id="L763">        } catch (final SQLException e) {</span>
+<span class="nc" id="L764">            handleException(e);</span>
+<span class="nc" id="L765">            return null;</span>
+        }
+    }
+
+    @Override
+    public &lt;T&gt; T getObject(final String columnLabel, final Class&lt;T&gt; type) throws SQLException {
+        try {
+<span class="fc" id="L772">            return Jdbc41Bridge.getObject(resultSet, columnLabel, type);</span>
+<span class="nc" id="L773">        } catch (final SQLException e) {</span>
+<span class="nc" id="L774">            handleException(e);</span>
+<span class="nc" id="L775">            return null;</span>
+        }
+    }
+
+    @Override
+    public Object getObject(final String colName, final Map&lt;String, Class&lt;?&gt;&gt; map) throws SQLException {
+        try {
+<span class="fc" id="L782">            return resultSet.getObject(colName, map);</span>
+<span class="nc" id="L783">        } catch (final SQLException e) {</span>
+<span class="nc" id="L784">            handleException(e);</span>
+<span class="nc" id="L785">            return null;</span>
+        }
+    }
+
+    @Override
+    public Ref getRef(final int i) throws SQLException {
+        try {
+<span class="fc" id="L792">            return resultSet.getRef(i);</span>
+<span class="nc" id="L793">        } catch (final SQLException e) {</span>
+<span class="nc" id="L794">            handleException(e);</span>
+<span class="nc" id="L795">            return null;</span>
+        }
+    }
+
+    @Override
+    public Ref getRef(final String colName) throws SQLException {
+        try {
+<span class="fc" id="L802">            return resultSet.getRef(colName);</span>
+<span class="nc" id="L803">        } catch (final SQLException e) {</span>
+<span class="nc" id="L804">            handleException(e);</span>
+<span class="nc" id="L805">            return null;</span>
+        }
+    }
+
+    @Override
+    public int getRow() throws SQLException {
+        try {
+<span class="fc" id="L812">            return resultSet.getRow();</span>
+<span class="nc" id="L813">        } catch (final SQLException e) {</span>
+<span class="nc" id="L814">            handleException(e);</span>
+<span class="nc" id="L815">            return 0;</span>
+        }
+    }
+
+    @Override
+    public RowId getRowId(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L822">            return resultSet.getRowId(columnIndex);</span>
+<span class="nc" id="L823">        } catch (final SQLException e) {</span>
+<span class="nc" id="L824">            handleException(e);</span>
+<span class="nc" id="L825">            return null;</span>
+        }
+    }
+
+    @Override
+    public RowId getRowId(final String columnLabel) throws SQLException {
+        try {
+<span class="fc" id="L832">            return resultSet.getRowId(columnLabel);</span>
+<span class="nc" id="L833">        } catch (final SQLException e) {</span>
+<span class="nc" id="L834">            handleException(e);</span>
+<span class="nc" id="L835">            return null;</span>
+        }
+    }
+
+    @Override
+    public short getShort(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L842">            return resultSet.getShort(columnIndex);</span>
+<span class="nc" id="L843">        } catch (final SQLException e) {</span>
+<span class="nc" id="L844">            handleException(e);</span>
+<span class="nc" id="L845">            return 0;</span>
+        }
+    }
+
+    @Override
+    public short getShort(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L852">            return resultSet.getShort(columnName);</span>
+<span class="nc" id="L853">        } catch (final SQLException e) {</span>
+<span class="nc" id="L854">            handleException(e);</span>
+<span class="nc" id="L855">            return 0;</span>
+        }
+    }
+
+    @Override
+    public SQLXML getSQLXML(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L862">            return resultSet.getSQLXML(columnIndex);</span>
+<span class="nc" id="L863">        } catch (final SQLException e) {</span>
+<span class="nc" id="L864">            handleException(e);</span>
+<span class="nc" id="L865">            return null;</span>
+        }
+    }
+
+    @Override
+    public SQLXML getSQLXML(final String columnLabel) throws SQLException {
+        try {
+<span class="fc" id="L872">            return resultSet.getSQLXML(columnLabel);</span>
+<span class="nc" id="L873">        } catch (final SQLException e) {</span>
+<span class="nc" id="L874">            handleException(e);</span>
+<span class="nc" id="L875">            return null;</span>
+        }
+    }
+
+    @Override
+    public Statement getStatement() throws SQLException {
+<span class="fc" id="L881">        return statement;</span>
+    }
+
+    @Override
+    public String getString(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L887">            return resultSet.getString(columnIndex);</span>
+<span class="nc" id="L888">        } catch (final SQLException e) {</span>
+<span class="nc" id="L889">            handleException(e);</span>
+<span class="nc" id="L890">            return null;</span>
+        }
+    }
+
+    @Override
+    public String getString(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L897">            return resultSet.getString(columnName);</span>
+<span class="nc" id="L898">        } catch (final SQLException e) {</span>
+<span class="nc" id="L899">            handleException(e);</span>
+<span class="nc" id="L900">            return null;</span>
+        }
+    }
+
+    @Override
+    public Time getTime(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L907">            return resultSet.getTime(columnIndex);</span>
+<span class="nc" id="L908">        } catch (final SQLException e) {</span>
+<span class="nc" id="L909">            handleException(e);</span>
+<span class="nc" id="L910">            return null;</span>
+        }
+    }
+
+    @Override
+    public Time getTime(final int columnIndex, final Calendar cal) throws SQLException {
+        try {
+<span class="fc" id="L917">            return resultSet.getTime(columnIndex, cal);</span>
+<span class="nc" id="L918">        } catch (final SQLException e) {</span>
+<span class="nc" id="L919">            handleException(e);</span>
+<span class="nc" id="L920">            return null;</span>
+        }
+    }
+
+    @Override
+    public Time getTime(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L927">            return resultSet.getTime(columnName);</span>
+<span class="nc" id="L928">        } catch (final SQLException e) {</span>
+<span class="nc" id="L929">            handleException(e);</span>
+<span class="nc" id="L930">            return null;</span>
+        }
+    }
+
+    @Override
+    public Time getTime(final String columnName, final Calendar cal) throws SQLException {
+        try {
+<span class="fc" id="L937">            return resultSet.getTime(columnName, cal);</span>
+<span class="nc" id="L938">        } catch (final SQLException e) {</span>
+<span class="nc" id="L939">            handleException(e);</span>
+<span class="nc" id="L940">            return null;</span>
+        }
+    }
+
+    @Override
+    public Timestamp getTimestamp(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L947">            return resultSet.getTimestamp(columnIndex);</span>
+<span class="nc" id="L948">        } catch (final SQLException e) {</span>
+<span class="nc" id="L949">            handleException(e);</span>
+<span class="nc" id="L950">            return null;</span>
+        }
+    }
+
+    @Override
+    public Timestamp getTimestamp(final int columnIndex, final Calendar cal) throws SQLException {
+        try {
+<span class="fc" id="L957">            return resultSet.getTimestamp(columnIndex, cal);</span>
+<span class="nc" id="L958">        } catch (final SQLException e) {</span>
+<span class="nc" id="L959">            handleException(e);</span>
+<span class="nc" id="L960">            return null;</span>
+        }
+    }
+
+    @Override
+    public Timestamp getTimestamp(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L967">            return resultSet.getTimestamp(columnName);</span>
+<span class="nc" id="L968">        } catch (final SQLException e) {</span>
+<span class="nc" id="L969">            handleException(e);</span>
+<span class="nc" id="L970">            return null;</span>
+        }
+    }
+
+    @Override
+    public Timestamp getTimestamp(final String columnName, final Calendar cal) throws SQLException {
+        try {
+<span class="fc" id="L977">            return resultSet.getTimestamp(columnName, cal);</span>
+<span class="nc" id="L978">        } catch (final SQLException e) {</span>
+<span class="nc" id="L979">            handleException(e);</span>
+<span class="nc" id="L980">            return null;</span>
+        }
+    }
+
+    @Override
+    public int getType() throws SQLException {
+        try {
+<span class="fc" id="L987">            return resultSet.getType();</span>
+<span class="nc" id="L988">        } catch (final SQLException e) {</span>
+<span class="nc" id="L989">            handleException(e);</span>
+<span class="nc" id="L990">            return 0;</span>
+        }
+    }
+
+    /** @deprecated Use {@link #getCharacterStream(int)} */
+    @Deprecated
+    @Override
+    public InputStream getUnicodeStream(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L999">            return resultSet.getUnicodeStream(columnIndex);</span>
+<span class="nc" id="L1000">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1001">            handleException(e);</span>
+<span class="nc" id="L1002">            return null;</span>
+        }
+    }
+
+    /** @deprecated Use {@link #getCharacterStream(String)} */
+    @Deprecated
+    @Override
+    public InputStream getUnicodeStream(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L1011">            return resultSet.getUnicodeStream(columnName);</span>
+<span class="nc" id="L1012">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1013">            handleException(e);</span>
+<span class="nc" id="L1014">            return null;</span>
+        }
+    }
+
+    @Override
+    public java.net.URL getURL(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L1021">            return resultSet.getURL(columnIndex);</span>
+<span class="nc" id="L1022">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1023">            handleException(e);</span>
+<span class="nc" id="L1024">            return null;</span>
+        }
+    }
+
+    @Override
+    public java.net.URL getURL(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L1031">            return resultSet.getURL(columnName);</span>
+<span class="nc" id="L1032">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1033">            handleException(e);</span>
+<span class="nc" id="L1034">            return null;</span>
+        }
+    }
+
+    @Override
+    public SQLWarning getWarnings() throws SQLException {
+        try {
+<span class="fc" id="L1041">            return resultSet.getWarnings();</span>
+<span class="fc" id="L1042">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1043">            handleException(e);</span>
+<span class="nc" id="L1044">            return null;</span>
+        }
+    }
+
+    protected void handleException(final SQLException e) throws SQLException {
+<span class="pc bpc" id="L1049" title="1 of 2 branches missed.">        if (statement instanceof DelegatingStatement) {</span>
+<span class="nc" id="L1050">            ((DelegatingStatement) statement).handleException(e);</span>
+<span class="pc bpc" id="L1051" title="1 of 2 branches missed.">        } else if (connection instanceof DelegatingConnection) {</span>
+<span class="nc" id="L1052">            ((DelegatingConnection&lt;?&gt;) connection).handleException(e);</span>
+        } else {
+<span class="fc" id="L1054">            throw e;</span>
+        }
+<span class="nc" id="L1056">    }</span>
+
+    @Override
+    public void insertRow() throws SQLException {
+        try {
+<span class="fc" id="L1061">            resultSet.insertRow();</span>
+<span class="nc" id="L1062">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1063">            handleException(e);</span>
+<span class="fc" id="L1064">        }</span>
+<span class="fc" id="L1065">    }</span>
+
+    @Override
+    public boolean isAfterLast() throws SQLException {
+        try {
+<span class="fc" id="L1070">            return resultSet.isAfterLast();</span>
+<span class="nc" id="L1071">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1072">            handleException(e);</span>
+<span class="nc" id="L1073">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isBeforeFirst() throws SQLException {
+        try {
+<span class="fc" id="L1080">            return resultSet.isBeforeFirst();</span>
+<span class="nc" id="L1081">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1082">            handleException(e);</span>
+<span class="nc" id="L1083">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isClosed() throws SQLException {
+        try {
+<span class="fc" id="L1090">            return resultSet.isClosed();</span>
+<span class="nc" id="L1091">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1092">            handleException(e);</span>
+<span class="nc" id="L1093">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isFirst() throws SQLException {
+        try {
+<span class="fc" id="L1100">            return resultSet.isFirst();</span>
+<span class="nc" id="L1101">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1102">            handleException(e);</span>
+<span class="nc" id="L1103">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isLast() throws SQLException {
+        try {
+<span class="fc" id="L1110">            return resultSet.isLast();</span>
+<span class="nc" id="L1111">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1112">            handleException(e);</span>
+<span class="nc" id="L1113">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean isWrapperFor(final Class&lt;?&gt; iface) throws SQLException {
+<span class="fc bfc" id="L1119" title="All 2 branches covered.">        if (iface.isAssignableFrom(getClass())) {</span>
+<span class="fc" id="L1120">            return true;</span>
+        }
+<span class="fc bfc" id="L1122" title="All 2 branches covered.">        if (iface.isAssignableFrom(resultSet.getClass())) {</span>
+<span class="fc" id="L1123">            return true;</span>
+        }
+<span class="fc" id="L1125">        return resultSet.isWrapperFor(iface);</span>
+    }
+
+    @Override
+    public boolean last() throws SQLException {
+        try {
+<span class="fc" id="L1131">            return resultSet.last();</span>
+<span class="nc" id="L1132">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1133">            handleException(e);</span>
+<span class="nc" id="L1134">            return false;</span>
+        }
+    }
+
+    @Override
+    public void moveToCurrentRow() throws SQLException {
+        try {
+<span class="fc" id="L1141">            resultSet.moveToCurrentRow();</span>
+<span class="nc" id="L1142">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1143">            handleException(e);</span>
+<span class="fc" id="L1144">        }</span>
+<span class="fc" id="L1145">    }</span>
+
+    @Override
+    public void moveToInsertRow() throws SQLException {
+        try {
+<span class="fc" id="L1150">            resultSet.moveToInsertRow();</span>
+<span class="nc" id="L1151">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1152">            handleException(e);</span>
+<span class="fc" id="L1153">        }</span>
+<span class="fc" id="L1154">    }</span>
+
+    @Override
+    public boolean next() throws SQLException {
+        try {
+<span class="fc" id="L1159">            return resultSet.next();</span>
+<span class="nc" id="L1160">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1161">            handleException(e);</span>
+<span class="nc" id="L1162">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean previous() throws SQLException {
+        try {
+<span class="fc" id="L1169">            return resultSet.previous();</span>
+<span class="nc" id="L1170">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1171">            handleException(e);</span>
+<span class="nc" id="L1172">            return false;</span>
+        }
+    }
+
+    @Override
+    public void refreshRow() throws SQLException {
+        try {
+<span class="fc" id="L1179">            resultSet.refreshRow();</span>
+<span class="nc" id="L1180">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1181">            handleException(e);</span>
+<span class="fc" id="L1182">        }</span>
+<span class="fc" id="L1183">    }</span>
+
+    @Override
+    public boolean relative(final int rows) throws SQLException {
+        try {
+<span class="fc" id="L1188">            return resultSet.relative(rows);</span>
+<span class="nc" id="L1189">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1190">            handleException(e);</span>
+<span class="nc" id="L1191">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean rowDeleted() throws SQLException {
+        try {
+<span class="fc" id="L1198">            return resultSet.rowDeleted();</span>
+<span class="nc" id="L1199">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1200">            handleException(e);</span>
+<span class="nc" id="L1201">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean rowInserted() throws SQLException {
+        try {
+<span class="fc" id="L1208">            return resultSet.rowInserted();</span>
+<span class="nc" id="L1209">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1210">            handleException(e);</span>
+<span class="nc" id="L1211">            return false;</span>
+        }
+    }
+
+    @Override
+    public boolean rowUpdated() throws SQLException {
+        try {
+<span class="fc" id="L1218">            return resultSet.rowUpdated();</span>
+<span class="nc" id="L1219">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1220">            handleException(e);</span>
+<span class="nc" id="L1221">            return false;</span>
+        }
+    }
+
+    @Override
+    public void setFetchDirection(final int direction) throws SQLException {
+        try {
+<span class="fc" id="L1228">            resultSet.setFetchDirection(direction);</span>
+<span class="nc" id="L1229">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1230">            handleException(e);</span>
+<span class="fc" id="L1231">        }</span>
+<span class="fc" id="L1232">    }</span>
+
+    @Override
+    public void setFetchSize(final int rows) throws SQLException {
+        try {
+<span class="fc" id="L1237">            resultSet.setFetchSize(rows);</span>
+<span class="nc" id="L1238">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1239">            handleException(e);</span>
+<span class="fc" id="L1240">        }</span>
+<span class="fc" id="L1241">    }</span>
+
+    @Override
+    public synchronized String toString() {
+<span class="fc" id="L1245">        return super.toString() + &quot;[resultSet=&quot; + resultSet + &quot;, statement=&quot; + statement + &quot;, connection=&quot; + connection + &quot;]&quot;;</span>
+    }
+
+    @Override
+    public &lt;T&gt; T unwrap(final Class&lt;T&gt; iface) throws SQLException {
+<span class="fc bfc" id="L1250" title="All 2 branches covered.">        if (iface.isAssignableFrom(getClass())) {</span>
+<span class="fc" id="L1251">            return iface.cast(this);</span>
+        }
+<span class="fc bfc" id="L1253" title="All 2 branches covered.">        if (iface.isAssignableFrom(resultSet.getClass())) {</span>
+<span class="fc" id="L1254">            return iface.cast(resultSet);</span>
+        }
+<span class="fc" id="L1256">        return resultSet.unwrap(iface);</span>
+    }
+
+    @Override
+    public void updateArray(final int columnIndex, final Array x) throws SQLException {
+        try {
+<span class="fc" id="L1262">            resultSet.updateArray(columnIndex, x);</span>
+<span class="nc" id="L1263">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1264">            handleException(e);</span>
+<span class="fc" id="L1265">        }</span>
+<span class="fc" id="L1266">    }</span>
+
+    @Override
+    public void updateArray(final String columnName, final Array x) throws SQLException {
+        try {
+<span class="fc" id="L1271">            resultSet.updateArray(columnName, x);</span>
+<span class="nc" id="L1272">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1273">            handleException(e);</span>
+<span class="fc" id="L1274">        }</span>
+<span class="fc" id="L1275">    }</span>
+
+    @Override
+    public void updateAsciiStream(final int columnIndex, final InputStream inputStream) throws SQLException {
+        try {
+<span class="fc" id="L1280">            resultSet.updateAsciiStream(columnIndex, inputStream);</span>
+<span class="nc" id="L1281">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1282">            handleException(e);</span>
+<span class="fc" id="L1283">        }</span>
+<span class="fc" id="L1284">    }</span>
+
+    @Override
+    public void updateAsciiStream(final int columnIndex, final InputStream x, final int length) throws SQLException {
+        try {
+<span class="fc" id="L1289">            resultSet.updateAsciiStream(columnIndex, x, length);</span>
+<span class="nc" id="L1290">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1291">            handleException(e);</span>
+<span class="fc" id="L1292">        }</span>
+<span class="fc" id="L1293">    }</span>
+
+    @Override
+    public void updateAsciiStream(final int columnIndex, final InputStream inputStream, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1299">            resultSet.updateAsciiStream(columnIndex, inputStream, length);</span>
+<span class="nc" id="L1300">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1301">            handleException(e);</span>
+<span class="fc" id="L1302">        }</span>
+<span class="fc" id="L1303">    }</span>
+
+    @Override
+    public void updateAsciiStream(final String columnLabel, final InputStream inputStream) throws SQLException {
+        try {
+<span class="fc" id="L1308">            resultSet.updateAsciiStream(columnLabel, inputStream);</span>
+<span class="nc" id="L1309">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1310">            handleException(e);</span>
+<span class="fc" id="L1311">        }</span>
+<span class="fc" id="L1312">    }</span>
+
+    @Override
+    public void updateAsciiStream(final String columnName, final InputStream x, final int length) throws SQLException {
+        try {
+<span class="fc" id="L1317">            resultSet.updateAsciiStream(columnName, x, length);</span>
+<span class="nc" id="L1318">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1319">            handleException(e);</span>
+<span class="fc" id="L1320">        }</span>
+<span class="fc" id="L1321">    }</span>
+
+    @Override
+    public void updateAsciiStream(final String columnLabel, final InputStream inputStream, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1327">            resultSet.updateAsciiStream(columnLabel, inputStream, length);</span>
+<span class="nc" id="L1328">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1329">            handleException(e);</span>
+<span class="fc" id="L1330">        }</span>
+<span class="fc" id="L1331">    }</span>
+
+    @Override
+    public void updateBigDecimal(final int columnIndex, final BigDecimal x) throws SQLException {
+        try {
+<span class="fc" id="L1336">            resultSet.updateBigDecimal(columnIndex, x);</span>
+<span class="nc" id="L1337">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1338">            handleException(e);</span>
+<span class="fc" id="L1339">        }</span>
+<span class="fc" id="L1340">    }</span>
+
+    @Override
+    public void updateBigDecimal(final String columnName, final BigDecimal x) throws SQLException {
+        try {
+<span class="fc" id="L1345">            resultSet.updateBigDecimal(columnName, x);</span>
+<span class="nc" id="L1346">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1347">            handleException(e);</span>
+<span class="fc" id="L1348">        }</span>
+<span class="fc" id="L1349">    }</span>
+
+    @Override
+    public void updateBinaryStream(final int columnIndex, final InputStream inputStream) throws SQLException {
+        try {
+<span class="fc" id="L1354">            resultSet.updateBinaryStream(columnIndex, inputStream);</span>
+<span class="nc" id="L1355">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1356">            handleException(e);</span>
+<span class="fc" id="L1357">        }</span>
+<span class="fc" id="L1358">    }</span>
+
+    @Override
+    public void updateBinaryStream(final int columnIndex, final InputStream x, final int length) throws SQLException {
+        try {
+<span class="fc" id="L1363">            resultSet.updateBinaryStream(columnIndex, x, length);</span>
+<span class="nc" id="L1364">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1365">            handleException(e);</span>
+<span class="fc" id="L1366">        }</span>
+<span class="fc" id="L1367">    }</span>
+
+    @Override
+    public void updateBinaryStream(final int columnIndex, final InputStream inputStream, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1373">            resultSet.updateBinaryStream(columnIndex, inputStream, length);</span>
+<span class="nc" id="L1374">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1375">            handleException(e);</span>
+<span class="fc" id="L1376">        }</span>
+<span class="fc" id="L1377">    }</span>
+
+    @Override
+    public void updateBinaryStream(final String columnLabel, final InputStream inputStream) throws SQLException {
+        try {
+<span class="fc" id="L1382">            resultSet.updateBinaryStream(columnLabel, inputStream);</span>
+<span class="nc" id="L1383">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1384">            handleException(e);</span>
+<span class="fc" id="L1385">        }</span>
+<span class="fc" id="L1386">    }</span>
+
+    @Override
+    public void updateBinaryStream(final String columnName, final InputStream x, final int length) throws SQLException {
+        try {
+<span class="fc" id="L1391">            resultSet.updateBinaryStream(columnName, x, length);</span>
+<span class="nc" id="L1392">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1393">            handleException(e);</span>
+<span class="fc" id="L1394">        }</span>
+<span class="fc" id="L1395">    }</span>
+
+    @Override
+    public void updateBinaryStream(final String columnLabel, final InputStream inputStream, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1401">            resultSet.updateBinaryStream(columnLabel, inputStream, length);</span>
+<span class="nc" id="L1402">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1403">            handleException(e);</span>
+<span class="fc" id="L1404">        }</span>
+<span class="fc" id="L1405">    }</span>
+
+    @Override
+    public void updateBlob(final int columnIndex, final Blob x) throws SQLException {
+        try {
+<span class="fc" id="L1410">            resultSet.updateBlob(columnIndex, x);</span>
+<span class="nc" id="L1411">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1412">            handleException(e);</span>
+<span class="fc" id="L1413">        }</span>
+<span class="fc" id="L1414">    }</span>
+
+    @Override
+    public void updateBlob(final int columnIndex, final InputStream inputStream) throws SQLException {
+        try {
+<span class="fc" id="L1419">            resultSet.updateBlob(columnIndex, inputStream);</span>
+<span class="nc" id="L1420">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1421">            handleException(e);</span>
+<span class="fc" id="L1422">        }</span>
+<span class="fc" id="L1423">    }</span>
+
+    @Override
+    public void updateBlob(final int columnIndex, final InputStream inputStream, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1429">            resultSet.updateBlob(columnIndex, inputStream, length);</span>
+<span class="nc" id="L1430">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1431">            handleException(e);</span>
+<span class="fc" id="L1432">        }</span>
+<span class="fc" id="L1433">    }</span>
+
+    @Override
+    public void updateBlob(final String columnName, final Blob x) throws SQLException {
+        try {
+<span class="fc" id="L1438">            resultSet.updateBlob(columnName, x);</span>
+<span class="nc" id="L1439">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1440">            handleException(e);</span>
+<span class="fc" id="L1441">        }</span>
+<span class="fc" id="L1442">    }</span>
+
+    @Override
+    public void updateBlob(final String columnLabel, final InputStream inputStream) throws SQLException {
+        try {
+<span class="fc" id="L1447">            resultSet.updateBlob(columnLabel, inputStream);</span>
+<span class="nc" id="L1448">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1449">            handleException(e);</span>
+<span class="fc" id="L1450">        }</span>
+<span class="fc" id="L1451">    }</span>
+
+    @Override
+    public void updateBlob(final String columnLabel, final InputStream inputStream, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1457">            resultSet.updateBlob(columnLabel, inputStream, length);</span>
+<span class="nc" id="L1458">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1459">            handleException(e);</span>
+<span class="fc" id="L1460">        }</span>
+<span class="fc" id="L1461">    }</span>
+
+    @Override
+    public void updateBoolean(final int columnIndex, final boolean x) throws SQLException {
+        try {
+<span class="fc" id="L1466">            resultSet.updateBoolean(columnIndex, x);</span>
+<span class="nc" id="L1467">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1468">            handleException(e);</span>
+<span class="fc" id="L1469">        }</span>
+<span class="fc" id="L1470">    }</span>
+
+    @Override
+    public void updateBoolean(final String columnName, final boolean x) throws SQLException {
+        try {
+<span class="fc" id="L1475">            resultSet.updateBoolean(columnName, x);</span>
+<span class="nc" id="L1476">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1477">            handleException(e);</span>
+<span class="fc" id="L1478">        }</span>
+<span class="fc" id="L1479">    }</span>
+
+    @Override
+    public void updateByte(final int columnIndex, final byte x) throws SQLException {
+        try {
+<span class="fc" id="L1484">            resultSet.updateByte(columnIndex, x);</span>
+<span class="nc" id="L1485">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1486">            handleException(e);</span>
+<span class="fc" id="L1487">        }</span>
+<span class="fc" id="L1488">    }</span>
+
+    @Override
+    public void updateByte(final String columnName, final byte x) throws SQLException {
+        try {
+<span class="fc" id="L1493">            resultSet.updateByte(columnName, x);</span>
+<span class="nc" id="L1494">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1495">            handleException(e);</span>
+<span class="fc" id="L1496">        }</span>
+<span class="fc" id="L1497">    }</span>
+
+    @Override
+    public void updateBytes(final int columnIndex, final byte[] x) throws SQLException {
+        try {
+<span class="fc" id="L1502">            resultSet.updateBytes(columnIndex, x);</span>
+<span class="nc" id="L1503">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1504">            handleException(e);</span>
+<span class="fc" id="L1505">        }</span>
+<span class="fc" id="L1506">    }</span>
+
+    @Override
+    public void updateBytes(final String columnName, final byte[] x) throws SQLException {
+        try {
+<span class="fc" id="L1511">            resultSet.updateBytes(columnName, x);</span>
+<span class="nc" id="L1512">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1513">            handleException(e);</span>
+<span class="fc" id="L1514">        }</span>
+<span class="fc" id="L1515">    }</span>
+
+    @Override
+    public void updateCharacterStream(final int columnIndex, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1520">            resultSet.updateCharacterStream(columnIndex, reader);</span>
+<span class="nc" id="L1521">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1522">            handleException(e);</span>
+<span class="fc" id="L1523">        }</span>
+<span class="fc" id="L1524">    }</span>
+
+    @Override
+    public void updateCharacterStream(final int columnIndex, final Reader x, final int length) throws SQLException {
+        try {
+<span class="fc" id="L1529">            resultSet.updateCharacterStream(columnIndex, x, length);</span>
+<span class="nc" id="L1530">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1531">            handleException(e);</span>
+<span class="fc" id="L1532">        }</span>
+<span class="fc" id="L1533">    }</span>
+
+    @Override
+    public void updateCharacterStream(final int columnIndex, final Reader reader, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1539">            resultSet.updateCharacterStream(columnIndex, reader, length);</span>
+<span class="nc" id="L1540">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1541">            handleException(e);</span>
+<span class="fc" id="L1542">        }</span>
+<span class="fc" id="L1543">    }</span>
+
+    @Override
+    public void updateCharacterStream(final String columnLabel, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1548">            resultSet.updateCharacterStream(columnLabel, reader);</span>
+<span class="nc" id="L1549">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1550">            handleException(e);</span>
+<span class="fc" id="L1551">        }</span>
+<span class="fc" id="L1552">    }</span>
+
+    @Override
+    public void updateCharacterStream(final String columnName, final Reader reader, final int length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1558">            resultSet.updateCharacterStream(columnName, reader, length);</span>
+<span class="nc" id="L1559">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1560">            handleException(e);</span>
+<span class="fc" id="L1561">        }</span>
+<span class="fc" id="L1562">    }</span>
+
+    @Override
+    public void updateCharacterStream(final String columnLabel, final Reader reader, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1568">            resultSet.updateCharacterStream(columnLabel, reader, length);</span>
+<span class="nc" id="L1569">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1570">            handleException(e);</span>
+<span class="fc" id="L1571">        }</span>
+<span class="fc" id="L1572">    }</span>
+
+    @Override
+    public void updateClob(final int columnIndex, final Clob x) throws SQLException {
+        try {
+<span class="fc" id="L1577">            resultSet.updateClob(columnIndex, x);</span>
+<span class="nc" id="L1578">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1579">            handleException(e);</span>
+<span class="fc" id="L1580">        }</span>
+<span class="fc" id="L1581">    }</span>
+
+    @Override
+    public void updateClob(final int columnIndex, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1586">            resultSet.updateClob(columnIndex, reader);</span>
+<span class="nc" id="L1587">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1588">            handleException(e);</span>
+<span class="fc" id="L1589">        }</span>
+<span class="fc" id="L1590">    }</span>
+
+    @Override
+    public void updateClob(final int columnIndex, final Reader reader, final long length) throws SQLException {
+        try {
+<span class="fc" id="L1595">            resultSet.updateClob(columnIndex, reader, length);</span>
+<span class="nc" id="L1596">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1597">            handleException(e);</span>
+<span class="fc" id="L1598">        }</span>
+<span class="fc" id="L1599">    }</span>
+
+    @Override
+    public void updateClob(final String columnName, final Clob x) throws SQLException {
+        try {
+<span class="fc" id="L1604">            resultSet.updateClob(columnName, x);</span>
+<span class="nc" id="L1605">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1606">            handleException(e);</span>
+<span class="fc" id="L1607">        }</span>
+<span class="fc" id="L1608">    }</span>
+
+    @Override
+    public void updateClob(final String columnLabel, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1613">            resultSet.updateClob(columnLabel, reader);</span>
+<span class="nc" id="L1614">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1615">            handleException(e);</span>
+<span class="fc" id="L1616">        }</span>
+<span class="fc" id="L1617">    }</span>
+
+    @Override
+    public void updateClob(final String columnLabel, final Reader reader, final long length) throws SQLException {
+        try {
+<span class="fc" id="L1622">            resultSet.updateClob(columnLabel, reader, length);</span>
+<span class="nc" id="L1623">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1624">            handleException(e);</span>
+<span class="fc" id="L1625">        }</span>
+<span class="fc" id="L1626">    }</span>
+
+    @Override
+    public void updateDate(final int columnIndex, final Date x) throws SQLException {
+        try {
+<span class="fc" id="L1631">            resultSet.updateDate(columnIndex, x);</span>
+<span class="nc" id="L1632">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1633">            handleException(e);</span>
+<span class="fc" id="L1634">        }</span>
+<span class="fc" id="L1635">    }</span>
+
+    @Override
+    public void updateDate(final String columnName, final Date x) throws SQLException {
+        try {
+<span class="fc" id="L1640">            resultSet.updateDate(columnName, x);</span>
+<span class="nc" id="L1641">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1642">            handleException(e);</span>
+<span class="fc" id="L1643">        }</span>
+<span class="fc" id="L1644">    }</span>
+
+    @Override
+    public void updateDouble(final int columnIndex, final double x) throws SQLException {
+        try {
+<span class="fc" id="L1649">            resultSet.updateDouble(columnIndex, x);</span>
+<span class="nc" id="L1650">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1651">            handleException(e);</span>
+<span class="fc" id="L1652">        }</span>
+<span class="fc" id="L1653">    }</span>
+
+    @Override
+    public void updateDouble(final String columnName, final double x) throws SQLException {
+        try {
+<span class="fc" id="L1658">            resultSet.updateDouble(columnName, x);</span>
+<span class="nc" id="L1659">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1660">            handleException(e);</span>
+<span class="fc" id="L1661">        }</span>
+<span class="fc" id="L1662">    }</span>
+
+    @Override
+    public void updateFloat(final int columnIndex, final float x) throws SQLException {
+        try {
+<span class="fc" id="L1667">            resultSet.updateFloat(columnIndex, x);</span>
+<span class="nc" id="L1668">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1669">            handleException(e);</span>
+<span class="fc" id="L1670">        }</span>
+<span class="fc" id="L1671">    }</span>
+
+    @Override
+    public void updateFloat(final String columnName, final float x) throws SQLException {
+        try {
+<span class="fc" id="L1676">            resultSet.updateFloat(columnName, x);</span>
+<span class="nc" id="L1677">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1678">            handleException(e);</span>
+<span class="fc" id="L1679">        }</span>
+<span class="fc" id="L1680">    }</span>
+
+    @Override
+    public void updateInt(final int columnIndex, final int x) throws SQLException {
+        try {
+<span class="fc" id="L1685">            resultSet.updateInt(columnIndex, x);</span>
+<span class="nc" id="L1686">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1687">            handleException(e);</span>
+<span class="fc" id="L1688">        }</span>
+<span class="fc" id="L1689">    }</span>
+
+    @Override
+    public void updateInt(final String columnName, final int x) throws SQLException {
+        try {
+<span class="fc" id="L1694">            resultSet.updateInt(columnName, x);</span>
+<span class="nc" id="L1695">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1696">            handleException(e);</span>
+<span class="fc" id="L1697">        }</span>
+<span class="fc" id="L1698">    }</span>
+
+    @Override
+    public void updateLong(final int columnIndex, final long x) throws SQLException {
+        try {
+<span class="fc" id="L1703">            resultSet.updateLong(columnIndex, x);</span>
+<span class="nc" id="L1704">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1705">            handleException(e);</span>
+<span class="fc" id="L1706">        }</span>
+<span class="fc" id="L1707">    }</span>
+
+    @Override
+    public void updateLong(final String columnName, final long x) throws SQLException {
+        try {
+<span class="fc" id="L1712">            resultSet.updateLong(columnName, x);</span>
+<span class="nc" id="L1713">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1714">            handleException(e);</span>
+<span class="fc" id="L1715">        }</span>
+<span class="fc" id="L1716">    }</span>
+
+    @Override
+    public void updateNCharacterStream(final int columnIndex, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1721">            resultSet.updateNCharacterStream(columnIndex, reader);</span>
+<span class="nc" id="L1722">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1723">            handleException(e);</span>
+<span class="fc" id="L1724">        }</span>
+<span class="fc" id="L1725">    }</span>
+
+    @Override
+    public void updateNCharacterStream(final int columnIndex, final Reader reader, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1731">            resultSet.updateNCharacterStream(columnIndex, reader, length);</span>
+<span class="nc" id="L1732">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1733">            handleException(e);</span>
+<span class="fc" id="L1734">        }</span>
+<span class="fc" id="L1735">    }</span>
+
+    @Override
+    public void updateNCharacterStream(final String columnLabel, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1740">            resultSet.updateNCharacterStream(columnLabel, reader);</span>
+<span class="nc" id="L1741">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1742">            handleException(e);</span>
+<span class="fc" id="L1743">        }</span>
+<span class="fc" id="L1744">    }</span>
+
+    @Override
+    public void updateNCharacterStream(final String columnLabel, final Reader reader, final long length)
+            throws SQLException {
+        try {
+<span class="fc" id="L1750">            resultSet.updateNCharacterStream(columnLabel, reader, length);</span>
+<span class="nc" id="L1751">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1752">            handleException(e);</span>
+<span class="fc" id="L1753">        }</span>
+<span class="fc" id="L1754">    }</span>
+
+    @Override
+    public void updateNClob(final int columnIndex, final NClob value) throws SQLException {
+        try {
+<span class="fc" id="L1759">            resultSet.updateNClob(columnIndex, value);</span>
+<span class="nc" id="L1760">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1761">            handleException(e);</span>
+<span class="fc" id="L1762">        }</span>
+<span class="fc" id="L1763">    }</span>
+
+    @Override
+    public void updateNClob(final int columnIndex, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1768">            resultSet.updateNClob(columnIndex, reader);</span>
+<span class="nc" id="L1769">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1770">            handleException(e);</span>
+<span class="fc" id="L1771">        }</span>
+<span class="fc" id="L1772">    }</span>
+
+    @Override
+    public void updateNClob(final int columnIndex, final Reader reader, final long length) throws SQLException {
+        try {
+<span class="fc" id="L1777">            resultSet.updateNClob(columnIndex, reader, length);</span>
+<span class="nc" id="L1778">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1779">            handleException(e);</span>
+<span class="fc" id="L1780">        }</span>
+<span class="fc" id="L1781">    }</span>
+
+    @Override
+    public void updateNClob(final String columnLabel, final NClob value) throws SQLException {
+        try {
+<span class="fc" id="L1786">            resultSet.updateNClob(columnLabel, value);</span>
+<span class="nc" id="L1787">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1788">            handleException(e);</span>
+<span class="fc" id="L1789">        }</span>
+<span class="fc" id="L1790">    }</span>
+
+    @Override
+    public void updateNClob(final String columnLabel, final Reader reader) throws SQLException {
+        try {
+<span class="fc" id="L1795">            resultSet.updateNClob(columnLabel, reader);</span>
+<span class="nc" id="L1796">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1797">            handleException(e);</span>
+<span class="fc" id="L1798">        }</span>
+<span class="fc" id="L1799">    }</span>
+
+    @Override
+    public void updateNClob(final String columnLabel, final Reader reader, final long length) throws SQLException {
+        try {
+<span class="fc" id="L1804">            resultSet.updateNClob(columnLabel, reader, length);</span>
+<span class="nc" id="L1805">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1806">            handleException(e);</span>
+<span class="fc" id="L1807">        }</span>
+<span class="fc" id="L1808">    }</span>
+
+    @Override
+    public void updateNString(final int columnIndex, final String value) throws SQLException {
+        try {
+<span class="fc" id="L1813">            resultSet.updateNString(columnIndex, value);</span>
+<span class="nc" id="L1814">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1815">            handleException(e);</span>
+<span class="fc" id="L1816">        }</span>
+<span class="fc" id="L1817">    }</span>
+
+    @Override
+    public void updateNString(final String columnLabel, final String value) throws SQLException {
+        try {
+<span class="fc" id="L1822">            resultSet.updateNString(columnLabel, value);</span>
+<span class="nc" id="L1823">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1824">            handleException(e);</span>
+<span class="fc" id="L1825">        }</span>
+<span class="fc" id="L1826">    }</span>
+
+    @Override
+    public void updateNull(final int columnIndex) throws SQLException {
+        try {
+<span class="fc" id="L1831">            resultSet.updateNull(columnIndex);</span>
+<span class="nc" id="L1832">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1833">            handleException(e);</span>
+<span class="fc" id="L1834">        }</span>
+<span class="fc" id="L1835">    }</span>
+
+    @Override
+    public void updateNull(final String columnName) throws SQLException {
+        try {
+<span class="fc" id="L1840">            resultSet.updateNull(columnName);</span>
+<span class="nc" id="L1841">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1842">            handleException(e);</span>
+<span class="fc" id="L1843">        }</span>
+<span class="fc" id="L1844">    }</span>
+
+    @Override
+    public void updateObject(final int columnIndex, final Object x) throws SQLException {
+        try {
+<span class="fc" id="L1849">            resultSet.updateObject(columnIndex, x);</span>
+<span class="nc" id="L1850">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1851">            handleException(e);</span>
+<span class="fc" id="L1852">        }</span>
+<span class="fc" id="L1853">    }</span>
+
+    @Override
+    public void updateObject(final int columnIndex, final Object x, final int scale) throws SQLException {
+        try {
+<span class="nc" id="L1858">            resultSet.updateObject(columnIndex, x);</span>
+<span class="nc" id="L1859">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1860">            handleException(e);</span>
+<span class="nc" id="L1861">        }</span>
+<span class="nc" id="L1862">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void updateObject(final int columnIndex, final Object x, final SQLType targetSqlType) throws SQLException {
+        try {
+<span class="fc" id="L1870">            resultSet.updateObject(columnIndex, x, targetSqlType);</span>
+<span class="nc" id="L1871">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1872">            handleException(e);</span>
+<span class="fc" id="L1873">        }</span>
+<span class="fc" id="L1874">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void updateObject(final int columnIndex, final Object x, final SQLType targetSqlType, final int scaleOrLength) throws SQLException {
+        try {
+<span class="fc" id="L1882">            resultSet.updateObject(columnIndex, x, targetSqlType, scaleOrLength);</span>
+<span class="nc" id="L1883">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1884">            handleException(e);</span>
+<span class="fc" id="L1885">        }</span>
+<span class="fc" id="L1886">    }</span>
+
+    @Override
+    public void updateObject(final String columnName, final Object x) throws SQLException {
+        try {
+<span class="fc" id="L1891">            resultSet.updateObject(columnName, x);</span>
+<span class="nc" id="L1892">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1893">            handleException(e);</span>
+<span class="fc" id="L1894">        }</span>
+<span class="fc" id="L1895">    }</span>
+
+    @Override
+    public void updateObject(final String columnName, final Object x, final int scale) throws SQLException {
+        try {
+<span class="nc" id="L1900">            resultSet.updateObject(columnName, x);</span>
+<span class="nc" id="L1901">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1902">            handleException(e);</span>
+<span class="nc" id="L1903">        }</span>
+<span class="nc" id="L1904">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void updateObject(final String columnLabel, final Object x, final SQLType targetSqlType) throws SQLException {
+        try {
+<span class="fc" id="L1912">            resultSet.updateObject(columnLabel, x, targetSqlType);</span>
+<span class="nc" id="L1913">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1914">            handleException(e);</span>
+<span class="fc" id="L1915">        }</span>
+<span class="fc" id="L1916">    }</span>
+
+    /**
+     * @since 2.5.0
+     */
+    @Override
+    public void updateObject(final String columnLabel, final Object x, final SQLType targetSqlType, final int scaleOrLength)
+            throws SQLException {
+        try {
+<span class="fc" id="L1925">            resultSet.updateObject(columnLabel, x, targetSqlType, scaleOrLength);</span>
+<span class="nc" id="L1926">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1927">            handleException(e);</span>
+<span class="fc" id="L1928">        }</span>
+<span class="fc" id="L1929">    }</span>
+
+    @Override
+    public void updateRef(final int columnIndex, final Ref x) throws SQLException {
+        try {
+<span class="fc" id="L1934">            resultSet.updateRef(columnIndex, x);</span>
+<span class="nc" id="L1935">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1936">            handleException(e);</span>
+<span class="fc" id="L1937">        }</span>
+<span class="fc" id="L1938">    }</span>
+
+    @Override
+    public void updateRef(final String columnName, final Ref x) throws SQLException {
+        try {
+<span class="fc" id="L1943">            resultSet.updateRef(columnName, x);</span>
+<span class="nc" id="L1944">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1945">            handleException(e);</span>
+<span class="fc" id="L1946">        }</span>
+<span class="fc" id="L1947">    }</span>
+
+    @Override
+    public void updateRow() throws SQLException {
+        try {
+<span class="fc" id="L1952">            resultSet.updateRow();</span>
+<span class="nc" id="L1953">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1954">            handleException(e);</span>
+<span class="fc" id="L1955">        }</span>
+<span class="fc" id="L1956">    }</span>
+
+    @Override
+    public void updateRowId(final int columnIndex, final RowId value) throws SQLException {
+        try {
+<span class="fc" id="L1961">            resultSet.updateRowId(columnIndex, value);</span>
+<span class="nc" id="L1962">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1963">            handleException(e);</span>
+<span class="fc" id="L1964">        }</span>
+<span class="fc" id="L1965">    }</span>
+
+    @Override
+    public void updateRowId(final String columnLabel, final RowId value) throws SQLException {
+        try {
+<span class="fc" id="L1970">            resultSet.updateRowId(columnLabel, value);</span>
+<span class="nc" id="L1971">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1972">            handleException(e);</span>
+<span class="fc" id="L1973">        }</span>
+<span class="fc" id="L1974">    }</span>
+
+    @Override
+    public void updateShort(final int columnIndex, final short x) throws SQLException {
+        try {
+<span class="fc" id="L1979">            resultSet.updateShort(columnIndex, x);</span>
+<span class="nc" id="L1980">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1981">            handleException(e);</span>
+<span class="fc" id="L1982">        }</span>
+<span class="fc" id="L1983">    }</span>
+
+    @Override
+    public void updateShort(final String columnName, final short x) throws SQLException {
+        try {
+<span class="fc" id="L1988">            resultSet.updateShort(columnName, x);</span>
+<span class="nc" id="L1989">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1990">            handleException(e);</span>
+<span class="fc" id="L1991">        }</span>
+<span class="fc" id="L1992">    }</span>
+
+    @Override
+    public void updateSQLXML(final int columnIndex, final SQLXML value) throws SQLException {
+        try {
+<span class="fc" id="L1997">            resultSet.updateSQLXML(columnIndex, value);</span>
+<span class="nc" id="L1998">        } catch (final SQLException e) {</span>
+<span class="nc" id="L1999">            handleException(e);</span>
+<span class="fc" id="L2000">        }</span>
+<span class="fc" id="L2001">    }</span>
+
+    @Override
+    public void updateSQLXML(final String columnLabel, final SQLXML value) throws SQLException {
+        try {
+<span class="fc" id="L2006">            resultSet.updateSQLXML(columnLabel, value);</span>
+<span class="nc" id="L2007">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2008">            handleException(e);</span>
+<span class="fc" id="L2009">        }</span>
+<span class="fc" id="L2010">    }</span>
+
+    @Override
+    public void updateString(final int columnIndex, final String x) throws SQLException {
+        try {
+<span class="fc" id="L2015">            resultSet.updateString(columnIndex, x);</span>
+<span class="nc" id="L2016">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2017">            handleException(e);</span>
+<span class="fc" id="L2018">        }</span>
+<span class="fc" id="L2019">    }</span>
+
+    @Override
+    public void updateString(final String columnName, final String x) throws SQLException {
+        try {
+<span class="fc" id="L2024">            resultSet.updateString(columnName, x);</span>
+<span class="nc" id="L2025">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2026">            handleException(e);</span>
+<span class="fc" id="L2027">        }</span>
+<span class="fc" id="L2028">    }</span>
+
+    @Override
+    public void updateTime(final int columnIndex, final Time x) throws SQLException {
+        try {
+<span class="fc" id="L2033">            resultSet.updateTime(columnIndex, x);</span>
+<span class="nc" id="L2034">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2035">            handleException(e);</span>
+<span class="fc" id="L2036">        }</span>
+<span class="fc" id="L2037">    }</span>
+
+    @Override
+    public void updateTime(final String columnName, final Time x) throws SQLException {
+        try {
+<span class="fc" id="L2042">            resultSet.updateTime(columnName, x);</span>
+<span class="nc" id="L2043">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2044">            handleException(e);</span>
+<span class="fc" id="L2045">        }</span>
+<span class="fc" id="L2046">    }</span>
+
+    @Override
+    public void updateTimestamp(final int columnIndex, final Timestamp x) throws SQLException {
+        try {
+<span class="fc" id="L2051">            resultSet.updateTimestamp(columnIndex, x);</span>
+<span class="nc" id="L2052">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2053">            handleException(e);</span>
+<span class="fc" id="L2054">        }</span>
+<span class="fc" id="L2055">    }</span>
+
+    @Override
+    public void updateTimestamp(final String columnName, final Timestamp x) throws SQLException {
+        try {
+<span class="fc" id="L2060">            resultSet.updateTimestamp(columnName, x);</span>
+<span class="nc" id="L2061">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2062">            handleException(e);</span>
+<span class="fc" id="L2063">        }</span>
+<span class="fc" id="L2064">    }</span>
+
+    @Override
+    public boolean wasNull() throws SQLException {
+        try {
+<span class="fc" id="L2069">            return resultSet.wasNull();</span>
+<span class="nc" id="L2070">        } catch (final SQLException e) {</span>
+<span class="nc" id="L2071">            handleException(e);</span>
+<span class="nc" id="L2072">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

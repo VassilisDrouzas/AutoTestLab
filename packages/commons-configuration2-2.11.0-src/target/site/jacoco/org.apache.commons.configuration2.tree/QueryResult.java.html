@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryResult.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">QueryResult.java</span></div><h1>QueryResult.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.EqualsBuilder;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+
+/**
+ * &lt;p&gt;
+ * A data class representing a single query result produced by an {@link ExpressionEngine}.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When passing a key to the {@code query()} method of {@code ExpressionEngine} the result can be a set of nodes or
+ * attributes - depending on the key. This class can represent both types of results. The aim is to give a user of
+ * {@code ExpressionEngine} all information needed for evaluating the results returned.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Implementation note: Instances are immutable. They are created using the static factory methods.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ * @param &lt;T&gt; the type of the result nodes
+ */
+public final class QueryResult&lt;T&gt; {
+    /**
+     * Creates a {@code QueryResult} instance representing an attribute result. An attribute result consists of the node the
+     * attribute belongs to and the attribute name. (The value can be obtained based on this information.)
+     *
+     * @param parentNode the node which owns the attribute
+     * @param attrName the attribute name
+     * @param &lt;T&gt; the type of the parent node
+     * @return the newly created instance
+     */
+    public static &lt;T&gt; QueryResult&lt;T&gt; createAttributeResult(final T parentNode, final String attrName) {
+<span class="fc" id="L51">        return new QueryResult&lt;&gt;(parentNode, attrName);</span>
+    }
+
+    /**
+     * Creates a {@code QueryResult} instance representing the specified result node.
+     *
+     * @param &lt;T&gt; the type of the result node
+     * @param resultNode the result node
+     * @return the newly created instance
+     */
+    public static &lt;T&gt; QueryResult&lt;T&gt; createNodeResult(final T resultNode) {
+<span class="fc" id="L62">        return new QueryResult&lt;&gt;(resultNode, null);</span>
+    }
+
+    /** The node result. */
+    private final T node;
+
+    /** The name of the result attribute. */
+    private final String attributeName;
+
+    /**
+     * Creates a new instance of {@code QueryResult}.
+     *
+     * @param nd the node
+     * @param attr the attribute name
+     */
+<span class="fc" id="L77">    private QueryResult(final T nd, final String attr) {</span>
+<span class="fc" id="L78">        node = nd;</span>
+<span class="fc" id="L79">        attributeName = attr;</span>
+<span class="fc" id="L80">    }</span>
+
+    /**
+     * Compares this object with another one. Two instances of {@code QueryResult} are considered equal if they are of the
+     * same result type and have the same properties.
+     *
+     * @param obj the object to compare to
+     * @return a flag whether these objects are equal
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (this == obj) {</span>
+<span class="fc" id="L92">            return true;</span>
+        }
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (!(obj instanceof QueryResult)) {</span>
+<span class="fc" id="L95">            return false;</span>
+        }
+
+<span class="fc" id="L98">        final QueryResult&lt;?&gt; c = (QueryResult&lt;?&gt;) obj;</span>
+<span class="fc" id="L99">        return new EqualsBuilder().append(getNode(), c.getNode()).append(getAttributeName(), c.getAttributeName()).isEquals();</span>
+    }
+
+    /**
+     * Gets the name of the attribute. This method is defined only for results of type attribute.
+     *
+     * @return the attribute name
+     */
+    public String getAttributeName() {
+<span class="fc" id="L108">        return attributeName;</span>
+    }
+
+    /**
+     * Gets the attribute value if this is an attribute result. If this is not an attribute result, an exception is
+     * thrown.
+     *
+     * @param handler the {@code NodeHandler}
+     * @return the attribute value
+     * @throws IllegalStateException if this is not an attribute result
+     */
+    public Object getAttributeValue(final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (!isAttributeResult()) {</span>
+<span class="fc" id="L121">            throw new IllegalStateException(&quot;This is not an attribute result! &quot; + &quot;Attribute value cannot be fetched.&quot;);</span>
+        }
+<span class="fc" id="L123">        return handler.getAttributeValue(getNode(), getAttributeName());</span>
+    }
+
+    /**
+     * Gets the node referenced by this object. Depending on the result type, this is either the result node or the
+     * parent node of the represented attribute.
+     *
+     * @return the referenced node
+     */
+    public T getNode() {
+<span class="fc" id="L133">        return node;</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L138">        return new HashCodeBuilder().append(getNode()).append(getAttributeName()).toHashCode();</span>
+    }
+
+    /**
+     * Returns a flag whether this is a result of type attribute. If result is &lt;b&gt;true&lt;/b&gt;, the attribute name and value can
+     * be queried. Otherwise, only the result node is available.
+     *
+     * @return &lt;b&gt;true&lt;/b&gt; for an attribute result, &lt;b&gt;false&lt;/b&gt; otherwise
+     */
+    public boolean isAttributeResult() {
+<span class="fc" id="L148">        return StringUtils.isNotEmpty(getAttributeName());</span>
+    }
+
+    /**
+     * Returns a string representation of this object. Depending on the result type either the result node or the parent
+     * node and the attribute name are contained in this string.
+     *
+     * @return a string for this object
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L159">        final ToStringBuilder sb = new ToStringBuilder(this);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (isAttributeResult()) {</span>
+<span class="fc" id="L161">            sb.append(&quot;parentNode&quot;, getNode()).append(&quot;attribute&quot;, getAttributeName());</span>
+        } else {
+<span class="fc" id="L163">            sb.append(&quot;resultNode&quot;, getNode());</span>
+        }
+<span class="fc" id="L165">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

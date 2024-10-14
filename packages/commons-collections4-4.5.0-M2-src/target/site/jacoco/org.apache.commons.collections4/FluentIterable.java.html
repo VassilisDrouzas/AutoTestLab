@@ -1,0 +1,492 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FluentIterable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4</a> &gt; <span class="el_source">FluentIterable.java</span></div><h1>FluentIterable.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
+import org.apache.commons.collections4.iterators.SingletonIterator;
+
+/**
+ * A FluentIterable provides a powerful yet simple API for manipulating
+ * Iterable instances in a fluent manner.
+ * &lt;p&gt;
+ * A FluentIterable can be created either from an Iterable or from a set
+ * of elements. The following types of methods are provided:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;fluent methods which return a new {@code FluentIterable} instance,
+ *       providing a view of the original iterable (e.g. filter(Predicate));
+ *   &lt;li&gt;conversion methods which copy the FluentIterable's contents into a
+ *       new collection or array (e.g. toList());
+ *   &lt;li&gt;utility methods which answer questions about the FluentIterable's
+ *       contents (e.g. size(), anyMatch(Predicate)).
+ *   &lt;li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * The following example outputs the first 3 even numbers in the range [1, 10]
+ * into a list:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * List&amp;lt;String&amp;gt; result =
+ *   FluentIterable
+ *       .of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+ *       .filter(new Predicate&amp;lt;Integer&amp;gt;() {
+ *                   public boolean evaluate(Integer number) {
+ *                        return number % 2 == 0;
+ *                   }
+ *              )
+ *       .transform(TransformerUtils.stringValueTransformer())
+ *       .limit(3)
+ *       .toList();
+ * &lt;/pre&gt;
+ * The resulting list will contain the following elements:
+ * &lt;pre&gt;[2, 4, 6]&lt;/pre&gt;
+ *
+ * @param &lt;E&gt;  the element type
+ * @since 4.1
+ */
+public class FluentIterable&lt;E&gt; implements Iterable&lt;E&gt; {
+
+    /**
+     * Creates a new empty FluentIterable.
+     *
+     * @param &lt;T&gt;  the element type
+     * @return a new empty FluentIterable
+     */
+    public static &lt;T&gt; FluentIterable&lt;T&gt; empty() {
+<span class="fc" id="L77">        return IterableUtils.EMPTY_ITERABLE;</span>
+    }
+
+    /**
+     * Constructs a new FluentIterable from the provided iterable. If the
+     * iterable is already an instance of FluentIterable, the instance
+     * will be returned instead.
+     * &lt;p&gt;
+     * The returned iterable's iterator supports {@code remove()} when the
+     * corresponding input iterator supports it.
+     *
+     * @param &lt;T&gt;  the element type
+     * @param iterable  the iterable to wrap into a FluentIterable, may not be null
+     * @return a new FluentIterable wrapping the provided iterable
+     * @throws NullPointerException if iterable is null
+     */
+    public static &lt;T&gt; FluentIterable&lt;T&gt; of(final Iterable&lt;T&gt; iterable) {
+<span class="fc" id="L94">        IterableUtils.checkNotNull(iterable);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (iterable instanceof FluentIterable&lt;?&gt;) {</span>
+<span class="fc" id="L96">            return (FluentIterable&lt;T&gt;) iterable;</span>
+        }
+<span class="fc" id="L98">        return new FluentIterable&lt;&gt;(iterable);</span>
+    }
+
+    /**
+     * Creates a new FluentIterable of the single provided element.
+     * &lt;p&gt;
+     * The returned iterable's iterator does not support {@code remove()}.
+     *
+     * @param &lt;T&gt;  the element type
+     * @param singleton  the singleton element
+     * @return a new FluentIterable containing the singleton
+     */
+    public static &lt;T&gt; FluentIterable&lt;T&gt; of(final T singleton) {
+<span class="fc" id="L111">        return of(IteratorUtils.asIterable(new SingletonIterator&lt;&gt;(singleton, false)));</span>
+    }
+
+    /**
+     * Creates a new FluentIterable from the provided elements.
+     * &lt;p&gt;
+     * The returned iterable's iterator does not support {@code remove()}.
+     *
+     * @param &lt;T&gt;  the element type
+     * @param elements  the elements to be contained in the FluentIterable
+     * @return a new FluentIterable containing the provided elements
+     */
+    public static &lt;T&gt; FluentIterable&lt;T&gt; of(final T... elements) {
+<span class="fc" id="L124">        return of(Arrays.asList(elements));</span>
+    }
+
+    /** A reference to the wrapped iterable. */
+    private final Iterable&lt;E&gt; iterable;
+
+    /**
+     * Don't allow instances.
+     */
+<span class="fc" id="L133">    FluentIterable() {</span>
+<span class="fc" id="L134">        this.iterable = this;</span>
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * Create a new FluentIterable by wrapping the provided iterable.
+     * @param iterable  the iterable to wrap
+     */
+<span class="fc" id="L141">    private FluentIterable(final Iterable&lt;E&gt; iterable) {</span>
+<span class="fc" id="L142">        this.iterable = iterable;</span>
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Checks if all elements contained in this iterable are matching the
+     * provided predicate.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns true.
+     *
+     * @param predicate  the predicate to use, may not be null
+     * @return true if all elements contained in this iterable match the predicate,
+     *   false otherwise
+     * @throws NullPointerException if predicate is null
+     */
+    public boolean allMatch(final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L157">        return IterableUtils.matchesAll(iterable, predicate);</span>
+    }
+
+    /**
+     * Checks if this iterable contains any element matching the provided predicate.
+     * &lt;p&gt;
+     * A {@code null} or empty iterable returns false.
+     *
+     * @param predicate  the predicate to use, may not be null
+     * @return true if at least one element contained in this iterable matches the predicate,
+     *   false otherwise
+     * @throws NullPointerException if predicate is null
+     */
+    public boolean anyMatch(final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L171">        return IterableUtils.matchesAny(iterable, predicate);</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will first traverse
+     * the elements of the current iterable, followed by the provided
+     * elements.
+     *
+     * @param elements  the elements to append to the iterable
+     * @return a new iterable, combining this iterable with the elements
+     */
+    public FluentIterable&lt;E&gt; append(final E... elements) {
+<span class="fc" id="L183">        return append(Arrays.asList(elements));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will first traverse
+     * the elements of the current iterable, followed by the elements
+     * of the provided iterable.
+     *
+     * @param other  the other iterable to combine, may not be null
+     * @return a new iterable, combining this iterable with other
+     * @throws NullPointerException if other is null
+     */
+    public FluentIterable&lt;E&gt; append(final Iterable&lt;? extends E&gt; other) {
+<span class="fc" id="L196">        return of(IterableUtils.chainedIterable(iterable, other));</span>
+    }
+
+    /**
+     * Returns an Enumeration that will enumerate all elements contained
+     * in this iterable.
+     *
+     * @return an Enumeration over the elements of this iterable
+     */
+    public Enumeration&lt;E&gt; asEnumeration() {
+<span class="fc" id="L206">        return IteratorUtils.asEnumeration(iterator());</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will traverse the
+     * elements of the current and provided iterable in natural order.
+     * &lt;p&gt;
+     * Example: natural ordering
+     * &lt;ul&gt;
+     *   &lt;li&gt;this contains elements [1, 3, 5, 7]
+     *   &lt;li&gt;other contains elements [2, 4, 6, 8]
+     * &lt;/ul&gt;
+     * &lt;p&gt;
+     * The returned iterable will traverse the elements in the following
+     * order: [1, 2, 3, 4, 5, 6, 7, 8]
+     *
+     * @param other  the other iterable to collate, may not be null
+     * @return a new iterable, collating this iterable with the other in natural order
+     * @throws NullPointerException if other is null
+     * @see org.apache.commons.collections4.iterators.CollatingIterator
+     */
+    public FluentIterable&lt;E&gt; collate(final Iterable&lt;? extends E&gt; other) {
+<span class="fc" id="L228">        return of(IterableUtils.collatedIterable(iterable, other));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will traverse the
+     * elements of the current and provided iterable according to the
+     * ordering defined by a comparator.
+     * &lt;p&gt;
+     * Example: descending order
+     * &lt;ul&gt;
+     *   &lt;li&gt;this contains elements [7, 5, 3, 1]
+     *   &lt;li&gt;other contains elements [8, 6, 4, 2]
+     * &lt;/ul&gt;
+     * &lt;p&gt;
+     * The returned iterable will traverse the elements in the following
+     * order: [8, 7, 6, 5, 4, 3, 2, 1]
+     *
+     * @param comparator  the comparator to define an ordering, may be null,
+     *   in which case natural ordering will be used
+     * @param other  the other iterable to collate, may not be null
+     * @return a new iterable, collating this iterable with the other in natural order
+     * @throws NullPointerException if other is null
+     * @see org.apache.commons.collections4.iterators.CollatingIterator
+     */
+    public FluentIterable&lt;E&gt; collate(final Iterable&lt;? extends E&gt; other,
+                                     final Comparator&lt;? super E&gt; comparator) {
+<span class="fc" id="L254">        return of(IterableUtils.collatedIterable(comparator, iterable, other));</span>
+    }
+
+    /**
+     * Checks if the object is contained in this iterable.
+     *
+     * @param object  the object to check
+     * @return true if the object is contained in this iterable, false otherwise
+     */
+    public boolean contains(final Object object) {
+<span class="fc" id="L264">        return IterableUtils.contains(iterable, object);</span>
+    }
+
+    /**
+     * Traverses an iterator of this iterable and adds all elements
+     * to the provided collection.
+     *
+     * @param collection  the collection to add the elements
+     * @throws NullPointerException if collection is null
+     */
+    public void copyInto(final Collection&lt;? super E&gt; collection) {
+<span class="fc" id="L275">        Objects.requireNonNull(collection, &quot;collection&quot;);</span>
+<span class="fc" id="L276">        CollectionUtils.addAll(collection, iterable);</span>
+<span class="fc" id="L277">    }</span>
+
+    /**
+     * This method fully traverses an iterator of this iterable and returns
+     * a new iterable with the same contents, but without any reference
+     * to the originating iterables and/or iterators.
+     * &lt;p&gt;
+     * Calling this method is equivalent to:
+     * &lt;pre&gt;
+     *   FluentIterable&amp;lt;E&amp;gt; someIterable = ...;
+     *   FluentIterable.of(someIterable.toList());
+     * &lt;/pre&gt;
+     *
+     * @return a new iterable with the same contents as this iterable
+     */
+    public FluentIterable&lt;E&gt; eval() {
+<span class="fc" id="L293">        return of(toList());</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will only return
+     * elements from this iterable matching the provided predicate.
+     *
+     * @param predicate  the predicate used to filter elements
+     * @return a new iterable, providing a filtered view of this iterable
+     * @throws NullPointerException if predicate is null
+     */
+    public FluentIterable&lt;E&gt; filter(final Predicate&lt;? super E&gt; predicate) {
+<span class="fc" id="L305">        return of(IterableUtils.filteredIterable(iterable, predicate));</span>
+    }
+
+    /**
+     * Applies the closure to all elements contained in this iterable.
+     *
+     * @param closure  the closure to apply to each element, may not be null
+     * @throws NullPointerException if closure is null
+     */
+    public void forEach(final Closure&lt;? super E&gt; closure) {
+<span class="fc" id="L315">        IterableUtils.forEach(iterable, closure);</span>
+<span class="fc" id="L316">    }</span>
+
+    /**
+     * Returns the element at the provided position in this iterable.
+     * In order to return the element, an iterator needs to be traversed
+     * up to the requested position.
+     *
+     * @param position  the position of the element to return
+     * @return the element
+     * @throws IndexOutOfBoundsException if the provided position is outside the
+     *   valid range of this iterable: [0, size)
+     */
+    public E get(final int position) {
+<span class="fc" id="L329">        return IterableUtils.get(iterable, position);</span>
+    }
+
+    /**
+     * Checks if this iterable is empty.
+     *
+     * @return true if this iterable does not contain any elements, false otherwise
+     */
+    public boolean isEmpty() {
+<span class="fc" id="L338">        return IterableUtils.isEmpty(iterable);</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L344">        return iterable.iterator();</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will return at most
+     * the provided maximum number of elements from this iterable.
+     *
+     * @param maxSize  the maximum number of elements
+     * @return a new iterable, providing a bounded view of this iterable
+     * @throws IllegalArgumentException if maxSize is negative
+     */
+    public FluentIterable&lt;E&gt; limit(final long maxSize) {
+<span class="fc" id="L356">        return of(IterableUtils.boundedIterable(iterable, maxSize));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will loop infinitely
+     * over the elements from this iterable.
+     *
+     * @return a new iterable, providing a looping view of this iterable
+     */
+    public FluentIterable&lt;E&gt; loop() {
+<span class="fc" id="L366">        return of(IterableUtils.loopingIterable(iterable));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will traverse the
+     * elements from this iterable in reverse order.
+     *
+     * @return a new iterable, providing a reversed view of this iterable
+     */
+    public FluentIterable&lt;E&gt; reverse() {
+<span class="fc" id="L376">        return of(IterableUtils.reversedIterable(iterable));</span>
+    }
+
+    /**
+     * Returns the number of elements that are contained in this iterable.
+     * In order to determine the size, an iterator needs to be traversed.
+     *
+     * @return the size of this iterable
+     */
+    public int size() {
+<span class="fc" id="L386">        return IterableUtils.size(iterable);</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will skip the first
+     * N elements from this iterable.
+     *
+     * @param elementsToSkip  the number of elements to skip
+     * @return a new iterable, providing a view of this iterable by skipping
+     *   the first N elements
+     * @throws IllegalArgumentException if elementsToSkip is negative
+     */
+    public FluentIterable&lt;E&gt; skip(final long elementsToSkip) {
+<span class="fc" id="L399">        return of(IterableUtils.skippingIterable(iterable, elementsToSkip));</span>
+    }
+
+    /**
+     * Returns an array containing all elements of this iterable by traversing
+     * its iterator.
+     *
+     * @param arrayClass  the class of array to create
+     * @return an array of the iterable contents
+     * @throws ArrayStoreException if arrayClass is invalid
+     */
+    public E[] toArray(final Class&lt;E&gt; arrayClass) {
+<span class="fc" id="L411">        return IteratorUtils.toArray(iterator(), arrayClass);</span>
+    }
+
+    /**
+     * Returns a mutable list containing all elements of this iterable
+     * by traversing its iterator.
+     * &lt;p&gt;
+     * The returned list is guaranteed to be mutable.
+     *
+     * @return a list of the iterable contents
+     */
+    public List&lt;E&gt; toList() {
+<span class="fc" id="L423">        return IterableUtils.toList(iterable);</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public String toString() {
+<span class="fc" id="L429">        return IterableUtils.toString(iterable);</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will return all elements
+     * of this iterable transformed by the provided transformer.
+     *
+     * @param &lt;O&gt;  the output element type
+     * @param transformer  the transformer applied to each element
+     * @return a new iterable, providing a transformed view of this iterable
+     * @throws NullPointerException if transformer is null
+     */
+    public &lt;O&gt; FluentIterable&lt;O&gt; transform(final Transformer&lt;? super E, ? extends O&gt; transformer) {
+<span class="fc" id="L442">        return of(IterableUtils.transformedIterable(iterable, transformer));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will return a unique view
+     * of this iterable.
+     *
+     * @return a new iterable, providing a unique view of this iterable
+     */
+    public FluentIterable&lt;E&gt; unique() {
+<span class="fc" id="L452">        return of(IterableUtils.uniqueIterable(iterable));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will return an unmodifiable
+     * view of this iterable.
+     *
+     * @return a new iterable, providing an unmodifiable view of this iterable
+     */
+    public FluentIterable&lt;E&gt; unmodifiable() {
+<span class="fc" id="L462">        return of(IterableUtils.unmodifiableIterable(iterable));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will traverse
+     * the elements of this iterable and the other iterable in
+     * alternating order.
+     *
+     * @param other  the other iterable to interleave, may not be null
+     * @return a new iterable, interleaving this iterable with others
+     * @throws NullPointerException if other is null
+     */
+    public FluentIterable&lt;E&gt; zip(final Iterable&lt;? extends E&gt; other) {
+<span class="fc" id="L475">        return of(IterableUtils.zippingIterable(iterable, other));</span>
+    }
+
+    /**
+     * Returns a new FluentIterable whose iterator will traverse
+     * the elements of this iterable and the other iterables in
+     * alternating order.
+     *
+     * @param others  the iterables to interleave, may not be null
+     * @return a new iterable, interleaving this iterable with others
+     * @throws NullPointerException if either of the provided iterables is null
+     */
+    public FluentIterable&lt;E&gt; zip(final Iterable&lt;? extends E&gt;... others) {
+<span class="fc" id="L488">        return of(IterableUtils.zippingIterable(iterable, others));</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

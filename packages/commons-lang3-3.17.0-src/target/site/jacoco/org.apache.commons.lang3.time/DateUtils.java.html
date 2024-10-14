@@ -1,0 +1,1792 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DateUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Lang</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.time</a> &gt; <span class="el_source">DateUtils.java</span></div><h1>DateUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.time;
+
+import java.text.ParseException;
+import java.text.ParsePosition;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Locale;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.commons.lang3.LocaleUtils;
+
+/**
+ * A suite of utilities surrounding the use of the
+ * {@link java.util.Calendar} and {@link java.util.Date} object.
+ *
+ * &lt;p&gt;DateUtils contains a lot of common methods considering manipulations
+ * of Dates or Calendars. Some methods require some extra explanation.
+ * The truncate, ceiling and round methods could be considered the Math.floor(),
+ * Math.ceil() or Math.round versions for dates
+ * This way date-fields will be ignored in bottom-up order.
+ * As a complement to these methods we've introduced some fragment-methods.
+ * With these methods the Date-fields will be ignored in top-down order.
+ * Since a date without a year is not a valid date, you have to decide in what
+ * kind of date-field you want your result, for instance milliseconds or days.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Several methods are provided for adding to {@link Date} objects, of the form
+ * {@code addXXX(Date date, int amount)}. It is important to note these methods
+ * use a {@link Calendar} internally (with default time zone and locale) and may
+ * be affected by changes to daylight saving time (DST).
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class DateUtils {
+
+    /**
+     * Date iterator.
+     */
+    static class DateIterator implements Iterator&lt;Calendar&gt; {
+        private final Calendar endFinal;
+        private final Calendar spot;
+
+        /**
+         * Constructs a DateIterator that ranges from one date to another.
+         *
+         * @param startFinal start date (inclusive)
+         * @param endFinal end date (inclusive)
+         */
+<span class="fc" id="L70">        DateIterator(final Calendar startFinal, final Calendar endFinal) {</span>
+<span class="fc" id="L71">            this.endFinal = endFinal;</span>
+<span class="fc" id="L72">            spot = startFinal;</span>
+<span class="fc" id="L73">            spot.add(Calendar.DATE, -1);</span>
+<span class="fc" id="L74">        }</span>
+
+        /**
+         * Has the iterator not reached the end date yet?
+         *
+         * @return {@code true} if the iterator has yet to reach the end date
+         */
+        @Override
+        public boolean hasNext() {
+<span class="fc" id="L83">            return spot.before(endFinal);</span>
+        }
+
+        /**
+         * Returns the next calendar in the iteration
+         *
+         * @return Object calendar for the next date
+         */
+        @Override
+        public Calendar next() {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (spot.equals(endFinal)) {</span>
+<span class="fc" id="L94">                throw new NoSuchElementException();</span>
+            }
+<span class="fc" id="L96">            spot.add(Calendar.DATE, 1);</span>
+<span class="fc" id="L97">            return (Calendar) spot.clone();</span>
+        }
+
+        /**
+         * Always throws UnsupportedOperationException.
+         *
+         * @throws UnsupportedOperationException Always thrown.
+         * @see java.util.Iterator#remove()
+         */
+        @Override
+        public void remove() {
+<span class="fc" id="L108">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    /**
+     * Calendar modification types.
+     */
+<span class="fc" id="L115">    private enum ModifyType {</span>
+        /**
+         * Truncation.
+         */
+<span class="fc" id="L119">        TRUNCATE,</span>
+
+        /**
+         * Rounding.
+         */
+<span class="fc" id="L124">        ROUND,</span>
+
+        /**
+         * Ceiling.
+         */
+<span class="fc" id="L129">        CEILING</span>
+    }
+
+    /**
+     * Number of milliseconds in a standard second.
+     *
+     * @since 2.1
+     */
+    public static final long MILLIS_PER_SECOND = 1_000;
+
+    /**
+     * Number of milliseconds in a standard minute.
+     *
+     * @since 2.1
+     */
+    public static final long MILLIS_PER_MINUTE = 60 * MILLIS_PER_SECOND;
+
+    /**
+     * Number of milliseconds in a standard hour.
+     *
+     * @since 2.1
+     */
+    public static final long MILLIS_PER_HOUR = 60 * MILLIS_PER_MINUTE;
+
+    /**
+     * Number of milliseconds in a standard day.
+     *
+     * @since 2.1
+     */
+    public static final long MILLIS_PER_DAY = 24 * MILLIS_PER_HOUR;
+
+    /**
+     * This is half a month, so this represents whether a date is in the top
+     * or bottom half of the month.
+     */
+    public static final int SEMI_MONTH = 1001;
+<span class="fc" id="L165">    private static final int[][] fields = {</span>
+            {Calendar.MILLISECOND},
+            {Calendar.SECOND},
+            {Calendar.MINUTE},
+            {Calendar.HOUR_OF_DAY, Calendar.HOUR},
+            {Calendar.DATE, Calendar.DAY_OF_MONTH, Calendar.AM_PM
+                /* Calendar.DAY_OF_YEAR, Calendar.DAY_OF_WEEK, Calendar.DAY_OF_WEEK_IN_MONTH */
+            },
+            {Calendar.MONTH, SEMI_MONTH},
+            {Calendar.YEAR},
+            {Calendar.ERA}};
+    /**
+     * A week range, starting on Sunday.
+     */
+    public static final int RANGE_WEEK_SUNDAY = 1;
+
+    /**
+     * A week range, starting on Monday.
+     */
+    public static final int RANGE_WEEK_MONDAY = 2;
+
+    /**
+     * A week range, starting on the day focused.
+     */
+    public static final int RANGE_WEEK_RELATIVE = 3;
+
+    /**
+     * A week range, centered around the day focused.
+     */
+    public static final int RANGE_WEEK_CENTER = 4;
+
+    /**
+     * A month range, the week starting on Sunday.
+     */
+    public static final int RANGE_MONTH_SUNDAY = 5;
+
+    /**
+     * A month range, the week starting on Monday.
+     */
+    public static final int RANGE_MONTH_MONDAY = 6;
+
+    /**
+     * Adds to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param calendarField  the calendar field to add to
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    private static Date add(final Date date, final int calendarField, final int amount) {
+<span class="fc" id="L217">        validateDateNotNull(date);</span>
+<span class="fc" id="L218">        final Calendar c = Calendar.getInstance();</span>
+<span class="fc" id="L219">        c.setTime(date);</span>
+<span class="fc" id="L220">        c.add(calendarField, amount);</span>
+<span class="fc" id="L221">        return c.getTime();</span>
+    }
+
+    /**
+     * Adds a number of days to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addDays(final Date date, final int amount) {
+<span class="fc" id="L234">        return add(date, Calendar.DAY_OF_MONTH, amount);</span>
+    }
+
+    /**
+     * Adds a number of hours to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addHours(final Date date, final int amount) {
+<span class="fc" id="L247">        return add(date, Calendar.HOUR_OF_DAY, amount);</span>
+    }
+
+    /**
+     * Adds a number of milliseconds to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addMilliseconds(final Date date, final int amount) {
+<span class="fc" id="L260">        return add(date, Calendar.MILLISECOND, amount);</span>
+    }
+
+    /**
+     * Adds a number of minutes to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addMinutes(final Date date, final int amount) {
+<span class="fc" id="L273">        return add(date, Calendar.MINUTE, amount);</span>
+    }
+
+    /**
+     * Adds a number of months to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addMonths(final Date date, final int amount) {
+<span class="fc" id="L286">        return add(date, Calendar.MONTH, amount);</span>
+    }
+
+    /**
+     * Adds a number of seconds to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addSeconds(final Date date, final int amount) {
+<span class="fc" id="L299">        return add(date, Calendar.SECOND, amount);</span>
+    }
+
+    /**
+     * Adds a number of weeks to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addWeeks(final Date date, final int amount) {
+<span class="fc" id="L312">        return add(date, Calendar.WEEK_OF_YEAR, amount);</span>
+    }
+
+    /**
+     * Adds a number of years to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount  the amount to add, may be negative
+     * @return the new {@link Date} with the amount added
+     * @throws NullPointerException if the date is null
+     */
+    public static Date addYears(final Date date, final int amount) {
+<span class="fc" id="L325">        return add(date, Calendar.YEAR, amount);</span>
+    }
+
+    /**
+     * Gets a date ceiling, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if you passed with HOUR, it would return 28 Mar
+     * 2002 14:00:00.000.  If this was passed with MONTH, it would
+     * return 1 Apr 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * @param calendar  the date to work with, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different ceil date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ArithmeticException if the year is over 280 million
+     * @since 2.5
+     */
+    public static Calendar ceiling(final Calendar calendar, final int field) {
+<span class="fc" id="L345">        Objects.requireNonNull(calendar, &quot;calendar&quot;);</span>
+<span class="fc" id="L346">        return modify((Calendar) calendar.clone(), field, ModifyType.CEILING);</span>
+    }
+
+    /**
+     * Gets a date ceiling, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if you passed with HOUR, it would return 28 Mar
+     * 2002 14:00:00.000.  If this was passed with MONTH, it would
+     * return 1 Apr 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * @param date  the date to work with, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different ceil date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ArithmeticException if the year is over 280 million
+     * @since 2.5
+     */
+    public static Date ceiling(final Date date, final int field) {
+<span class="fc" id="L366">        return modify(toCalendar(date), field, ModifyType.CEILING).getTime();</span>
+    }
+
+    /**
+     * Gets a date ceiling, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if you passed with HOUR, it would return 28 Mar
+     * 2002 14:00:00.000.  If this was passed with MONTH, it would
+     * return 1 Apr 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * @param date  the date to work with, either {@link Date} or {@link Calendar}, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different ceil date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ClassCastException if the object type is not a {@link Date} or {@link Calendar}
+     * @throws ArithmeticException if the year is over 280 million
+     * @since 2.5
+     */
+    public static Date ceiling(final Object date, final int field) {
+<span class="fc" id="L387">        Objects.requireNonNull(date, &quot;date&quot;);</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        if (date instanceof Date) {</span>
+<span class="fc" id="L389">            return ceiling((Date) date, field);</span>
+        }
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        if (date instanceof Calendar) {</span>
+<span class="fc" id="L392">            return ceiling((Calendar) date, field).getTime();</span>
+        }
+<span class="fc" id="L394">        throw new ClassCastException(&quot;Could not find ceiling of for type: &quot; + date.getClass());</span>
+    }
+
+    /**
+     * Gets a Calendar fragment for any unit.
+     *
+     * @param calendar the calendar to work with, not null
+     * @param fragment the Calendar field part of calendar to calculate
+     * @param unit the time unit
+     * @return number of units within the fragment of the calendar
+     * @throws NullPointerException if the date is {@code null} or
+     * fragment is not supported
+     * @since 2.4
+     */
+    private static long getFragment(final Calendar calendar, final int fragment, final TimeUnit unit) {
+<span class="fc" id="L409">        Objects.requireNonNull(calendar, &quot;calendar&quot;);</span>
+<span class="fc" id="L410">        long result = 0;</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        final int offset = unit == TimeUnit.DAYS ? 0 : 1;</span>
+
+        // Fragments bigger than a day require a breakdown to days
+<span class="fc bfc" id="L414" title="All 3 branches covered.">        switch (fragment) {</span>
+            case Calendar.YEAR:
+<span class="fc" id="L416">                result += unit.convert(calendar.get(Calendar.DAY_OF_YEAR) - offset, TimeUnit.DAYS);</span>
+<span class="fc" id="L417">                break;</span>
+            case Calendar.MONTH:
+<span class="fc" id="L419">                result += unit.convert(calendar.get(Calendar.DAY_OF_MONTH) - offset, TimeUnit.DAYS);</span>
+<span class="fc" id="L420">                break;</span>
+            default:
+                break;
+        }
+
+<span class="fc bfc" id="L425" title="All 6 branches covered.">        switch (fragment) {</span>
+            // Number of days already calculated for these cases
+            case Calendar.YEAR:
+            case Calendar.MONTH:
+
+            // The rest of the valid cases
+            case Calendar.DAY_OF_YEAR:
+            case Calendar.DATE:
+<span class="fc" id="L433">                result += unit.convert(calendar.get(Calendar.HOUR_OF_DAY), TimeUnit.HOURS);</span>
+                //$FALL-THROUGH$
+            case Calendar.HOUR_OF_DAY:
+<span class="fc" id="L436">                result += unit.convert(calendar.get(Calendar.MINUTE), TimeUnit.MINUTES);</span>
+                //$FALL-THROUGH$
+            case Calendar.MINUTE:
+<span class="fc" id="L439">                result += unit.convert(calendar.get(Calendar.SECOND), TimeUnit.SECONDS);</span>
+                //$FALL-THROUGH$
+            case Calendar.SECOND:
+<span class="fc" id="L442">                result += unit.convert(calendar.get(Calendar.MILLISECOND), TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L443">                break;</span>
+<span class="fc" id="L444">            case Calendar.MILLISECOND: break; //never useful</span>
+<span class="fc" id="L445">                default: throw new IllegalArgumentException(&quot;The fragment &quot; + fragment + &quot; is not supported&quot;);</span>
+        }
+<span class="fc" id="L447">        return result;</span>
+    }
+
+    /**
+     * Gets a Date fragment for any unit.
+     *
+     * @param date the date to work with, not null
+     * @param fragment the Calendar field part of date to calculate
+     * @param unit the time unit
+     * @return number of units within the fragment of the date
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if fragment is not supported
+     * @since 2.4
+     */
+    private static long getFragment(final Date date, final int fragment, final TimeUnit unit) {
+<span class="fc" id="L462">        validateDateNotNull(date);</span>
+<span class="fc" id="L463">        final Calendar calendar = Calendar.getInstance();</span>
+<span class="fc" id="L464">        calendar.setTime(date);</span>
+<span class="fc" id="L465">        return getFragment(calendar, fragment, unit);</span>
+    }
+
+    /**
+     * Returns the number of days within the
+     * fragment. All datefields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the days of any date will only return the number of days
+     * of the current month (resulting in a number between 1 and 31). This
+     * method will retrieve the number of days for any fragment.
+     * For example, if you want to calculate the number of days past this year,
+     * your fragment is Calendar.YEAR. The result will be all days of the
+     * past month(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a DAY field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 28, 2008 with Calendar.MONTH as fragment will return 28
+     *   (equivalent to calendar.get(Calendar.DAY_OF_MONTH))&lt;/li&gt;
+     *  &lt;li&gt;February 28, 2008 with Calendar.MONTH as fragment will return 28
+     *   (equivalent to calendar.get(Calendar.DAY_OF_MONTH))&lt;/li&gt;
+     *  &lt;li&gt;January 28, 2008 with Calendar.YEAR as fragment will return 28
+     *   (equivalent to calendar.get(Calendar.DAY_OF_YEAR))&lt;/li&gt;
+     *  &lt;li&gt;February 28, 2008 with Calendar.YEAR as fragment will return 59
+     *   (equivalent to calendar.get(Calendar.DAY_OF_YEAR))&lt;/li&gt;
+     *  &lt;li&gt;January 28, 2008 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in days)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param calendar the calendar to work with, not null
+     * @param fragment the {@link Calendar} field part of calendar to calculate
+     * @return number of days within the fragment of date
+     * @throws NullPointerException if the date is {@code null} or
+     * fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInDays(final Calendar calendar, final int fragment) {
+<span class="fc" id="L505">        return getFragment(calendar, fragment, TimeUnit.DAYS);</span>
+    }
+
+    /**
+     * Returns the number of days within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the days of any date will only return the number of days
+     * of the current month (resulting in a number between 1 and 31). This
+     * method will retrieve the number of days for any fragment.
+     * For example, if you want to calculate the number of days past this year,
+     * your fragment is Calendar.YEAR. The result will be all days of the
+     * past month(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a DAY field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 28, 2008 with Calendar.MONTH as fragment will return 28
+     *   (equivalent to deprecated date.getDay())&lt;/li&gt;
+     *  &lt;li&gt;February 28, 2008 with Calendar.MONTH as fragment will return 28
+     *   (equivalent to deprecated date.getDay())&lt;/li&gt;
+     *  &lt;li&gt;January 28, 2008 with Calendar.YEAR as fragment will return 28&lt;/li&gt;
+     *  &lt;li&gt;February 28, 2008 with Calendar.YEAR as fragment will return 59&lt;/li&gt;
+     *  &lt;li&gt;January 28, 2008 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in days)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date the date to work with, not null
+     * @param fragment the {@link Calendar} field part of date to calculate
+     * @return number of days  within the fragment of date
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if the fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInDays(final Date date, final int fragment) {
+<span class="fc" id="L543">        return getFragment(date, fragment, TimeUnit.DAYS);</span>
+    }
+
+    /**
+     * Returns the number of hours within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the hours of any date will only return the number of hours
+     * of the current day (resulting in a number between 0 and 23). This
+     * method will retrieve the number of hours for any fragment.
+     * For example, if you want to calculate the number of hours past this month,
+     * your fragment is Calendar.MONTH. The result will be all hours of the
+     * past day(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a HOUR field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.DAY_OF_YEAR as fragment will return 7
+     *   (equivalent to calendar.get(Calendar.HOUR_OF_DAY))&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.DAY_OF_YEAR as fragment will return 7
+     *   (equivalent to calendar.get(Calendar.HOUR_OF_DAY))&lt;/li&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 7&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 127 (5*24 + 7)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in hours)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param calendar the calendar to work with, not null
+     * @param fragment the {@link Calendar} field part of calendar to calculate
+     * @return number of hours within the fragment of date
+     * @throws NullPointerException if the date is {@code null} or
+     * fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInHours(final Calendar calendar, final int fragment) {
+<span class="fc" id="L581">        return getFragment(calendar, fragment, TimeUnit.HOURS);</span>
+    }
+
+    /**
+     * Returns the number of hours within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the hours of any date will only return the number of hours
+     * of the current day (resulting in a number between 0 and 23). This
+     * method will retrieve the number of hours for any fragment.
+     * For example, if you want to calculate the number of hours past this month,
+     * your fragment is Calendar.MONTH. The result will be all hours of the
+     * past day(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a HOUR field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.DAY_OF_YEAR as fragment will return 7
+     *   (equivalent to deprecated date.getHours())&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.DAY_OF_YEAR as fragment will return 7
+     *   (equivalent to deprecated date.getHours())&lt;/li&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 7&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 127 (5*24 + 7)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in hours)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date the date to work with, not null
+     * @param fragment the {@link Calendar} field part of date to calculate
+     * @return number of hours within the fragment of date
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if the fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInHours(final Date date, final int fragment) {
+<span class="fc" id="L619">        return getFragment(date, fragment, TimeUnit.HOURS);</span>
+    }
+
+    /**
+     * Returns the number of milliseconds within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the milliseconds of any date will only return the number of milliseconds
+     * of the current second (resulting in a number between 0 and 999). This
+     * method will retrieve the number of milliseconds for any fragment.
+     * For example, if you want to calculate the number of seconds past today,
+     * your fragment is Calendar.DATE or Calendar.DAY_OF_YEAR. The result will
+     * be all seconds of the past hour(s), minutes(s) and second(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a MILLISECOND field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.SECOND as fragment will return 538
+     *   (equivalent to calendar.get(Calendar.MILLISECOND))&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.SECOND as fragment will return 538
+     *   (equivalent to calendar.get(Calendar.MILLISECOND))&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MINUTE as fragment will return 10538
+     *   (10*1000 + 538)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in milliseconds)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param calendar the calendar to work with, not null
+     * @param fragment the {@link Calendar} field part of calendar to calculate
+     * @return number of milliseconds within the fragment of date
+     * @throws NullPointerException if the date is {@code null} or
+     * fragment is not supported
+     * @since 2.4
+     */
+  public static long getFragmentInMilliseconds(final Calendar calendar, final int fragment) {
+<span class="fc" id="L657">    return getFragment(calendar, fragment, TimeUnit.MILLISECONDS);</span>
+  }
+
+    /**
+     * Returns the number of milliseconds within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the milliseconds of any date will only return the number of milliseconds
+     * of the current second (resulting in a number between 0 and 999). This
+     * method will retrieve the number of milliseconds for any fragment.
+     * For example, if you want to calculate the number of milliseconds past today,
+     * your fragment is Calendar.DATE or Calendar.DAY_OF_YEAR. The result will
+     * be all milliseconds of the past hour(s), minutes(s) and second(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a SECOND field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.SECOND as fragment will return 538&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.SECOND as fragment will return 538&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MINUTE as fragment will return 10538 (10*1000 + 538)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in milliseconds)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date the date to work with, not null
+     * @param fragment the {@link Calendar} field part of date to calculate
+     * @return number of milliseconds within the fragment of date
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if the fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInMilliseconds(final Date date, final int fragment) {
+<span class="fc" id="L692">        return getFragment(date, fragment, TimeUnit.MILLISECONDS);</span>
+    }
+
+    /**
+     * Returns the number of minutes within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the minutes of any date will only return the number of minutes
+     * of the current hour (resulting in a number between 0 and 59). This
+     * method will retrieve the number of minutes for any fragment.
+     * For example, if you want to calculate the number of minutes past this month,
+     * your fragment is Calendar.MONTH. The result will be all minutes of the
+     * past day(s) and hour(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a MINUTE field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.HOUR_OF_DAY as fragment will return 15
+     *   (equivalent to calendar.get(Calendar.MINUTES))&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.HOUR_OF_DAY as fragment will return 15
+     *   (equivalent to calendar.get(Calendar.MINUTES))&lt;/li&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 15&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 435 (7*60 + 15)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in minutes)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param calendar the calendar to work with, not null
+     * @param fragment the {@link Calendar} field part of calendar to calculate
+     * @return number of minutes within the fragment of date
+     * @throws NullPointerException if the date is {@code null} or
+     * fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInMinutes(final Calendar calendar, final int fragment) {
+<span class="fc" id="L730">        return getFragment(calendar, fragment, TimeUnit.MINUTES);</span>
+    }
+
+    /**
+     * Returns the number of minutes within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the minutes of any date will only return the number of minutes
+     * of the current hour (resulting in a number between 0 and 59). This
+     * method will retrieve the number of minutes for any fragment.
+     * For example, if you want to calculate the number of minutes past this month,
+     * your fragment is Calendar.MONTH. The result will be all minutes of the
+     * past day(s) and hour(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a MINUTE field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.HOUR_OF_DAY as fragment will return 15
+     *   (equivalent to deprecated date.getMinutes())&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.HOUR_OF_DAY as fragment will return 15
+     *   (equivalent to deprecated date.getMinutes())&lt;/li&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 15&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MONTH as fragment will return 435 (7*60 + 15)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in minutes)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date the date to work with, not null
+     * @param fragment the {@link Calendar} field part of date to calculate
+     * @return number of minutes within the fragment of date
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if the fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInMinutes(final Date date, final int fragment) {
+<span class="fc" id="L768">        return getFragment(date, fragment, TimeUnit.MINUTES);</span>
+    }
+
+    /**
+     * Returns the number of seconds within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the seconds of any date will only return the number of seconds
+     * of the current minute (resulting in a number between 0 and 59). This
+     * method will retrieve the number of seconds for any fragment.
+     * For example, if you want to calculate the number of seconds past today,
+     * your fragment is Calendar.DATE or Calendar.DAY_OF_YEAR. The result will
+     * be all seconds of the past hour(s) and minutes(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a SECOND field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.MINUTE as fragment will return 10
+     *   (equivalent to calendar.get(Calendar.SECOND))&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MINUTE as fragment will return 10
+     *   (equivalent to calendar.get(Calendar.SECOND))&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.DAY_OF_YEAR as fragment will return 26110
+     *   (7*3600 + 15*60 + 10)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in seconds)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param calendar the calendar to work with, not null
+     * @param fragment the {@link Calendar} field part of calendar to calculate
+     * @return number of seconds within the fragment of date
+     * @throws NullPointerException if the date is {@code null} or
+     * fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInSeconds(final Calendar calendar, final int fragment) {
+<span class="fc" id="L806">        return getFragment(calendar, fragment, TimeUnit.SECONDS);</span>
+    }
+
+    /**
+     * Returns the number of seconds within the
+     * fragment. All date fields greater than the fragment will be ignored.
+     *
+     * &lt;p&gt;Asking the seconds of any date will only return the number of seconds
+     * of the current minute (resulting in a number between 0 and 59). This
+     * method will retrieve the number of seconds for any fragment.
+     * For example, if you want to calculate the number of seconds past today,
+     * your fragment is Calendar.DATE or Calendar.DAY_OF_YEAR. The result will
+     * be all seconds of the past hour(s) and minutes(s).&lt;/p&gt;
+     *
+     * &lt;p&gt;Valid fragments are: Calendar.YEAR, Calendar.MONTH, both
+     * Calendar.DAY_OF_YEAR and Calendar.DATE, Calendar.HOUR_OF_DAY,
+     * Calendar.MINUTE, Calendar.SECOND and Calendar.MILLISECOND
+     * A fragment less than or equal to a SECOND field will return 0.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     *  &lt;li&gt;January 1, 2008 7:15:10.538 with Calendar.MINUTE as fragment will return 10
+     *   (equivalent to deprecated date.getSeconds())&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.MINUTE as fragment will return 10
+     *   (equivalent to deprecated date.getSeconds())&lt;/li&gt;
+     *  &lt;li&gt;January 6, 2008 7:15:10.538 with Calendar.DAY_OF_YEAR as fragment will return 26110
+     *   (7*3600 + 15*60 + 10)&lt;/li&gt;
+     *  &lt;li&gt;January 16, 2008 7:15:10.538 with Calendar.MILLISECOND as fragment will return 0
+     *   (a millisecond cannot be split in seconds)&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date the date to work with, not null
+     * @param fragment the {@link Calendar} field part of date to calculate
+     * @return number of seconds within the fragment of date
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if the fragment is not supported
+     * @since 2.4
+     */
+    public static long getFragmentInSeconds(final Date date, final int fragment) {
+<span class="fc" id="L844">        return getFragment(date, fragment, TimeUnit.SECONDS);</span>
+    }
+
+    /**
+     * Checks if two calendar objects are on the same day ignoring time.
+     *
+     * &lt;p&gt;28 Mar 2002 13:45 and 28 Mar 2002 06:01 would return true.
+     * 28 Mar 2002 13:45 and 12 Mar 2002 13:45 would return false.
+     * &lt;/p&gt;
+     *
+     * @param cal1  the first calendar, not altered, not null
+     * @param cal2  the second calendar, not altered, not null
+     * @return true if they represent the same day
+     * @throws NullPointerException if either calendar is {@code null}
+     * @since 2.1
+     */
+    public static boolean isSameDay(final Calendar cal1, final Calendar cal2) {
+<span class="fc" id="L861">        Objects.requireNonNull(cal1, &quot;cal1&quot;);</span>
+<span class="fc" id="L862">        Objects.requireNonNull(cal2, &quot;cal2&quot;);</span>
+<span class="pc bpc" id="L863" title="1 of 2 branches missed.">        return cal1.get(Calendar.ERA) == cal2.get(Calendar.ERA) &amp;&amp;</span>
+<span class="fc bfc" id="L864" title="All 2 branches covered.">                cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &amp;&amp;</span>
+<span class="fc bfc" id="L865" title="All 2 branches covered.">                cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR);</span>
+    }
+
+    /**
+     * Checks if two date objects are on the same day ignoring time.
+     *
+     * &lt;p&gt;28 Mar 2002 13:45 and 28 Mar 2002 06:01 would return true.
+     * 28 Mar 2002 13:45 and 12 Mar 2002 13:45 would return false.
+     * &lt;/p&gt;
+     *
+     * @param date1  the first date, not altered, not null
+     * @param date2  the second date, not altered, not null
+     * @return true if they represent the same day
+     * @throws NullPointerException if either date is {@code null}
+     * @since 2.1
+     */
+    public static boolean isSameDay(final Date date1, final Date date2) {
+<span class="fc" id="L882">        return isSameDay(toCalendar(date1), toCalendar(date2));</span>
+    }
+
+    /**
+     * Checks if two calendar objects represent the same instant in time.
+     *
+     * &lt;p&gt;This method compares the long millisecond time of the two objects.&lt;/p&gt;
+     *
+     * @param cal1  the first calendar, not altered, not null
+     * @param cal2  the second calendar, not altered, not null
+     * @return true if they represent the same millisecond instant
+     * @throws NullPointerException if either date is {@code null}
+     * @since 2.1
+     */
+    public static boolean isSameInstant(final Calendar cal1, final Calendar cal2) {
+<span class="fc" id="L897">        Objects.requireNonNull(cal1, &quot;cal1&quot;);</span>
+<span class="fc" id="L898">        Objects.requireNonNull(cal2, &quot;cal2&quot;);</span>
+<span class="fc bfc" id="L899" title="All 2 branches covered.">        return cal1.getTime().getTime() == cal2.getTime().getTime();</span>
+    }
+
+    /**
+     * Checks if two date objects represent the same instant in time.
+     *
+     * &lt;p&gt;This method compares the long millisecond time of the two objects.&lt;/p&gt;
+     *
+     * @param date1  the first date, not altered, not null
+     * @param date2  the second date, not altered, not null
+     * @return true if they represent the same millisecond instant
+     * @throws NullPointerException if either date is {@code null}
+     * @since 2.1
+     */
+    public static boolean isSameInstant(final Date date1, final Date date2) {
+<span class="fc" id="L914">        Objects.requireNonNull(date1, &quot;date1&quot;);</span>
+<span class="fc" id="L915">        Objects.requireNonNull(date2, &quot;date2&quot;);</span>
+<span class="fc bfc" id="L916" title="All 2 branches covered.">        return date1.getTime() == date2.getTime();</span>
+    }
+
+    /**
+     * Checks if two calendar objects represent the same local time.
+     *
+     * &lt;p&gt;This method compares the values of the fields of the two objects.
+     * In addition, both calendars must be the same of the same type.&lt;/p&gt;
+     *
+     * @param cal1  the first calendar, not altered, not null
+     * @param cal2  the second calendar, not altered, not null
+     * @return true if they represent the same millisecond instant
+     * @throws NullPointerException if either date is {@code null}
+     * @since 2.1
+     */
+    public static boolean isSameLocalTime(final Calendar cal1, final Calendar cal2) {
+<span class="fc" id="L932">        Objects.requireNonNull(cal1, &quot;cal1&quot;);</span>
+<span class="fc" id="L933">        Objects.requireNonNull(cal2, &quot;cal2&quot;);</span>
+<span class="pc bpc" id="L934" title="1 of 2 branches missed.">        return cal1.get(Calendar.MILLISECOND) == cal2.get(Calendar.MILLISECOND) &amp;&amp;</span>
+<span class="pc bpc" id="L935" title="1 of 2 branches missed.">                cal1.get(Calendar.SECOND) == cal2.get(Calendar.SECOND) &amp;&amp;</span>
+<span class="pc bpc" id="L936" title="1 of 2 branches missed.">                cal1.get(Calendar.MINUTE) == cal2.get(Calendar.MINUTE) &amp;&amp;</span>
+<span class="fc bfc" id="L937" title="All 2 branches covered.">                cal1.get(Calendar.HOUR_OF_DAY) == cal2.get(Calendar.HOUR_OF_DAY) &amp;&amp;</span>
+<span class="pc bpc" id="L938" title="1 of 2 branches missed.">                cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR) &amp;&amp;</span>
+<span class="pc bpc" id="L939" title="1 of 2 branches missed.">                cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &amp;&amp;</span>
+<span class="pc bpc" id="L940" title="1 of 2 branches missed.">                cal1.get(Calendar.ERA) == cal2.get(Calendar.ERA) &amp;&amp;</span>
+<span class="pc bpc" id="L941" title="1 of 2 branches missed.">                cal1.getClass() == cal2.getClass();</span>
+    }
+
+    /**
+     * Constructs an {@link Iterator} over each day in a date
+     * range defined by a focus date and range style.
+     *
+     * &lt;p&gt;For instance, passing Thursday, July 4, 2002 and a
+     * {@code RANGE_MONTH_SUNDAY} will return an {@link Iterator}
+     * that starts with Sunday, June 30, 2002 and ends with Saturday, August 3,
+     * 2002, returning a Calendar instance for each intermediate day.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method provides an iterator that returns Calendar objects.
+     * The days are progressed using {@link Calendar#add(int, int)}.&lt;/p&gt;
+     *
+     * @param calendar  the date to work with, not null
+     * @param rangeStyle  the style constant to use. Must be one of
+     * {@link DateUtils#RANGE_MONTH_SUNDAY},
+     * {@link DateUtils#RANGE_MONTH_MONDAY},
+     * {@link DateUtils#RANGE_WEEK_SUNDAY},
+     * {@link DateUtils#RANGE_WEEK_MONDAY},
+     * {@link DateUtils#RANGE_WEEK_RELATIVE},
+     * {@link DateUtils#RANGE_WEEK_CENTER}
+     * @return the date iterator, not null
+     * @throws NullPointerException if calendar is {@code null}
+     * @throws IllegalArgumentException if the rangeStyle is invalid
+     */
+    public static Iterator&lt;Calendar&gt; iterator(final Calendar calendar, final int rangeStyle) {
+<span class="fc" id="L969">        Objects.requireNonNull(calendar, &quot;calendar&quot;);</span>
+        final Calendar start;
+        final Calendar end;
+<span class="fc" id="L972">        int startCutoff = Calendar.SUNDAY;</span>
+<span class="fc" id="L973">        int endCutoff = Calendar.SATURDAY;</span>
+<span class="fc bfc" id="L974" title="All 3 branches covered.">        switch (rangeStyle) {</span>
+            case RANGE_MONTH_SUNDAY:
+            case RANGE_MONTH_MONDAY:
+                //Set start to the first of the month
+<span class="fc" id="L978">                start = truncate(calendar, Calendar.MONTH);</span>
+                //Set end to the last of the month
+<span class="fc" id="L980">                end = (Calendar) start.clone();</span>
+<span class="fc" id="L981">                end.add(Calendar.MONTH, 1);</span>
+<span class="fc" id="L982">                end.add(Calendar.DATE, -1);</span>
+                //Loop start back to the previous sunday or monday
+<span class="fc bfc" id="L984" title="All 2 branches covered.">                if (rangeStyle == RANGE_MONTH_MONDAY) {</span>
+<span class="fc" id="L985">                    startCutoff = Calendar.MONDAY;</span>
+<span class="fc" id="L986">                    endCutoff = Calendar.SUNDAY;</span>
+                }
+                break;
+            case RANGE_WEEK_SUNDAY:
+            case RANGE_WEEK_MONDAY:
+            case RANGE_WEEK_RELATIVE:
+            case RANGE_WEEK_CENTER:
+                //Set start and end to the current date
+<span class="fc" id="L994">                start = truncate(calendar, Calendar.DATE);</span>
+<span class="fc" id="L995">                end = truncate(calendar, Calendar.DATE);</span>
+<span class="pc bpc" id="L996" title="1 of 5 branches missed.">                switch (rangeStyle) {</span>
+                    case RANGE_WEEK_SUNDAY:
+                        //already set by default
+<span class="fc" id="L999">                        break;</span>
+                    case RANGE_WEEK_MONDAY:
+<span class="fc" id="L1001">                        startCutoff = Calendar.MONDAY;</span>
+<span class="fc" id="L1002">                        endCutoff = Calendar.SUNDAY;</span>
+<span class="fc" id="L1003">                        break;</span>
+                    case RANGE_WEEK_RELATIVE:
+<span class="fc" id="L1005">                        startCutoff = calendar.get(Calendar.DAY_OF_WEEK);</span>
+<span class="fc" id="L1006">                        endCutoff = startCutoff - 1;</span>
+<span class="fc" id="L1007">                        break;</span>
+                    case RANGE_WEEK_CENTER:
+<span class="fc" id="L1009">                        startCutoff = calendar.get(Calendar.DAY_OF_WEEK) - 3;</span>
+<span class="fc" id="L1010">                        endCutoff = calendar.get(Calendar.DAY_OF_WEEK) + 3;</span>
+<span class="fc" id="L1011">                        break;</span>
+                    default:
+<span class="nc" id="L1013">                        break;</span>
+                }
+                break;
+            default:
+<span class="fc" id="L1017">                throw new IllegalArgumentException(&quot;The range style &quot; + rangeStyle + &quot; is not valid.&quot;);</span>
+        }
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">        if (startCutoff &lt; Calendar.SUNDAY) {</span>
+<span class="fc" id="L1020">            startCutoff += 7;</span>
+        }
+<span class="pc bpc" id="L1022" title="1 of 2 branches missed.">        if (startCutoff &gt; Calendar.SATURDAY) {</span>
+<span class="nc" id="L1023">            startCutoff -= 7;</span>
+        }
+<span class="fc bfc" id="L1025" title="All 2 branches covered.">        if (endCutoff &lt; Calendar.SUNDAY) {</span>
+<span class="fc" id="L1026">            endCutoff += 7;</span>
+        }
+<span class="fc bfc" id="L1028" title="All 2 branches covered.">        if (endCutoff &gt; Calendar.SATURDAY) {</span>
+<span class="fc" id="L1029">            endCutoff -= 7;</span>
+        }
+<span class="fc bfc" id="L1031" title="All 2 branches covered.">        while (start.get(Calendar.DAY_OF_WEEK) != startCutoff) {</span>
+<span class="fc" id="L1032">            start.add(Calendar.DATE, -1);</span>
+        }
+<span class="fc bfc" id="L1034" title="All 2 branches covered.">        while (end.get(Calendar.DAY_OF_WEEK) != endCutoff) {</span>
+<span class="fc" id="L1035">            end.add(Calendar.DATE, 1);</span>
+        }
+<span class="fc" id="L1037">        return new DateIterator(start, end);</span>
+    }
+
+    /**
+     * Constructs an {@link Iterator} over each day in a date
+     * range defined by a focus date and range style.
+     *
+     * &lt;p&gt;For instance, passing Thursday, July 4, 2002 and a
+     * {@code RANGE_MONTH_SUNDAY} will return an {@link Iterator}
+     * that starts with Sunday, June 30, 2002 and ends with Saturday, August 3,
+     * 2002, returning a Calendar instance for each intermediate day.&lt;/p&gt;
+     *
+     * &lt;p&gt;This method provides an iterator that returns Calendar objects.
+     * The days are progressed using {@link Calendar#add(int, int)}.&lt;/p&gt;
+     *
+     * @param focus  the date to work with, not null
+     * @param rangeStyle  the style constant to use. Must be one of
+     * {@link DateUtils#RANGE_MONTH_SUNDAY},
+     * {@link DateUtils#RANGE_MONTH_MONDAY},
+     * {@link DateUtils#RANGE_WEEK_SUNDAY},
+     * {@link DateUtils#RANGE_WEEK_MONDAY},
+     * {@link DateUtils#RANGE_WEEK_RELATIVE},
+     * {@link DateUtils#RANGE_WEEK_CENTER}
+     * @return the date iterator, not null, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws IllegalArgumentException if the rangeStyle is invalid
+     */
+    public static Iterator&lt;Calendar&gt; iterator(final Date focus, final int rangeStyle) {
+<span class="fc" id="L1065">        return iterator(toCalendar(focus), rangeStyle);</span>
+    }
+
+    /**
+     * Constructs an {@link Iterator} over each day in a date
+     * range defined by a focus date and range style.
+     *
+     * &lt;p&gt;For instance, passing Thursday, July 4, 2002 and a
+     * {@code RANGE_MONTH_SUNDAY} will return an {@link Iterator}
+     * that starts with Sunday, June 30, 2002 and ends with Saturday, August 3,
+     * 2002, returning a Calendar instance for each intermediate day.&lt;/p&gt;
+     *
+     * @param calendar  the date to work with, either {@link Date} or {@link Calendar}, not null
+     * @param rangeStyle  the style constant to use. Must be one of the range
+     * styles listed for the {@link #iterator(Calendar, int)} method.
+     * @return the date iterator, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ClassCastException if the object type is not a {@link Date} or {@link Calendar}
+     */
+    public static Iterator&lt;?&gt; iterator(final Object calendar, final int rangeStyle) {
+<span class="fc" id="L1085">        Objects.requireNonNull(calendar, &quot;calendar&quot;);</span>
+<span class="fc bfc" id="L1086" title="All 2 branches covered.">        if (calendar instanceof Date) {</span>
+<span class="fc" id="L1087">            return iterator((Date) calendar, rangeStyle);</span>
+        }
+<span class="fc bfc" id="L1089" title="All 2 branches covered.">        if (calendar instanceof Calendar) {</span>
+<span class="fc" id="L1090">            return iterator((Calendar) calendar, rangeStyle);</span>
+        }
+<span class="fc" id="L1092">        throw new ClassCastException(&quot;Could not iterate based on &quot; + calendar);</span>
+    }
+
+    /**
+     * Internal calculation method.
+     *
+     * @param val  the calendar, not null
+     * @param field  the field constant
+     * @param modType  type to truncate, round or ceiling
+     * @return the given calendar
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    private static Calendar modify(final Calendar val, final int field, final ModifyType modType) {
+<span class="fc bfc" id="L1105" title="All 2 branches covered.">        if (val.get(Calendar.YEAR) &gt; 280000000) {</span>
+<span class="fc" id="L1106">            throw new ArithmeticException(&quot;Calendar value too large for accurate calculations&quot;);</span>
+        }
+
+<span class="fc bfc" id="L1109" title="All 2 branches covered.">        if (field == Calendar.MILLISECOND) {</span>
+<span class="fc" id="L1110">            return val;</span>
+        }
+
+        // Fix for LANG-59 START
+        // see https://issues.apache.org/jira/browse/LANG-59
+        //
+        // Manually truncate milliseconds, seconds and minutes, rather than using
+        // Calendar methods.
+
+<span class="fc" id="L1119">        final Date date = val.getTime();</span>
+<span class="fc" id="L1120">        long time = date.getTime();</span>
+<span class="fc" id="L1121">        boolean done = false;</span>
+
+        // truncate milliseconds
+<span class="fc" id="L1124">        final int millisecs = val.get(Calendar.MILLISECOND);</span>
+<span class="fc bfc" id="L1125" title="All 4 branches covered.">        if (ModifyType.TRUNCATE == modType || millisecs &lt; 500) {</span>
+<span class="fc" id="L1126">            time -= millisecs;</span>
+        }
+<span class="fc bfc" id="L1128" title="All 2 branches covered.">        if (field == Calendar.SECOND) {</span>
+<span class="fc" id="L1129">            done = true;</span>
+        }
+
+        // truncate seconds
+<span class="fc" id="L1133">        final int seconds = val.get(Calendar.SECOND);</span>
+<span class="fc bfc" id="L1134" title="All 6 branches covered.">        if (!done &amp;&amp; (ModifyType.TRUNCATE == modType || seconds &lt; 30)) {</span>
+<span class="fc" id="L1135">            time = time - seconds * 1000L;</span>
+        }
+<span class="fc bfc" id="L1137" title="All 2 branches covered.">        if (field == Calendar.MINUTE) {</span>
+<span class="fc" id="L1138">            done = true;</span>
+        }
+
+        // truncate minutes
+<span class="fc" id="L1142">        final int minutes = val.get(Calendar.MINUTE);</span>
+<span class="fc bfc" id="L1143" title="All 6 branches covered.">        if (!done &amp;&amp; (ModifyType.TRUNCATE == modType || minutes &lt; 30)) {</span>
+<span class="fc" id="L1144">            time = time - minutes * 60000L;</span>
+        }
+
+        // reset time
+<span class="fc bfc" id="L1148" title="All 2 branches covered.">        if (date.getTime() != time) {</span>
+<span class="fc" id="L1149">            date.setTime(time);</span>
+<span class="fc" id="L1150">            val.setTime(date);</span>
+        }
+        // Fix for LANG-59 END
+
+<span class="fc" id="L1154">        boolean roundUp = false;</span>
+<span class="fc bfc" id="L1155" title="All 2 branches covered.">        for (final int[] aField : fields) {</span>
+<span class="fc bfc" id="L1156" title="All 2 branches covered.">            for (final int element : aField) {</span>
+<span class="fc bfc" id="L1157" title="All 2 branches covered.">                if (element == field) {</span>
+                    //This is our field... we stop looping
+<span class="fc bfc" id="L1159" title="All 6 branches covered.">                    if (modType == ModifyType.CEILING || modType == ModifyType.ROUND &amp;&amp; roundUp) {</span>
+<span class="fc bfc" id="L1160" title="All 2 branches covered.">                        if (field == SEMI_MONTH) {</span>
+                            //This is a special case that's hard to generalize
+                            //If the date is 1, we round up to 16, otherwise
+                            //  we subtract 15 days and add 1 month
+<span class="fc bfc" id="L1164" title="All 2 branches covered.">                            if (val.get(Calendar.DATE) == 1) {</span>
+<span class="fc" id="L1165">                                val.add(Calendar.DATE, 15);</span>
+                            } else {
+<span class="fc" id="L1167">                                val.add(Calendar.DATE, -15);</span>
+<span class="fc" id="L1168">                                val.add(Calendar.MONTH, 1);</span>
+                            }
+                        // Fix for LANG-440 START
+<span class="fc bfc" id="L1171" title="All 2 branches covered.">                        } else if (field == Calendar.AM_PM) {</span>
+                            // This is a special case
+                            // If the time is 0, we round up to 12, otherwise
+                            //  we subtract 12 hours and add 1 day
+<span class="fc bfc" id="L1175" title="All 2 branches covered.">                            if (val.get(Calendar.HOUR_OF_DAY) == 0) {</span>
+<span class="fc" id="L1176">                                val.add(Calendar.HOUR_OF_DAY, 12);</span>
+                            } else {
+<span class="fc" id="L1178">                                val.add(Calendar.HOUR_OF_DAY, -12);</span>
+<span class="fc" id="L1179">                                val.add(Calendar.DATE, 1);</span>
+                            }
+                            // Fix for LANG-440 END
+                        } else {
+                            //We need at add one to this field since the
+                            //  last number causes us to round up
+<span class="fc" id="L1185">                            val.add(aField[0], 1);</span>
+                        }
+                    }
+<span class="fc" id="L1188">                    return val;</span>
+                }
+            }
+            //We have various fields that are not easy roundings
+<span class="fc" id="L1192">            int offset = 0;</span>
+<span class="fc" id="L1193">            boolean offsetSet = false;</span>
+            //These are special types of fields that require different rounding rules
+<span class="fc bfc" id="L1195" title="All 3 branches covered.">            switch (field) {</span>
+                case SEMI_MONTH:
+<span class="fc bfc" id="L1197" title="All 2 branches covered.">                    if (aField[0] == Calendar.DATE) {</span>
+                        //If we're going to drop the DATE field's value,
+                        //  we want to do this our own way.
+                        //We need to subtract 1 since the date has a minimum of 1
+<span class="fc" id="L1201">                        offset = val.get(Calendar.DATE) - 1;</span>
+                        //If we're above 15 days adjustment, that means we're in the
+                        //  bottom half of the month and should stay accordingly.
+<span class="fc bfc" id="L1204" title="All 2 branches covered.">                        if (offset &gt;= 15) {</span>
+<span class="fc" id="L1205">                            offset -= 15;</span>
+                        }
+                        //Record whether we're in the top or bottom half of that range
+<span class="fc bfc" id="L1208" title="All 2 branches covered.">                        roundUp = offset &gt; 7;</span>
+<span class="fc" id="L1209">                        offsetSet = true;</span>
+                    }
+                    break;
+                case Calendar.AM_PM:
+<span class="fc bfc" id="L1213" title="All 2 branches covered.">                    if (aField[0] == Calendar.HOUR_OF_DAY) {</span>
+                        //If we're going to drop the HOUR field's value,
+                        //  we want to do this our own way.
+<span class="fc" id="L1216">                        offset = val.get(Calendar.HOUR_OF_DAY);</span>
+<span class="fc bfc" id="L1217" title="All 2 branches covered.">                        if (offset &gt;= 12) {</span>
+<span class="fc" id="L1218">                            offset -= 12;</span>
+                        }
+<span class="fc bfc" id="L1220" title="All 2 branches covered.">                        roundUp = offset &gt;= 6;</span>
+<span class="fc" id="L1221">                        offsetSet = true;</span>
+                    }
+                    break;
+                default:
+                    break;
+            }
+<span class="fc bfc" id="L1227" title="All 2 branches covered.">            if (!offsetSet) {</span>
+<span class="fc" id="L1228">                final int min = val.getActualMinimum(aField[0]);</span>
+<span class="fc" id="L1229">                final int max = val.getActualMaximum(aField[0]);</span>
+                //Calculate the offset from the minimum allowed value
+<span class="fc" id="L1231">                offset = val.get(aField[0]) - min;</span>
+                //Set roundUp if this is more than halfway between the minimum and maximum
+<span class="fc bfc" id="L1233" title="All 2 branches covered.">                roundUp = offset &gt; (max - min) / 2;</span>
+            }
+            //We need to remove this field
+<span class="fc bfc" id="L1236" title="All 2 branches covered.">            if (offset != 0) {</span>
+<span class="fc" id="L1237">                val.set(aField[0], val.get(aField[0]) - offset);</span>
+            }
+        }
+<span class="fc" id="L1240">        throw new IllegalArgumentException(&quot;The field &quot; + field + &quot; is not supported&quot;);</span>
+    }
+
+    /**
+     * Parses a string representing a date by trying a variety of different parsers,
+     * using the default date format symbols for the given locale.
+     *
+     * &lt;p&gt;The parse will try each parse pattern in turn.
+     * A parse is only deemed successful if it parses the whole of the input string.
+     * If no parse patterns match, a ParseException is thrown.&lt;/p&gt;
+     * The parser will be lenient toward the parsed date.
+     *
+     * @param str  the date to parse, not null
+     * @param locale the locale whose date format symbols should be used. If {@code null},
+     * the system locale is used (as per {@link #parseDate(String, String...)}).
+     * @param parsePatterns  the date format patterns to use, see SimpleDateFormat, not null
+     * @return the parsed date
+     * @throws NullPointerException if the date string or pattern array is null
+     * @throws ParseException if none of the date patterns were suitable (or there were none)
+     * @since 3.2
+     */
+    public static Date parseDate(final String str, final Locale locale, final String... parsePatterns) throws ParseException {
+<span class="fc" id="L1262">        return parseDateWithLeniency(str, locale, parsePatterns, true);</span>
+    }
+
+    /**
+     * Parses a string representing a date by trying a variety of different parsers.
+     *
+     * &lt;p&gt;The parse will try each parse pattern in turn.
+     * A parse is only deemed successful if it parses the whole of the input string.
+     * If no parse patterns match, a ParseException is thrown.&lt;/p&gt;
+     * The parser will be lenient toward the parsed date.
+     *
+     * @param str  the date to parse, not null
+     * @param parsePatterns  the date format patterns to use, see SimpleDateFormat, not null
+     * @return the parsed date
+     * @throws NullPointerException if the date string or pattern array is null
+     * @throws ParseException if none of the date patterns were suitable (or there were none)
+     */
+    public static Date parseDate(final String str, final String... parsePatterns) throws ParseException {
+<span class="fc" id="L1280">        return parseDate(str, null, parsePatterns);</span>
+    }
+
+    /**
+     * Parses a string representing a date by trying a variety of different parsers,
+     * using the default date format symbols for the given locale.
+     *
+     * &lt;p&gt;The parse will try each parse pattern in turn.
+     * A parse is only deemed successful if it parses the whole of the input string.
+     * If no parse patterns match, a ParseException is thrown.&lt;/p&gt;
+     * The parser parses strictly - it does not allow for dates such as &quot;February 942, 1996&quot;.
+     *
+     * @param str  the date to parse, not null
+     * @param locale the locale whose date format symbols should be used. If {@code null},
+     * the system locale is used (as per {@link #parseDateStrictly(String, String...)}).
+     * @param parsePatterns  the date format patterns to use, see SimpleDateFormat, not null
+     * @return the parsed date
+     * @throws NullPointerException if the date string or pattern array is null
+     * @throws ParseException if none of the date patterns were suitable
+     * @since 3.2
+     */
+    public static Date parseDateStrictly(final String str, final Locale locale, final String... parsePatterns) throws ParseException {
+<span class="fc" id="L1302">        return parseDateWithLeniency(str, locale, parsePatterns, false);</span>
+    }
+
+    /**
+     * Parses a string representing a date by trying a variety of different parsers.
+     *
+     * &lt;p&gt;The parse will try each parse pattern in turn.
+     * A parse is only deemed successful if it parses the whole of the input string.
+     * If no parse patterns match, a ParseException is thrown.&lt;/p&gt;
+     * The parser parses strictly - it does not allow for dates such as &quot;February 942, 1996&quot;.
+     *
+     * @param str  the date to parse, not null
+     * @param parsePatterns  the date format patterns to use, see SimpleDateFormat, not null
+     * @return the parsed date
+     * @throws NullPointerException if the date string or pattern array is null
+     * @throws ParseException if none of the date patterns were suitable
+     * @since 2.5
+     */
+    public static Date parseDateStrictly(final String str, final String... parsePatterns) throws ParseException {
+<span class="fc" id="L1321">        return parseDateStrictly(str, null, parsePatterns);</span>
+    }
+
+    /**
+     * Parses a string representing a date by trying a variety of different parsers.
+     *
+     * &lt;p&gt;The parse will try each parse pattern in turn.
+     * A parse is only deemed successful if it parses the whole of the input string.
+     * If no parse patterns match, a ParseException is thrown.&lt;/p&gt;
+     *
+     * @param dateStr  the date to parse, not null
+     * @param locale the locale to use when interpreting the pattern, can be null in which
+     * case the default system locale is used
+     * @param parsePatterns  the date format patterns to use, see SimpleDateFormat, not null
+     * @param lenient Specify whether or not date/time parsing is to be lenient.
+     * @return the parsed date
+     * @throws NullPointerException if the date string or pattern array is null
+     * @throws ParseException if none of the date patterns were suitable
+     * @see java.util.Calendar#isLenient()
+     */
+    private static Date parseDateWithLeniency(final String dateStr, final Locale locale, final String[] parsePatterns,
+        final boolean lenient) throws ParseException {
+<span class="fc" id="L1343">        Objects.requireNonNull(dateStr, &quot;str&quot;);</span>
+<span class="fc" id="L1344">        Objects.requireNonNull(parsePatterns, &quot;parsePatterns&quot;);</span>
+
+<span class="fc" id="L1346">        final TimeZone tz = TimeZone.getDefault();</span>
+<span class="fc" id="L1347">        final Locale lcl = LocaleUtils.toLocale(locale);</span>
+<span class="fc" id="L1348">        final ParsePosition pos = new ParsePosition(0);</span>
+<span class="fc" id="L1349">        final Calendar calendar = Calendar.getInstance(tz, lcl);</span>
+<span class="fc" id="L1350">        calendar.setLenient(lenient);</span>
+
+<span class="fc bfc" id="L1352" title="All 2 branches covered.">        for (final String parsePattern : parsePatterns) {</span>
+<span class="fc" id="L1353">            final FastDateParser fdp = new FastDateParser(parsePattern, tz, lcl);</span>
+<span class="fc" id="L1354">            calendar.clear();</span>
+            try {
+<span class="fc bfc" id="L1356" title="All 4 branches covered.">                if (fdp.parse(dateStr, pos, calendar) &amp;&amp; pos.getIndex() == dateStr.length()) {</span>
+<span class="fc" id="L1357">                    return calendar.getTime();</span>
+                }
+<span class="fc" id="L1359">            } catch (final IllegalArgumentException ignored) {</span>
+                // leniency is preventing calendar from being set
+<span class="fc" id="L1361">            }</span>
+<span class="fc" id="L1362">            pos.setIndex(0);</span>
+        }
+<span class="fc" id="L1364">        throw new ParseException(&quot;Unable to parse the date: &quot; + dateStr, -1);</span>
+    }
+
+    /**
+     * Rounds a date, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if this was passed with HOUR, it would return
+     * 28 Mar 2002 14:00:00.000. If this was passed with MONTH, it
+     * would return 1 April 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * &lt;p&gt;For a date in a time zone that handles the change to daylight
+     * saving time, rounding to Calendar.HOUR_OF_DAY will behave as follows.
+     * Suppose daylight saving time begins at 02:00 on March 30. Rounding a
+     * date that crosses this time would produce the following values:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;March 30, 2003 01:10 rounds to March 30, 2003 01:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 01:40 rounds to March 30, 2003 03:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 02:10 rounds to March 30, 2003 03:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 02:40 rounds to March 30, 2003 04:00&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param calendar  the date to work with, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different rounded date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    public static Calendar round(final Calendar calendar, final int field) {
+<span class="fc" id="L1395">        Objects.requireNonNull(calendar, &quot;calendar&quot;);</span>
+<span class="fc" id="L1396">        return modify((Calendar) calendar.clone(), field, ModifyType.ROUND);</span>
+    }
+
+    /**
+     * Rounds a date, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if this was passed with HOUR, it would return
+     * 28 Mar 2002 14:00:00.000. If this was passed with MONTH, it
+     * would return 1 April 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * &lt;p&gt;For a date in a time zone that handles the change to daylight
+     * saving time, rounding to Calendar.HOUR_OF_DAY will behave as follows.
+     * Suppose daylight saving time begins at 02:00 on March 30. Rounding a
+     * date that crosses this time would produce the following values:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;March 30, 2003 01:10 rounds to March 30, 2003 01:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 01:40 rounds to March 30, 2003 03:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 02:10 rounds to March 30, 2003 03:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 02:40 rounds to March 30, 2003 04:00&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date  the date to work with, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different rounded date, not null
+     * @throws NullPointerException if the date is null
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    public static Date round(final Date date, final int field) {
+<span class="fc" id="L1427">        return modify(toCalendar(date), field, ModifyType.ROUND).getTime();</span>
+    }
+
+    /**
+     * Rounds a date, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if this was passed with HOUR, it would return
+     * 28 Mar 2002 14:00:00.000. If this was passed with MONTH, it
+     * would return 1 April 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * &lt;p&gt;For a date in a time zone that handles the change to daylight
+     * saving time, rounding to Calendar.HOUR_OF_DAY will behave as follows.
+     * Suppose daylight saving time begins at 02:00 on March 30. Rounding a
+     * date that crosses this time would produce the following values:
+     * &lt;/p&gt;
+     * &lt;ul&gt;
+     * &lt;li&gt;March 30, 2003 01:10 rounds to March 30, 2003 01:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 01:40 rounds to March 30, 2003 03:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 02:10 rounds to March 30, 2003 03:00&lt;/li&gt;
+     * &lt;li&gt;March 30, 2003 02:40 rounds to March 30, 2003 04:00&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param date  the date to work with, either {@link Date} or {@link Calendar}, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different rounded date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ClassCastException if the object type is not a {@link Date} or {@link Calendar}
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    public static Date round(final Object date, final int field) {
+<span class="fc" id="L1459">        Objects.requireNonNull(date, &quot;date&quot;);</span>
+<span class="fc bfc" id="L1460" title="All 2 branches covered.">        if (date instanceof Date) {</span>
+<span class="fc" id="L1461">            return round((Date) date, field);</span>
+        }
+<span class="fc bfc" id="L1463" title="All 2 branches covered.">        if (date instanceof Calendar) {</span>
+<span class="fc" id="L1464">            return round((Calendar) date, field).getTime();</span>
+        }
+<span class="fc" id="L1466">        throw new ClassCastException(&quot;Could not round &quot; + date);</span>
+    }
+
+    /**
+     * Sets the specified field to a date returning a new object.
+     * This does not use a lenient calendar.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param calendarField  the {@link Calendar} field to set the amount to
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @since 2.4
+     */
+    private static Date set(final Date date, final int calendarField, final int amount) {
+<span class="fc" id="L1482">        validateDateNotNull(date);</span>
+        // getInstance() returns a new object, so this method is thread safe.
+<span class="fc" id="L1484">        final Calendar c = Calendar.getInstance();</span>
+<span class="fc" id="L1485">        c.setLenient(false);</span>
+<span class="fc" id="L1486">        c.setTime(date);</span>
+<span class="fc" id="L1487">        c.set(calendarField, amount);</span>
+<span class="fc" id="L1488">        return c.getTime();</span>
+    }
+
+    /**
+     * Sets the day of month field to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @throws IllegalArgumentException if {@code amount} is not in the range
+     *  {@code 1 &lt;= amount &lt;= 31}
+     * @since 2.4
+     */
+    public static Date setDays(final Date date, final int amount) {
+<span class="fc" id="L1504">        return set(date, Calendar.DAY_OF_MONTH, amount);</span>
+    }
+
+    /**
+     * Sets the hours field to a date returning a new object.  Hours range
+     * from  0-23.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @throws IllegalArgumentException if {@code amount} is not in the range
+     *  {@code 0 &lt;= amount &lt;= 23}
+     * @since 2.4
+     */
+    public static Date setHours(final Date date, final int amount) {
+<span class="fc" id="L1521">        return set(date, Calendar.HOUR_OF_DAY, amount);</span>
+    }
+
+    /**
+     * Sets the milliseconds field to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @throws IllegalArgumentException if {@code amount} is not in the range
+     *  {@code 0 &lt;= amount &lt;= 999}
+     * @since 2.4
+     */
+    public static Date setMilliseconds(final Date date, final int amount) {
+<span class="fc" id="L1537">        return set(date, Calendar.MILLISECOND, amount);</span>
+    }
+
+    /**
+     * Sets the minute field to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @throws IllegalArgumentException if {@code amount} is not in the range
+     *  {@code 0 &lt;= amount &lt;= 59}
+     * @since 2.4
+     */
+    public static Date setMinutes(final Date date, final int amount) {
+<span class="fc" id="L1553">        return set(date, Calendar.MINUTE, amount);</span>
+    }
+
+    /**
+     * Sets the months field to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @throws IllegalArgumentException if {@code amount} is not in the range
+     *  {@code 0 &lt;= amount &lt;= 11}
+     * @since 2.4
+     */
+    public static Date setMonths(final Date date, final int amount) {
+<span class="fc" id="L1569">        return set(date, Calendar.MONTH, amount);</span>
+    }
+
+    /**
+     * Sets the seconds field to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @throws IllegalArgumentException if {@code amount} is not in the range
+     *  {@code 0 &lt;= amount &lt;= 59}
+     * @since 2.4
+     */
+    public static Date setSeconds(final Date date, final int amount) {
+<span class="fc" id="L1585">        return set(date, Calendar.SECOND, amount);</span>
+    }
+    /**
+     * Sets the years field to a date returning a new object.
+     * The original {@link Date} is unchanged.
+     *
+     * @param date  the date, not null
+     * @param amount the amount to set
+     * @return a new {@link Date} set with the specified value
+     * @throws NullPointerException if the date is null
+     * @since 2.4
+     */
+    public static Date setYears(final Date date, final int amount) {
+<span class="fc" id="L1598">        return set(date, Calendar.YEAR, amount);</span>
+    }
+
+    /**
+     * Converts a {@link Date} into a {@link Calendar}.
+     *
+     * @param date the date to convert to a Calendar
+     * @return the created Calendar
+     * @throws NullPointerException if null is passed in
+     * @since 3.0
+     */
+    public static Calendar toCalendar(final Date date) {
+<span class="fc" id="L1610">        final Calendar c = Calendar.getInstance();</span>
+<span class="fc" id="L1611">        c.setTime(Objects.requireNonNull(date, &quot;date&quot;));</span>
+<span class="fc" id="L1612">        return c;</span>
+    }
+
+    /**
+     * Converts a {@link Date} of a given {@link TimeZone} into a {@link Calendar}
+     * @param date the date to convert to a Calendar
+     * @param tz the time zone of the {@code date}
+     * @return the created Calendar
+     * @throws NullPointerException if {@code date} or {@code tz} is null
+     */
+    public static Calendar toCalendar(final Date date, final TimeZone tz) {
+<span class="fc" id="L1623">        final Calendar c = Calendar.getInstance(tz);</span>
+<span class="fc" id="L1624">        c.setTime(Objects.requireNonNull(date, &quot;date&quot;));</span>
+<span class="fc" id="L1625">        return c;</span>
+    }
+
+    /**
+     * Truncates a date, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if you passed with HOUR, it would return 28 Mar
+     * 2002 13:00:00.000.  If this was passed with MONTH, it would
+     * return 1 Mar 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * @param date  the date to work with, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different truncated date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    public static Calendar truncate(final Calendar date, final int field) {
+<span class="fc" id="L1644">        Objects.requireNonNull(date, &quot;date&quot;);</span>
+<span class="fc" id="L1645">        return modify((Calendar) date.clone(), field, ModifyType.TRUNCATE);</span>
+    }
+
+    /**
+     * Truncates a date, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if you passed with HOUR, it would return 28 Mar
+     * 2002 13:00:00.000.  If this was passed with MONTH, it would
+     * return 1 Mar 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * @param date  the date to work with, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different truncated date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    public static Date truncate(final Date date, final int field) {
+<span class="fc" id="L1664">        return modify(toCalendar(date), field, ModifyType.TRUNCATE).getTime();</span>
+    }
+
+    /**
+     * Truncates a date, leaving the field specified as the most
+     * significant field.
+     *
+     * &lt;p&gt;For example, if you had the date-time of 28 Mar 2002
+     * 13:45:01.231, if you passed with HOUR, it would return 28 Mar
+     * 2002 13:00:00.000.  If this was passed with MONTH, it would
+     * return 1 Mar 2002 0:00:00.000.&lt;/p&gt;
+     *
+     * @param date  the date to work with, either {@link Date} or {@link Calendar}, not null
+     * @param field  the field from {@link Calendar} or {@code SEMI_MONTH}
+     * @return the different truncated date, not null
+     * @throws NullPointerException if the date is {@code null}
+     * @throws ClassCastException if the object type is not a {@link Date} or {@link Calendar}
+     * @throws ArithmeticException if the year is over 280 million
+     */
+    public static Date truncate(final Object date, final int field) {
+<span class="fc" id="L1684">        Objects.requireNonNull(date, &quot;date&quot;);</span>
+<span class="fc bfc" id="L1685" title="All 2 branches covered.">        if (date instanceof Date) {</span>
+<span class="fc" id="L1686">            return truncate((Date) date, field);</span>
+        }
+<span class="fc bfc" id="L1688" title="All 2 branches covered.">        if (date instanceof Calendar) {</span>
+<span class="fc" id="L1689">            return truncate((Calendar) date, field).getTime();</span>
+        }
+<span class="fc" id="L1691">        throw new ClassCastException(&quot;Could not truncate &quot; + date);</span>
+    }
+
+    /**
+     * Determines how two calendars compare up to no more than the specified
+     * most significant field.
+     *
+     * @param cal1 the first calendar, not {@code null}
+     * @param cal2 the second calendar, not {@code null}
+     * @param field the field from {@link Calendar}
+     * @return a negative integer, zero, or a positive integer as the first
+     * calendar is less than, equal to, or greater than the second.
+     * @throws NullPointerException if any argument is {@code null}
+     * @see #truncate(Calendar, int)
+     * @see #truncatedCompareTo(Date, Date, int)
+     * @since 3.0
+     */
+    public static int truncatedCompareTo(final Calendar cal1, final Calendar cal2, final int field) {
+<span class="nc" id="L1709">        final Calendar truncatedCal1 = truncate(cal1, field);</span>
+<span class="nc" id="L1710">        final Calendar truncatedCal2 = truncate(cal2, field);</span>
+<span class="nc" id="L1711">        return truncatedCal1.compareTo(truncatedCal2);</span>
+    }
+
+    /**
+     * Determines how two dates compare up to no more than the specified
+     * most significant field.
+     *
+     * @param date1 the first date, not {@code null}
+     * @param date2 the second date, not {@code null}
+     * @param field the field from {@link Calendar}
+     * @return a negative integer, zero, or a positive integer as the first
+     * date is less than, equal to, or greater than the second.
+     * @throws NullPointerException if any argument is {@code null}
+     * @see #truncate(Calendar, int)
+     * @see #truncatedCompareTo(Date, Date, int)
+     * @since 3.0
+     */
+    public static int truncatedCompareTo(final Date date1, final Date date2, final int field) {
+<span class="nc" id="L1729">        final Date truncatedDate1 = truncate(date1, field);</span>
+<span class="nc" id="L1730">        final Date truncatedDate2 = truncate(date2, field);</span>
+<span class="nc" id="L1731">        return truncatedDate1.compareTo(truncatedDate2);</span>
+    }
+
+    /**
+     * Determines if two calendars are equal up to no more than the specified
+     * most significant field.
+     *
+     * @param cal1 the first calendar, not {@code null}
+     * @param cal2 the second calendar, not {@code null}
+     * @param field the field from {@link Calendar}
+     * @return {@code true} if equal; otherwise {@code false}
+     * @throws NullPointerException if any argument is {@code null}
+     * @see #truncate(Calendar, int)
+     * @see #truncatedEquals(Date, Date, int)
+     * @since 3.0
+     */
+    public static boolean truncatedEquals(final Calendar cal1, final Calendar cal2, final int field) {
+<span class="nc bnc" id="L1748" title="All 2 branches missed.">        return truncatedCompareTo(cal1, cal2, field) == 0;</span>
+    }
+
+    /**
+     * Determines if two dates are equal up to no more than the specified
+     * most significant field.
+     *
+     * @param date1 the first date, not {@code null}
+     * @param date2 the second date, not {@code null}
+     * @param field the field from {@link Calendar}
+     * @return {@code true} if equal; otherwise {@code false}
+     * @throws NullPointerException if any argument is {@code null}
+     * @see #truncate(Date, int)
+     * @see #truncatedEquals(Calendar, Calendar, int)
+     * @since 3.0
+     */
+    public static boolean truncatedEquals(final Date date1, final Date date2, final int field) {
+<span class="nc bnc" id="L1765" title="All 2 branches missed.">        return truncatedCompareTo(date1, date2, field) == 0;</span>
+    }
+
+    /**
+     * @param date Date to validate.
+     * @throws NullPointerException if {@code date == null}
+     */
+    private static void validateDateNotNull(final Date date) {
+<span class="fc" id="L1773">        Objects.requireNonNull(date, &quot;date&quot;);</span>
+<span class="fc" id="L1774">    }</span>
+
+    /**
+     * {@link DateUtils} instances should NOT be constructed in
+     * standard programming. Instead, the static methods on the class should
+     * be used, such as {@code DateUtils.parseDate(str);}.
+     *
+     * &lt;p&gt;This constructor is public to permit tools that require a JavaBean
+     * instance to operate.&lt;/p&gt;
+     *
+     * @deprecated TODO Make private in 4.0.
+     */
+    @Deprecated
+<span class="fc" id="L1787">    public DateUtils() {</span>
+        // empty
+<span class="fc" id="L1789">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.7.202105040129</span></div></body></html>

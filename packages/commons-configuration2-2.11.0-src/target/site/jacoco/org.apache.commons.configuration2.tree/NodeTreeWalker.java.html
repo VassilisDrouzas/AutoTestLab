@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NodeTreeWalker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.tree</a> &gt; <span class="el_source">NodeTreeWalker.java</span></div><h1>NodeTreeWalker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.tree;
+
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * &lt;p&gt;
+ * A class providing different algorithms for traversing a hierarchy of configuration nodes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The methods provided by this class accept a {@link ConfigurationNodeVisitor} and visit all nodes in a hierarchy
+ * starting from a given root node. Because a {@link NodeHandler} has to be passed in, too, arbitrary types of nodes can
+ * be processed. The {@code walk()} methods differ in the order in which nodes are visited. Details can be found in the
+ * method documentation.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * An instance of this class does not define any state; therefore, it can be shared and used concurrently. The
+ * {@code INSTANCE} member field can be used for accessing a default instance. If desired (e.g. for testing purposes),
+ * new instances can be created.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+<span class="fc" id="L40">public class NodeTreeWalker {</span>
+    /** The default instance of this class. */
+<span class="fc" id="L42">    public static final NodeTreeWalker INSTANCE = new NodeTreeWalker();</span>
+
+    /**
+     * Helper method for performing a BFS traversal. Implementation node: This method organizes the nodes to be visited in
+     * structures on the heap. Therefore, it can deal with larger structures than would be the case in a recursive approach
+     * (where the stack size limits the size of the structures which can be traversed).
+     *
+     * @param root the root node to be navigated
+     * @param visitor the visitor
+     * @param handler the handler
+     * @param &lt;T&gt; the type of the nodes involved
+     */
+    private static &lt;T&gt; void bfs(final T root, final ConfigurationNodeVisitor&lt;T&gt; visitor, final NodeHandler&lt;T&gt; handler) {
+<span class="fc" id="L55">        final List&lt;T&gt; pendingNodes = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L56">        pendingNodes.add(root);</span>
+<span class="fc" id="L57">        boolean cancel = false;</span>
+
+<span class="fc bfc" id="L59" title="All 4 branches covered.">        while (!pendingNodes.isEmpty() &amp;&amp; !cancel) {</span>
+<span class="fc" id="L60">            final T node = pendingNodes.remove(0);</span>
+<span class="fc" id="L61">            visitor.visitBeforeChildren(node, handler);</span>
+<span class="fc" id="L62">            cancel = visitor.terminate();</span>
+<span class="fc" id="L63">            pendingNodes.addAll(handler.getChildren(node));</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Helper method for checking the parameters for the walk() methods. If mandatory parameters are missing, an exception
+     * is thrown. The return value indicates whether an operation can be performed.
+     *
+     * @param root the root node
+     * @param visitor the visitor
+     * @param handler the handler
+     * @param &lt;T&gt; the type of the nodes involved
+     * @return &lt;b&gt;true&lt;/b&gt; if a walk operation can be performed, &lt;b&gt;false&lt;/b&gt; otherwise
+     * @throws IllegalArgumentException if a required parameter is missing
+     */
+    private static &lt;T&gt; boolean checkParameters(final T root, final ConfigurationNodeVisitor&lt;T&gt; visitor, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (visitor == null) {</span>
+<span class="fc" id="L80">            throw new IllegalArgumentException(&quot;Visitor must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (handler == null) {</span>
+<span class="fc" id="L83">            throw new IllegalArgumentException(&quot;NodeHandler must not be null!&quot;);</span>
+        }
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        return root != null;</span>
+    }
+
+    /**
+     * Recursive helper method for performing a DFS traversal.
+     *
+     * @param node the current node
+     * @param visitor the visitor
+     * @param handler the handler
+     * @param &lt;T&gt; the type of the nodes involved
+     */
+    private static &lt;T&gt; void dfs(final T node, final ConfigurationNodeVisitor&lt;T&gt; visitor, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!visitor.terminate()) {</span>
+<span class="fc" id="L98">            visitor.visitBeforeChildren(node, handler);</span>
+<span class="fc" id="L99">            handler.getChildren(node).forEach(c -&gt; dfs(c, visitor, handler));</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (!visitor.terminate()) {</span>
+<span class="fc" id="L101">                visitor.visitAfterChildren(node, handler);</span>
+            }
+        }
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * Visits all nodes in the hierarchy represented by the given root node in &lt;em&gt;breadth first search&lt;/em&gt; manner. This
+     * means that the nodes are visited in an order corresponding to the distance from the root node: first the root node is
+     * visited, then all direct children of the root node, then all direct children of the first child of the root node,
+     * etc. In this mode of traversal, there is no direct connection between the encounter of a node and its children.
+     * &lt;strong&gt;Therefore, on the visitor object only the {@code visitBeforeChildren()} method gets called!&lt;/strong&gt;.
+     *
+     * @param root the root node of the hierarchy to be processed (may be &lt;b&gt;null&lt;/b&gt;, then this call has no effect)
+     * @param visitor the {@code ConfigurationNodeVisitor} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param handler the {@code NodeHandler} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param &lt;T&gt; the type of the nodes involved
+     * @throws IllegalArgumentException if a required parameter is &lt;b&gt;null&lt;/b&gt;
+     */
+    public &lt;T&gt; void walkBFS(final T root, final ConfigurationNodeVisitor&lt;T&gt; visitor, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (checkParameters(root, visitor, handler)) {</span>
+<span class="fc" id="L121">            bfs(root, visitor, handler);</span>
+        }
+<span class="fc" id="L123">    }</span>
+
+    /**
+     * Visits all nodes in the hierarchy represented by the given root node in &lt;em&gt;depth first search&lt;/em&gt; manner. This
+     * means that first {@link ConfigurationNodeVisitor#visitBeforeChildren(Object, NodeHandler)} is called on a node, then
+     * recursively all of its children are processed, and eventually
+     * {@link ConfigurationNodeVisitor#visitAfterChildren(Object, NodeHandler)} gets invoked.
+     *
+     * @param root the root node of the hierarchy to be processed (may be &lt;b&gt;null&lt;/b&gt;, then this call has no effect)
+     * @param visitor the {@code ConfigurationNodeVisitor} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param handler the {@code NodeHandler} (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @param &lt;T&gt; the type of the nodes involved
+     * @throws IllegalArgumentException if a required parameter is &lt;b&gt;null&lt;/b&gt;
+     */
+    public &lt;T&gt; void walkDFS(final T root, final ConfigurationNodeVisitor&lt;T&gt; visitor, final NodeHandler&lt;T&gt; handler) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (checkParameters(root, visitor, handler)) {</span>
+<span class="fc" id="L139">            dfs(root, visitor, handler);</span>
+        }
+<span class="fc" id="L141">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

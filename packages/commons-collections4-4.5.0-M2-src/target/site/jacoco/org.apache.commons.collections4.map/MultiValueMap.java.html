@@ -1,0 +1,574 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MultiValueMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.map</a> &gt; <span class="el_source">MultiValueMap.java</span></div><h1>MultiValueMap.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.map;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.AbstractCollection;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.Factory;
+import org.apache.commons.collections4.FunctorException;
+import org.apache.commons.collections4.MultiMap;
+import org.apache.commons.collections4.Transformer;
+import org.apache.commons.collections4.iterators.EmptyIterator;
+import org.apache.commons.collections4.iterators.IteratorChain;
+import org.apache.commons.collections4.iterators.LazyIteratorChain;
+import org.apache.commons.collections4.iterators.TransformIterator;
+
+/**
+ * A MultiValueMap decorates another map, allowing it to have
+ * more than one value for a key.
+ * &lt;p&gt;
+ * A {@code MultiMap} is a Map with slightly different semantics.
+ * Putting a value into the map will add the value to a Collection at that key.
+ * Getting a value will return a Collection, holding all the values put to that key.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This implementation is a decorator, allowing any Map implementation
+ * to be used as the base.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * In addition, this implementation allows the type of collection used
+ * for the values to be controlled. By default, an {@code ArrayList}
+ * is used, however a {@code Class} to instantiate may be specified,
+ * or a factory that returns a {@code Collection} instance.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;strong&gt;Note that MultiValueMap is not synchronized and is not thread-safe.&lt;/strong&gt;
+ * If you wish to use this map from multiple threads concurrently, you must use
+ * appropriate synchronization. This class may throw exceptions when accessed
+ * by concurrent threads without synchronization.
+ * &lt;/p&gt;
+ *
+ * @param &lt;K&gt; the type of the keys in this map
+ * @param &lt;V&gt; the type of the values in this map
+ * @since 3.2
+ * @deprecated since 4.1, use {@link org.apache.commons.collections4.MultiValuedMap MultiValuedMap} instead
+ */
+@Deprecated
+public class MultiValueMap&lt;K, V&gt; extends AbstractMapDecorator&lt;K, Object&gt; implements MultiMap&lt;K, V&gt;, Serializable {
+
+    /**
+     * Inner class that provides a simple reflection factory.
+     */
+    private static final class ReflectionFactory&lt;T extends Collection&lt;?&gt;&gt; implements Factory&lt;T&gt;, Serializable {
+
+        /** Serialization version */
+        private static final long serialVersionUID = 2986114157496788874L;
+
+        private final Class&lt;T&gt; clazz;
+
+<span class="fc" id="L84">        ReflectionFactory(final Class&lt;T&gt; clazz) {</span>
+<span class="fc" id="L85">            this.clazz = clazz;</span>
+<span class="fc" id="L86">        }</span>
+
+        @Override
+        public T create() {
+            try {
+<span class="fc" id="L91">                return clazz.getDeclaredConstructor().newInstance();</span>
+<span class="nc" id="L92">            } catch (final Exception ex) {</span>
+<span class="nc" id="L93">                throw new FunctorException(&quot;Cannot instantiate class: &quot; + clazz, ex);</span>
+            }
+        }
+
+        private void readObject(final ObjectInputStream is) throws IOException, ClassNotFoundException {
+<span class="fc" id="L98">            is.defaultReadObject();</span>
+            // ensure that the de-serialized class is a Collection, COLLECTIONS-580
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">            if (clazz != null &amp;&amp; !Collection.class.isAssignableFrom(clazz)) {</span>
+<span class="fc" id="L101">                throw new UnsupportedOperationException();</span>
+            }
+<span class="fc" id="L103">        }</span>
+    }
+
+    /**
+     * Inner class that provides the values view.
+     */
+<span class="fc" id="L109">    private final class Values extends AbstractCollection&lt;V&gt; {</span>
+        @Override
+        public void clear() {
+<span class="nc" id="L112">            MultiValueMap.this.clear();</span>
+<span class="nc" id="L113">        }</span>
+
+        @Override
+        public Iterator&lt;V&gt; iterator() {
+<span class="fc" id="L117">            final IteratorChain&lt;V&gt; chain = new IteratorChain&lt;&gt;();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            for (final K k : keySet()) {</span>
+<span class="fc" id="L119">                chain.addIterator(new ValuesIterator(k));</span>
+<span class="fc" id="L120">            }</span>
+<span class="fc" id="L121">            return chain;</span>
+        }
+
+        @Override
+        public int size() {
+<span class="fc" id="L126">            return totalSize();</span>
+        }
+    }
+    /**
+     * Inner class that provides the values iterator.
+     */
+    private final class ValuesIterator implements Iterator&lt;V&gt; {
+        private final Object key;
+        private final Collection&lt;V&gt; values;
+        private final Iterator&lt;V&gt; iterator;
+
+<span class="fc" id="L137">        ValuesIterator(final Object key) {</span>
+<span class="fc" id="L138">            this.key = key;</span>
+<span class="fc" id="L139">            this.values = getCollection(key);</span>
+<span class="fc" id="L140">            this.iterator = values.iterator();</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public boolean hasNext() {
+<span class="fc" id="L145">            return iterator.hasNext();</span>
+        }
+
+        @Override
+        public V next() {
+<span class="fc" id="L150">            return iterator.next();</span>
+        }
+
+        @Override
+        public void remove() {
+<span class="fc" id="L155">            iterator.remove();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (values.isEmpty()) {</span>
+<span class="fc" id="L157">                MultiValueMap.this.remove(key);</span>
+            }
+<span class="fc" id="L159">        }</span>
+    }
+
+    /** Serialization version */
+    private static final long serialVersionUID = -2214159910087182007L;
+
+    /**
+     * Creates a map which decorates the given {@code map} and
+     * maps keys to collections of type {@code collectionClass}.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param &lt;C&gt;  the collection class type
+     * @param map  the map to wrap
+     * @param collectionClass  the type of the collection class
+     * @return a new multi-value map
+     * @since 4.0
+     */
+    public static &lt;K, V, C extends Collection&lt;V&gt;&gt; MultiValueMap&lt;K, V&gt; multiValueMap(final Map&lt;K, ? super C&gt; map,
+                                                                                    final Class&lt;C&gt; collectionClass) {
+<span class="fc" id="L179">        return new MultiValueMap&lt;&gt;(map, new ReflectionFactory&lt;&gt;(collectionClass));</span>
+    }
+
+    /**
+     * Creates a map which decorates the given {@code map} and
+     * creates the value collections using the supplied {@code collectionFactory}.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param &lt;C&gt;  the collection class type
+     * @param map  the map to decorate
+     * @param collectionFactory  the collection factory (must return a Collection object).
+     * @return a new multi-value map
+     * @since 4.0
+     */
+    public static &lt;K, V, C extends Collection&lt;V&gt;&gt; MultiValueMap&lt;K, V&gt; multiValueMap(final Map&lt;K, ? super C&gt; map,
+            final Factory&lt;C&gt; collectionFactory) {
+<span class="nc" id="L196">        return new MultiValueMap&lt;&gt;(map, collectionFactory);</span>
+    }
+
+    /**
+     * Creates a map which wraps the given map and
+     * maps keys to ArrayLists.
+     *
+     * @param &lt;K&gt;  the key type
+     * @param &lt;V&gt;  the value type
+     * @param map  the map to wrap
+     * @return a new multi-value map
+     * @since 4.0
+     */
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    public static &lt;K, V&gt; MultiValueMap&lt;K, V&gt; multiValueMap(final Map&lt;K, ? super Collection&lt;V&gt;&gt; map) {
+<span class="fc" id="L211">        return MultiValueMap.&lt;K, V, ArrayList&gt;multiValueMap((Map&lt;K, ? super Collection&gt;) map, ArrayList.class);</span>
+    }
+
+    /** The factory for creating value collections. */
+    private final Factory&lt;? extends Collection&lt;V&gt;&gt; collectionFactory;
+
+    /** The cached values. */
+    private transient Collection&lt;V&gt; valuesView;
+
+    /**
+     * Creates a MultiValueMap based on a {@code HashMap} and
+     * storing the multiple values in an {@code ArrayList}.
+     */
+    @SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+    public MultiValueMap() {
+<span class="fc" id="L226">        this(new HashMap&lt;&gt;(), new ReflectionFactory(ArrayList.class));</span>
+<span class="fc" id="L227">    }</span>
+
+    /**
+     * Creates a MultiValueMap which decorates the given {@code map} and
+     * creates the value collections using the supplied {@code collectionFactory}.
+     *
+     * @param &lt;C&gt;  the collection class type
+     * @param map  the map to decorate
+     * @param collectionFactory  the collection factory which must return a Collection instance
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected &lt;C extends Collection&lt;V&gt;&gt; MultiValueMap(final Map&lt;K, ? super C&gt; map,
+                                                      final Factory&lt;C&gt; collectionFactory) {
+<span class="fc" id="L240">        super((Map&lt;K, Object&gt;) map);</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        if (collectionFactory == null) {</span>
+<span class="nc" id="L242">            throw new IllegalArgumentException(&quot;The factory must not be null&quot;);</span>
+        }
+<span class="fc" id="L244">        this.collectionFactory = collectionFactory;</span>
+<span class="fc" id="L245">    }</span>
+
+    /**
+     * Clear the map.
+     */
+    @Override
+    public void clear() {
+        // If you believe that you have GC issues here, try uncommenting this code
+//        Set pairs = getMap().entrySet();
+//        Iterator pairsIterator = pairs.iterator();
+//        while (pairsIterator.hasNext()) {
+//            Map.Entry keyValuePair = (Map.Entry) pairsIterator.next();
+//            Collection coll = (Collection) keyValuePair.getValue();
+//            coll.clear();
+//        }
+<span class="fc" id="L260">        decorated().clear();</span>
+<span class="fc" id="L261">    }</span>
+
+    /**
+     * Checks whether the map contains the value specified.
+     * &lt;p&gt;
+     * This checks all collections against all keys for the value, and thus could be slow.
+     *
+     * @param value  the value to search for
+     * @return true if the map contains the value
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public boolean containsValue(final Object value) {
+<span class="fc" id="L274">        final Set&lt;Map.Entry&lt;K, Object&gt;&gt; pairs = decorated().entrySet();</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">        if (pairs != null) {</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            for (final Map.Entry&lt;K, Object&gt; entry : pairs) {</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                if (((Collection&lt;V&gt;) entry.getValue()).contains(value)) {</span>
+<span class="fc" id="L278">                    return true;</span>
+                }
+<span class="fc" id="L280">            }</span>
+        }
+<span class="fc" id="L282">        return false;</span>
+    }
+
+    /**
+     * Checks whether the collection at the specified key contains the value.
+     *
+     * @param key  the key to search for
+     * @param value  the value to search for
+     * @return true if the map contains the value
+     */
+    public boolean containsValue(final Object key, final Object value) {
+<span class="fc" id="L293">        final Collection&lt;V&gt; coll = getCollection(key);</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (coll == null) {</span>
+<span class="fc" id="L295">            return false;</span>
+        }
+<span class="fc" id="L297">        return coll.contains(value);</span>
+    }
+
+    /**
+     * Creates a new instance of the map value Collection container
+     * using the factory.
+     * &lt;p&gt;
+     * This method can be overridden to perform your own processing
+     * instead of using the factory.
+     *
+     * @param size  the collection size that is about to be added
+     * @return the new collection
+     */
+    protected Collection&lt;V&gt; createCollection(final int size) {
+<span class="fc" id="L311">        return collectionFactory.create();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     * &lt;p&gt;
+     * NOTE: the returned Entry objects will contain as value a {@link Collection}
+     * of all values that are mapped to the given key. To get a &quot;flattened&quot; version
+     * of all mappings contained in this map, use {@link #iterator()}.
+     *
+     * @see #iterator()
+     */
+    @Override
+    public Set&lt;Entry&lt;K, Object&gt;&gt; entrySet() { // NOPMD
+<span class="fc" id="L325">        return super.entrySet();</span>
+    }
+
+    /**
+     * Gets the collection mapped to the specified key.
+     * This method is a convenience method to typecast the result of {@code get(key)}.
+     *
+     * @param key  the key to retrieve
+     * @return the collection mapped to the key, null if no mapping
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public Collection&lt;V&gt; getCollection(final Object key) {
+<span class="fc" id="L337">        return (Collection&lt;V&gt;) decorated().get(key);</span>
+    }
+
+    /**
+     * Gets an iterator for all mappings stored in this {@link MultiValueMap}.
+     * &lt;p&gt;
+     * The iterator will return multiple Entry objects with the same key
+     * if there are multiple values mapped to this key.
+     * &lt;p&gt;
+     * NOTE: calling {@link java.util.Map.Entry#setValue(Object)} on any of the returned
+     * elements will result in a {@link UnsupportedOperationException}.
+     *
+     * @return the iterator of all mappings in this map
+     * @since 4.0
+     */
+    public Iterator&lt;Entry&lt;K, V&gt;&gt; iterator() {
+<span class="fc" id="L353">        final Collection&lt;K&gt; allKeys = new ArrayList&lt;&gt;(keySet());</span>
+<span class="fc" id="L354">        final Iterator&lt;K&gt; keyIterator = allKeys.iterator();</span>
+
+<span class="fc" id="L356">        return new LazyIteratorChain&lt;Entry&lt;K, V&gt;&gt;() {</span>
+            @Override
+            protected Iterator&lt;? extends Entry&lt;K, V&gt;&gt; nextIterator(final int count) {
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                if ( ! keyIterator.hasNext() ) {</span>
+<span class="fc" id="L360">                    return null;</span>
+                }
+<span class="fc" id="L362">                final K key = keyIterator.next();</span>
+<span class="fc" id="L363">                final Transformer&lt;V, Entry&lt;K, V&gt;&gt; transformer = input -&gt; new Entry&lt;K, V&gt;() {</span>
+                    @Override
+                    public K getKey() {
+<span class="fc" id="L366">                        return key;</span>
+                    }
+                    @Override
+                    public V getValue() {
+<span class="fc" id="L370">                        return input;</span>
+                    }
+                    @Override
+                    public V setValue(final V value) {
+<span class="nc" id="L374">                        throw new UnsupportedOperationException();</span>
+                    }
+                };
+<span class="fc" id="L377">                return new TransformIterator&lt;&gt;(new ValuesIterator(key), transformer);</span>
+            }
+        };
+    }
+
+    /**
+     * Gets an iterator for the collection mapped to the specified key.
+     *
+     * @param key  the key to get an iterator for
+     * @return the iterator of the collection at the key, empty iterator if key not in map
+     */
+    public Iterator&lt;V&gt; iterator(final Object key) {
+<span class="fc bfc" id="L389" title="All 2 branches covered.">        if (!containsKey(key)) {</span>
+<span class="fc" id="L390">            return EmptyIterator.&lt;V&gt;emptyIterator();</span>
+        }
+<span class="fc" id="L392">        return new ValuesIterator(key);</span>
+    }
+
+    /**
+     * Adds the value to the collection associated with the specified key.
+     * &lt;p&gt;
+     * Unlike a normal {@code Map} the previous value is not replaced.
+     * Instead, the new value is added to the collection stored against the key.
+     *
+     * @param key  the key to store against
+     * @param value  the value to add to the collection at the key
+     * @return the value added if the map changed and null if the map did not change
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public Object put(final K key, final Object value) {
+<span class="fc" id="L408">        boolean result = false;</span>
+<span class="fc" id="L409">        Collection&lt;V&gt; coll = getCollection(key);</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        if (coll == null) {</span>
+<span class="fc" id="L411">            coll = createCollection(1);  // might produce a non-empty collection</span>
+<span class="fc" id="L412">            coll.add((V) value);</span>
+<span class="pc bpc" id="L413" title="1 of 2 branches missed.">            if (!coll.isEmpty()) {</span>
+                // only add if non-zero size to maintain class state
+<span class="fc" id="L415">                decorated().put(key, coll);</span>
+<span class="fc" id="L416">                result = true;  // map definitely changed</span>
+            }
+        } else {
+<span class="fc" id="L419">            result = coll.add((V) value);</span>
+        }
+<span class="fc bfc" id="L421" title="All 2 branches covered.">        return result ? value : null;</span>
+    }
+
+    /**
+     * Adds a collection of values to the collection associated with
+     * the specified key.
+     *
+     * @param key  the key to store against
+     * @param values  the values to add to the collection at the key, null ignored
+     * @return true if this map changed
+     */
+    public boolean putAll(final K key, final Collection&lt;V&gt; values) {
+<span class="fc bfc" id="L433" title="All 4 branches covered.">        if (values == null || values.isEmpty()) {</span>
+<span class="fc" id="L434">            return false;</span>
+        }
+<span class="fc" id="L436">        boolean result = false;</span>
+<span class="fc" id="L437">        Collection&lt;V&gt; coll = getCollection(key);</span>
+<span class="fc bfc" id="L438" title="All 2 branches covered.">        if (coll == null) {</span>
+<span class="fc" id="L439">            coll = createCollection(values.size());  // might produce a non-empty collection</span>
+<span class="fc" id="L440">            coll.addAll(values);</span>
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">            if (!coll.isEmpty()) {</span>
+                // only add if non-zero size to maintain class state
+<span class="fc" id="L443">                decorated().put(key, coll);</span>
+<span class="fc" id="L444">                result = true;  // map definitely changed</span>
+            }
+        } else {
+<span class="fc" id="L447">            result = coll.addAll(values);</span>
+        }
+<span class="fc" id="L449">        return result;</span>
+    }
+
+    /**
+     * Override superclass to ensure that MultiMap instances are
+     * correctly handled.
+     * &lt;p&gt;
+     * If you call this method with a normal map, each entry is
+     * added using {@code put(Object,Object)}.
+     * If you call this method with a multi map, each entry is
+     * added using {@code putAll(Object,Collection)}.
+     *
+     * @param map  the map to copy (either a normal or multi map)
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public void putAll(final Map&lt;? extends K, ?&gt; map) {
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        if (map instanceof MultiMap) {</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">            for (final Map.Entry&lt;? extends K, Object&gt; entry : ((MultiMap&lt;? extends K, V&gt;) map).entrySet()) {</span>
+<span class="fc" id="L468">                putAll(entry.getKey(), (Collection&lt;V&gt;) entry.getValue());</span>
+<span class="fc" id="L469">            }</span>
+        } else {
+<span class="fc bfc" id="L471" title="All 2 branches covered.">            for (final Map.Entry&lt;? extends K, ?&gt; entry : map.entrySet()) {</span>
+<span class="fc" id="L472">                put(entry.getKey(), entry.getValue());</span>
+<span class="fc" id="L473">            }</span>
+        }
+<span class="fc" id="L475">    }</span>
+
+    /**
+     * Read the map in using a custom routine.
+     *
+     * @param in  the input stream
+     * @throws IOException if an error occurs while reading from the stream
+     * @throws ClassNotFoundException if an object read from the stream can not be loaded
+     * @since 4.0
+     */
+    @SuppressWarnings(&quot;unchecked&quot;) // (1) should only fail if input stream is incorrect
+    private void readObject(final ObjectInputStream in) throws IOException, ClassNotFoundException {
+<span class="fc" id="L487">        in.defaultReadObject();</span>
+<span class="fc" id="L488">        map = (Map&lt;K, Object&gt;) in.readObject(); // (1)</span>
+<span class="fc" id="L489">    }</span>
+
+    /**
+     * Removes a specific value from map.
+     * &lt;p&gt;
+     * The item is removed from the collection mapped to the specified key.
+     * Other values attached to that key are unaffected.
+     * &lt;p&gt;
+     * If the last value for a key is removed, {@code null} will be returned
+     * from a subsequent {@code get(key)}.
+     *
+     * @param key  the key to remove from
+     * @param value the value to remove
+     * @return {@code true} if the mapping was removed, {@code false} otherwise
+     */
+    @Override
+    public boolean removeMapping(final Object key, final Object value) {
+<span class="fc" id="L506">        final Collection&lt;V&gt; valuesForKey = getCollection(key);</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">        if (valuesForKey == null) {</span>
+<span class="fc" id="L508">            return false;</span>
+        }
+<span class="fc" id="L510">        final boolean removed = valuesForKey.remove(value);</span>
+<span class="fc bfc" id="L511" title="All 2 branches covered.">        if (!removed) {</span>
+<span class="fc" id="L512">            return false;</span>
+        }
+<span class="fc bfc" id="L514" title="All 2 branches covered.">        if (valuesForKey.isEmpty()) {</span>
+<span class="fc" id="L515">            remove(key);</span>
+        }
+<span class="fc" id="L517">        return true;</span>
+    }
+
+    /**
+     * Gets the size of the collection mapped to the specified key.
+     *
+     * @param key  the key to get size for
+     * @return the size of the collection at the key, zero if key not in map
+     */
+    public int size(final Object key) {
+<span class="fc" id="L527">        final Collection&lt;V&gt; coll = getCollection(key);</span>
+<span class="fc bfc" id="L528" title="All 2 branches covered.">        if (coll == null) {</span>
+<span class="fc" id="L529">            return 0;</span>
+        }
+<span class="fc" id="L531">        return coll.size();</span>
+    }
+
+    /**
+     * Gets the total size of the map by counting all the values.
+     *
+     * @return the total size of the map counting all values
+     */
+    public int totalSize() {
+<span class="fc" id="L540">        int total = 0;</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        for (final Object v : decorated().values()) {</span>
+<span class="fc" id="L542">            total += CollectionUtils.size(v);</span>
+<span class="fc" id="L543">        }</span>
+<span class="fc" id="L544">        return total;</span>
+    }
+
+    /**
+     * Gets a collection containing all the values in the map.
+     * &lt;p&gt;
+     * This returns a collection containing the combination of values from all keys.
+     *
+     * @return a collection view of the values contained in this map
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public Collection&lt;Object&gt; values() {
+<span class="fc" id="L557">        final Collection&lt;V&gt; vs = valuesView;</span>
+<span class="pc bpc" id="L558" title="1 of 2 branches missed.">        return (Collection&lt;Object&gt;) (vs != null ? vs : (valuesView = new Values()));</span>
+    }
+
+    /**
+     * Write the map out using a custom routine.
+     *
+     * @param out  the output stream
+     * @throws IOException if an error occurs while writing to the stream
+     * @since 4.0
+     */
+    private void writeObject(final ObjectOutputStream out) throws IOException {
+<span class="fc" id="L569">        out.defaultWriteObject();</span>
+<span class="fc" id="L570">        out.writeObject(map);</span>
+<span class="fc" id="L571">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

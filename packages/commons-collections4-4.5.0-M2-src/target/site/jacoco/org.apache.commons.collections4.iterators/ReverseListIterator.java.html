@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReverseListIterator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.iterators</a> &gt; <span class="el_source">ReverseListIterator.java</span></div><h1>ReverseListIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.iterators;
+
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Objects;
+
+import org.apache.commons.collections4.ResettableListIterator;
+
+/**
+ * Iterates backwards through a List, starting with the last element
+ * and continuing to the first. This is useful for looping around
+ * a list in reverse order without needing to actually reverse the list.
+ * &lt;p&gt;
+ * The first call to {@code next()} will return the last element
+ * from the list, and so on. The {@code hasNext()} method works
+ * in concert with the {@code next()} method as expected.
+ * However, the {@code nextIndex()} method returns the correct
+ * index in the list, thus it starts high and reduces as the iteration
+ * continues. The previous methods work similarly.
+ *
+ * @param &lt;E&gt; the type of elements returned by this iterator.
+ * @since 3.2
+ */
+public class ReverseListIterator&lt;E&gt; implements ResettableListIterator&lt;E&gt; {
+
+    /** The list being wrapped. */
+    private final List&lt;E&gt; list;
+    /** The list iterator being wrapped. */
+    private ListIterator&lt;E&gt; iterator;
+    /** Flag to indicate if updating is possible at the moment. */
+<span class="fc" id="L47">    private boolean validForUpdate = true;</span>
+
+    /**
+     * Constructor that wraps a list.
+     *
+     * @param list  the list to create a reversed iterator for
+     * @throws NullPointerException if the list is null
+     */
+<span class="fc" id="L55">    public ReverseListIterator(final List&lt;E&gt; list) {</span>
+<span class="fc" id="L56">        this.list = Objects.requireNonNull(list, &quot;list&quot;);</span>
+<span class="fc" id="L57">        iterator = list.listIterator(list.size());</span>
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * Adds a new element to the list between the next and previous elements.
+     *
+     * @param obj  the object to add
+     * @throws UnsupportedOperationException if the list is unmodifiable
+     * @throws IllegalStateException if the iterator is not in a valid state for set
+     */
+    @Override
+    public void add(final E obj) {
+        // the validForUpdate flag is needed as the necessary previous()
+        // method call re-enables remove and add
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (!validForUpdate) {</span>
+<span class="nc" id="L72">            throw new IllegalStateException(&quot;Cannot add to list until next() or previous() called&quot;);</span>
+        }
+<span class="fc" id="L74">        validForUpdate = false;</span>
+<span class="fc" id="L75">        iterator.add(obj);</span>
+<span class="fc" id="L76">        iterator.previous();</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Checks whether there is another element.
+     *
+     * @return true if there is another element
+     */
+    @Override
+    public boolean hasNext() {
+<span class="fc" id="L86">        return iterator.hasPrevious();</span>
+    }
+
+    /**
+     * Checks whether there is a previous element.
+     *
+     * @return true if there is a previous element
+     */
+    @Override
+    public boolean hasPrevious() {
+<span class="fc" id="L96">        return iterator.hasNext();</span>
+    }
+
+    /**
+     * Gets the next element.
+     * The next element is the previous in the list.
+     *
+     * @return the next element in the iterator
+     */
+    @Override
+    public E next() {
+<span class="fc" id="L107">        final E obj = iterator.previous();</span>
+<span class="fc" id="L108">        validForUpdate = true;</span>
+<span class="fc" id="L109">        return obj;</span>
+    }
+
+    /**
+     * Gets the index of the next element.
+     *
+     * @return the index of the next element in the iterator
+     */
+    @Override
+    public int nextIndex() {
+<span class="fc" id="L119">        return iterator.previousIndex();</span>
+    }
+
+    /**
+     * Gets the previous element.
+     * The next element is the previous in the list.
+     *
+     * @return the previous element in the iterator
+     */
+    @Override
+    public E previous() {
+<span class="fc" id="L130">        final E obj = iterator.next();</span>
+<span class="fc" id="L131">        validForUpdate = true;</span>
+<span class="fc" id="L132">        return obj;</span>
+    }
+
+    /**
+     * Gets the index of the previous element.
+     *
+     * @return the index of the previous element in the iterator
+     */
+    @Override
+    public int previousIndex() {
+<span class="fc" id="L142">        return iterator.nextIndex();</span>
+    }
+
+    /**
+     * Removes the last returned element.
+     *
+     * @throws UnsupportedOperationException if the list is unmodifiable
+     * @throws IllegalStateException if there is no element to remove
+     */
+    @Override
+    public void remove() {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (!validForUpdate) {</span>
+<span class="fc" id="L154">            throw new IllegalStateException(&quot;Cannot remove from list until next() or previous() called&quot;);</span>
+        }
+<span class="fc" id="L156">        iterator.remove();</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Resets the iterator back to the start (which is the
+     * end of the list as this is a reversed iterator)
+     */
+    @Override
+    public void reset() {
+<span class="fc" id="L165">        iterator = list.listIterator(list.size());</span>
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * Replaces the last returned element.
+     *
+     * @param obj  the object to set
+     * @throws UnsupportedOperationException if the list is unmodifiable
+     * @throws IllegalStateException if the iterator is not in a valid state for set
+     */
+    @Override
+    public void set(final E obj) {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (!validForUpdate) {</span>
+<span class="fc" id="L178">            throw new IllegalStateException(&quot;Cannot set to list until next() or previous() called&quot;);</span>
+        }
+<span class="fc" id="L180">        iterator.set(obj);</span>
+<span class="fc" id="L181">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

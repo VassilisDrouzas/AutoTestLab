@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BasicBuilderParameters.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder</a> &gt; <span class="el_source">BasicBuilderParameters.java</span></div><h1>BasicBuilderParameters.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.commons.configuration2.ConfigurationDecoder;
+import org.apache.commons.configuration2.beanutils.BeanHelper;
+import org.apache.commons.configuration2.convert.ConversionHandler;
+import org.apache.commons.configuration2.convert.ListDelimiterHandler;
+import org.apache.commons.configuration2.interpol.ConfigurationInterpolator;
+import org.apache.commons.configuration2.interpol.InterpolatorSpecification;
+import org.apache.commons.configuration2.interpol.Lookup;
+import org.apache.commons.configuration2.io.ConfigurationLogger;
+import org.apache.commons.configuration2.sync.Synchronizer;
+
+/**
+ * &lt;p&gt;
+ * An implementation of {@code BuilderParameters} which handles the parameters of a {@link ConfigurationBuilder} common
+ * to all concrete {@code Configuration} implementations.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class provides methods for setting standard properties supported by the {@code AbstractConfiguration} base
+ * class. A fluent interface can be used to set property values.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is not thread-safe. It is intended that an instance is constructed and initialized by a single thread
+ * during configuration of a {@code ConfigurationBuilder}.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class BasicBuilderParameters implements Cloneable, BuilderParameters, BasicBuilderProperties&lt;BasicBuilderParameters&gt; {
+    /** The key of the &lt;em&gt;throwExceptionOnMissing&lt;/em&gt; property. */
+    private static final String PROP_THROW_EXCEPTION_ON_MISSING = &quot;throwExceptionOnMissing&quot;;
+
+    /** The key of the &lt;em&gt;listDelimiterHandler&lt;/em&gt; property. */
+    private static final String PROP_LIST_DELIMITER_HANDLER = &quot;listDelimiterHandler&quot;;
+
+    /** The key of the &lt;em&gt;logger&lt;/em&gt; property. */
+    private static final String PROP_LOGGER = &quot;logger&quot;;
+
+    /** The key for the &lt;em&gt;interpolator&lt;/em&gt; property. */
+    private static final String PROP_INTERPOLATOR = &quot;interpolator&quot;;
+
+    /** The key for the &lt;em&gt;prefixLookups&lt;/em&gt; property. */
+    private static final String PROP_PREFIX_LOOKUPS = &quot;prefixLookups&quot;;
+
+    /** The key for the &lt;em&gt;defaultLookups&lt;/em&gt; property. */
+    private static final String PROP_DEFAULT_LOOKUPS = &quot;defaultLookups&quot;;
+
+    /** The key for the &lt;em&gt;parentInterpolator&lt;/em&gt; property. */
+    private static final String PROP_PARENT_INTERPOLATOR = &quot;parentInterpolator&quot;;
+
+    /** The key for the &lt;em&gt;synchronizer&lt;/em&gt; property. */
+    private static final String PROP_SYNCHRONIZER = &quot;synchronizer&quot;;
+
+    /** The key for the &lt;em&gt;conversionHandler&lt;/em&gt; property. */
+    private static final String PROP_CONVERSION_HANDLER = &quot;conversionHandler&quot;;
+
+    /** The key for the &lt;em&gt;configurationDecoder&lt;/em&gt; property. */
+    private static final String PROP_CONFIGURATION_DECODER = &quot;configurationDecoder&quot;;
+
+    /** The key for the {@code BeanHelper}. */
+    private static final String PROP_BEAN_HELPER = RESERVED_PARAMETER_PREFIX + &quot;BeanHelper&quot;;
+
+    /**
+     * Checks whether a map with parameters is present. Throws an exception if not.
+     *
+     * @param params the map with parameters to check
+     * @throws IllegalArgumentException if the map is &lt;b&gt;null&lt;/b&gt;
+     */
+    private static void checkParameters(final Map&lt;String, Object&gt; params) {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (params == null) {</span>
+<span class="fc" id="L92">            throw new IllegalArgumentException(&quot;Parameters map must not be null!&quot;);</span>
+        }
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Creates defensive copies for collection structures when constructing the map with parameters. It should not be
+     * possible to modify this object's internal state when having access to the parameters map.
+     *
+     * @param params the map with parameters to be passed to the caller
+     */
+    private static void createDefensiveCopies(final HashMap&lt;String, Object&gt; params) {
+<span class="fc" id="L103">        final Map&lt;String, ? extends Lookup&gt; prefixLookups = fetchPrefixLookups(params);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (prefixLookups != null) {</span>
+<span class="fc" id="L105">            params.put(PROP_PREFIX_LOOKUPS, new HashMap&lt;&gt;(prefixLookups));</span>
+        }
+<span class="fc" id="L107">        final Collection&lt;? extends Lookup&gt; defLookups = fetchDefaultLookups(params);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (defLookups != null) {</span>
+<span class="fc" id="L109">            params.put(PROP_DEFAULT_LOOKUPS, new ArrayList&lt;&gt;(defLookups));</span>
+        }
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Tests whether the passed in map with parameters contains a valid collection with default lookups. This method works
+     * like {@link #fetchAndCheckPrefixLookups(Map)}, but tests the default lookups collection.
+     *
+     * @param params the map with parameters
+     * @return the collection with default lookups (may be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if invalid data is found
+     */
+    private static Collection&lt;? extends Lookup&gt; fetchAndCheckDefaultLookups(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L122">        final Collection&lt;?&gt; col = fetchParameter(params, PROP_DEFAULT_LOOKUPS, Collection.class);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (col == null) {</span>
+<span class="fc" id="L124">            return null;</span>
+        }
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (col.stream().noneMatch(Lookup.class::isInstance)) {</span>
+<span class="fc" id="L128">            throw new IllegalArgumentException(&quot;Collection with default lookups contains invalid data: &quot; + col);</span>
+        }
+<span class="fc" id="L130">        return fetchDefaultLookups(params);</span>
+    }
+
+    /**
+     * Tests whether the passed in map with parameters contains a map with prefix lookups. This method is used if the
+     * parameters map is from an insecure source and we cannot be sure that it contains valid data. Therefore, we have to
+     * map that the key for the prefix lookups actually points to a map containing keys and values of expected data types.
+     *
+     * @param params the parameters map
+     * @return the obtained map with prefix lookups
+     * @throws IllegalArgumentException if the map contains invalid data
+     */
+    private static Map&lt;String, ? extends Lookup&gt; fetchAndCheckPrefixLookups(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L143">        final Map&lt;?, ?&gt; prefixes = fetchParameter(params, PROP_PREFIX_LOOKUPS, Map.class);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (prefixes == null) {</span>
+<span class="fc" id="L145">            return null;</span>
+        }
+<span class="fc" id="L147">        prefixes.forEach((k, v) -&gt; {</span>
+<span class="fc bfc" id="L148" title="All 4 branches covered.">            if (!(k instanceof String) || !(v instanceof Lookup)) {</span>
+<span class="fc" id="L149">                throw new IllegalArgumentException(&quot;Map with prefix lookups contains invalid data: &quot; + prefixes);</span>
+            }
+<span class="fc" id="L151">        });</span>
+<span class="fc" id="L152">        return fetchPrefixLookups(params);</span>
+    }
+
+    /**
+     * Obtains the {@code BeanHelper} object from the specified map with parameters. This method can be used to obtain an
+     * instance from a parameters map that has been set via the {@code setBeanHelper()} method. If no such instance is
+     * found, result is &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param params the map with parameters (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return the {@code BeanHelper} stored in this map or &lt;b&gt;null&lt;/b&gt;
+     * @throws IllegalArgumentException if the map is &lt;b&gt;null&lt;/b&gt;
+     */
+    public static BeanHelper fetchBeanHelper(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L165">        checkParameters(params);</span>
+<span class="fc" id="L166">        return (BeanHelper) params.get(PROP_BEAN_HELPER);</span>
+    }
+
+    /**
+     * Obtains the collection with default lookups from the parameters map.
+     *
+     * @param params the map with parameters
+     * @return the collection with default lookups (may be &lt;b&gt;null&lt;/b&gt;)
+     */
+    private static Collection&lt;? extends Lookup&gt; fetchDefaultLookups(final Map&lt;String, Object&gt; params) {
+        // This is safe to cast because we either have full control over the map
+        // and thus know the types of the contained values or have checked
+        // the content before
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L180">        final Collection&lt;? extends Lookup&gt; defLookups = (Collection&lt;? extends Lookup&gt;) params.get(PROP_DEFAULT_LOOKUPS);</span>
+<span class="fc" id="L181">        return defLookups;</span>
+    }
+
+    /**
+     * Obtains a specification for a {@link ConfigurationInterpolator} from the specified map with parameters. All
+     * properties related to interpolation are evaluated and added to the specification object.
+     *
+     * @param params the map with parameters (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return an {@code InterpolatorSpecification} object constructed with data from the map
+     * @throws IllegalArgumentException if the map is &lt;b&gt;null&lt;/b&gt; or contains invalid data
+     */
+    public static InterpolatorSpecification fetchInterpolatorSpecification(final Map&lt;String, Object&gt; params) {
+<span class="fc" id="L193">        checkParameters(params);</span>
+<span class="fc" id="L194">        return new InterpolatorSpecification.Builder().withInterpolator(fetchParameter(params, PROP_INTERPOLATOR, ConfigurationInterpolator.class))</span>
+<span class="fc" id="L195">            .withParentInterpolator(fetchParameter(params, PROP_PARENT_INTERPOLATOR, ConfigurationInterpolator.class))</span>
+<span class="fc" id="L196">            .withPrefixLookups(fetchAndCheckPrefixLookups(params)).withDefaultLookups(fetchAndCheckDefaultLookups(params)).create();</span>
+    }
+
+    /**
+     * Obtains a parameter from a map and performs a type check.
+     *
+     * @param params the map with parameters
+     * @param key the key of the parameter
+     * @param expClass the expected class of the parameter value
+     * @param &lt;T&gt; the parameter type
+     * @return the value of the parameter in the correct data type
+     * @throws IllegalArgumentException if the parameter is not of the expected type
+     */
+    private static &lt;T&gt; T fetchParameter(final Map&lt;String, Object&gt; params, final String key, final Class&lt;T&gt; expClass) {
+<span class="fc" id="L210">        final Object value = params.get(key);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L212">            return null;</span>
+        }
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (!expClass.isInstance(value)) {</span>
+<span class="fc" id="L215">            throw new IllegalArgumentException(String.format(&quot;Parameter %s is not of type %s!&quot;, key, expClass.getSimpleName()));</span>
+        }
+<span class="fc" id="L217">        return expClass.cast(value);</span>
+    }
+
+    /**
+     * Obtains the map with prefix lookups from the parameters map.
+     *
+     * @param params the map with parameters
+     * @return the map with prefix lookups (may be &lt;b&gt;null&lt;/b&gt;)
+     */
+    private static Map&lt;String, ? extends Lookup&gt; fetchPrefixLookups(final Map&lt;String, Object&gt; params) {
+        // This is safe to cast because we either have full control over the map
+        // and thus know the types of the contained values or have checked
+        // the content before
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L231">        final Map&lt;String, ? extends Lookup&gt; prefixLookups = (Map&lt;String, ? extends Lookup&gt;) params.get(PROP_PREFIX_LOOKUPS);</span>
+<span class="fc" id="L232">        return prefixLookups;</span>
+    }
+
+    /** The map for storing the current property values. */
+    private Map&lt;String, Object&gt; properties;
+
+    /**
+     * Creates a new instance of {@code BasicBuilderParameters}.
+     */
+<span class="fc" id="L241">    public BasicBuilderParameters() {</span>
+<span class="fc" id="L242">        properties = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L243">    }</span>
+
+    /**
+     * Clones this object. This is useful because multiple builder instances may use a similar set of parameters. However,
+     * single instances of parameter objects must not assigned to multiple builders. Therefore, cloning a parameters object
+     * provides a solution for this use case. This method creates a new parameters object with the same content as this one.
+     * The internal map storing the parameter values is cloned, too, also collection structures contained in this map.
+     * However, no a full deep clone operation is performed. Objects like a {@code ConfigurationInterpolator} or
+     * {@code Lookup}s are shared between this and the newly created instance.
+     *
+     * @return a clone of this object
+     */
+    @Override
+    public BasicBuilderParameters clone() {
+        try {
+<span class="fc" id="L258">            final BasicBuilderParameters copy = (BasicBuilderParameters) super.clone();</span>
+<span class="fc" id="L259">            copy.properties = getParameters();</span>
+<span class="fc" id="L260">            return copy;</span>
+<span class="nc" id="L261">        } catch (final CloneNotSupportedException cnex) {</span>
+            // should not happen
+<span class="nc" id="L263">            throw new AssertionError(cnex);</span>
+        }
+    }
+
+    /**
+     * Copies a number of properties from the given map into this object. Properties are only copied if they are defined in
+     * the source map.
+     *
+     * @param source the source map
+     * @param keys the keys to be copied
+     */
+    protected void copyPropertiesFrom(final Map&lt;String, ?&gt; source, final String... keys) {
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        for (final String key : keys) {</span>
+<span class="fc" id="L276">            final Object value = source.get(key);</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L278">                storeProperty(key, value);</span>
+            }
+        }
+<span class="fc" id="L281">    }</span>
+
+    /**
+     * Obtains the value of the specified property from the internal map. This method can be used by derived classes if a
+     * specific property is to be accessed. If the given key is not found, result is &lt;b&gt;null&lt;/b&gt;.
+     *
+     * @param key the key of the property in question
+     * @return the value of the property with this key or &lt;b&gt;null&lt;/b&gt;
+     */
+    protected Object fetchProperty(final String key) {
+<span class="fc" id="L291">        return properties.get(key);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation returns a copy of the internal parameters map with the values set so far.
+     * Collection structures (e.g. for lookup objects) are stored as defensive copies, so the original data cannot be
+     * modified.
+     */
+    @Override
+    public Map&lt;String, Object&gt; getParameters() {
+<span class="fc" id="L301">        final HashMap&lt;String, Object&gt; result = new HashMap&lt;&gt;(properties);</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        if (result.containsKey(PROP_INTERPOLATOR)) {</span>
+            // A custom ConfigurationInterpolator overrides lookups
+<span class="fc" id="L304">            result.remove(PROP_PREFIX_LOOKUPS);</span>
+<span class="fc" id="L305">            result.remove(PROP_DEFAULT_LOOKUPS);</span>
+<span class="fc" id="L306">            result.remove(PROP_PARENT_INTERPOLATOR);</span>
+        }
+
+<span class="fc" id="L309">        createDefensiveCopies(result);</span>
+<span class="fc" id="L310">        return result;</span>
+    }
+
+    /**
+     * Inherits properties from the specified map. This can be used for instance to reuse parameters from one builder in
+     * another builder - also in parent-child relations in which a parent builder creates child builders. The purpose of
+     * this method is to let a concrete implementation decide which properties can be inherited. Because parameters are
+     * basically organized as a map it would be possible to simply copy over all properties from the source object. However,
+     * this is not appropriate in all cases. For instance, some properties - like a {@code ConfigurationInterpolator} - are
+     * tightly connected to a configuration and cannot be reused in a different context. For other properties, e.g. a file
+     * name, it does not make sense to copy it. Therefore, an implementation has to be explicit in the properties it wants
+     * to take over.
+     *
+     * @param source the source properties to inherit from
+     * @throws IllegalArgumentException if the source map is &lt;b&gt;null&lt;/b&gt;
+     */
+    public void inheritFrom(final Map&lt;String, ?&gt; source) {
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        if (source == null) {</span>
+<span class="fc" id="L328">            throw new IllegalArgumentException(&quot;Source properties must not be null!&quot;);</span>
+        }
+<span class="fc" id="L330">        copyPropertiesFrom(source, PROP_BEAN_HELPER, PROP_CONFIGURATION_DECODER, PROP_CONVERSION_HANDLER, PROP_LIST_DELIMITER_HANDLER, PROP_LOGGER,</span>
+            PROP_SYNCHRONIZER, PROP_THROW_EXCEPTION_ON_MISSING);
+<span class="fc" id="L332">    }</span>
+
+    /**
+     * Merges this object with the given parameters object. This method adds all property values defined by the passed in
+     * parameters object to the internal storage which are not already in. So properties already defined in this object take
+     * precedence. Property names starting with the reserved parameter prefix are ignored.
+     *
+     * @param p the object whose properties should be merged (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @throws IllegalArgumentException if the passed in object is &lt;b&gt;null&lt;/b&gt;
+     */
+    public void merge(final BuilderParameters p) {
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (p == null) {</span>
+<span class="fc" id="L344">            throw new IllegalArgumentException(&quot;Parameters to merge must not be null!&quot;);</span>
+        }
+<span class="fc" id="L346">        p.getParameters().forEach((k, v) -&gt; {</span>
+<span class="fc bfc" id="L347" title="All 4 branches covered.">            if (!properties.containsKey(k) &amp;&amp; !k.startsWith(RESERVED_PARAMETER_PREFIX)) {</span>
+<span class="fc" id="L348">                storeProperty(k, v);</span>
+            }
+<span class="fc" id="L350">        });</span>
+<span class="fc" id="L351">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation stores the passed in {@code BeanHelper} object in the internal parameters map, but
+     * uses a reserved key, so that it is not used for the initialization of properties of the managed configuration object.
+     * The {@code fetchBeanHelper()} method can be used to obtain the {@code BeanHelper} instance from a parameters map.
+     */
+    @Override
+    public BasicBuilderParameters setBeanHelper(final BeanHelper beanHelper) {
+<span class="fc" id="L360">        return setProperty(PROP_BEAN_HELPER, beanHelper);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation stores the passed in {@code ConfigurationDecoder} object in the internal parameters
+     * map.
+     */
+    @Override
+    public BasicBuilderParameters setConfigurationDecoder(final ConfigurationDecoder decoder) {
+<span class="fc" id="L369">        return setProperty(PROP_CONFIGURATION_DECODER, decoder);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation stores the passed in {@code ConversionHandler} object in the internal parameters
+     * map.
+     */
+    @Override
+    public BasicBuilderParameters setConversionHandler(final ConversionHandler handler) {
+<span class="fc" id="L378">        return setProperty(PROP_CONVERSION_HANDLER, handler);</span>
+    }
+
+    /**
+     * {@inheritDoc} A defensive copy of the passed in collection is created. A &lt;b&gt;null&lt;/b&gt; argument causes all default
+     * lookups to be removed from the internal parameters map.
+     */
+    @Override
+    public BasicBuilderParameters setDefaultLookups(final Collection&lt;? extends Lookup&gt; lookups) {
+<span class="fc bfc" id="L387" title="All 2 branches covered.">        if (lookups == null) {</span>
+<span class="fc" id="L388">            properties.remove(PROP_DEFAULT_LOOKUPS);</span>
+<span class="fc" id="L389">            return this;</span>
+        }
+<span class="fc" id="L391">        return setProperty(PROP_DEFAULT_LOOKUPS, new ArrayList&lt;&gt;(lookups));</span>
+    }
+
+    /**
+     * {@inheritDoc} The passed in {@code ConfigurationInterpolator} is set without modifications.
+     */
+    @Override
+    public BasicBuilderParameters setInterpolator(final ConfigurationInterpolator ci) {
+<span class="fc" id="L399">        return setProperty(PROP_INTERPOLATOR, ci);</span>
+    }
+
+    /**
+     * Sets the value of the &lt;em&gt;listDelimiterHandler&lt;/em&gt; property. This property defines the object responsible for
+     * dealing with list delimiter and escaping characters. Note:
+     * {@link org.apache.commons.configuration2.AbstractConfiguration AbstractConfiguration} does not allow setting this
+     * property to &lt;b&gt;null&lt;/b&gt;. If the default {@code ListDelimiterHandler} is to be used, do not call this method.
+     *
+     * @param handler the {@code ListDelimiterHandler}
+     * @return a reference to this object for method chaining
+     */
+    @Override
+    public BasicBuilderParameters setListDelimiterHandler(final ListDelimiterHandler handler) {
+<span class="fc" id="L413">        return setProperty(PROP_LIST_DELIMITER_HANDLER, handler);</span>
+    }
+
+    /**
+     * Sets the &lt;em&gt;logger&lt;/em&gt; property. With this property a concrete {@code Log} object can be set for the configuration.
+     * Thus logging behavior can be controlled.
+     *
+     * @param log the {@code Log} for the configuration produced by this builder
+     * @return a reference to this object for method chaining
+     */
+    @Override
+    public BasicBuilderParameters setLogger(final ConfigurationLogger log) {
+<span class="fc" id="L425">        return setProperty(PROP_LOGGER, log);</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation stores the passed in {@code ConfigurationInterpolator} object in the internal
+     * parameters map.
+     */
+    @Override
+    public BasicBuilderParameters setParentInterpolator(final ConfigurationInterpolator parent) {
+<span class="fc" id="L434">        return setProperty(PROP_PARENT_INTERPOLATOR, parent);</span>
+    }
+
+    /**
+     * {@inheritDoc} A defensive copy of the passed in map is created. A &lt;b&gt;null&lt;/b&gt; argument causes all prefix lookups to
+     * be removed from the internal parameters map.
+     */
+    @Override
+    public BasicBuilderParameters setPrefixLookups(final Map&lt;String, ? extends Lookup&gt; lookups) {
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        if (lookups == null) {</span>
+<span class="fc" id="L444">            properties.remove(PROP_PREFIX_LOOKUPS);</span>
+<span class="fc" id="L445">            return this;</span>
+        }
+<span class="fc" id="L447">        return setProperty(PROP_PREFIX_LOOKUPS, new HashMap&lt;&gt;(lookups));</span>
+    }
+
+    /**
+     * Helper method for setting a property value.
+     *
+     * @param key the key of the property
+     * @param value the value of the property
+     * @return a reference to this object
+     */
+    private BasicBuilderParameters setProperty(final String key, final Object value) {
+<span class="fc" id="L458">        storeProperty(key, value);</span>
+<span class="fc" id="L459">        return this;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation stores the passed in {@code Synchronizer} object in the internal parameters map.
+     */
+    @Override
+    public BasicBuilderParameters setSynchronizer(final Synchronizer sync) {
+<span class="fc" id="L467">        return setProperty(PROP_SYNCHRONIZER, sync);</span>
+    }
+
+    /**
+     * Sets the value of the &lt;em&gt;throwExceptionOnMissing&lt;/em&gt; property. This property controls the configuration's behavior
+     * if missing properties are queried: a value of &lt;b&gt;true&lt;/b&gt; causes the configuration to throw an exception, for a value
+     * of &lt;b&gt;false&lt;/b&gt; it will return &lt;b&gt;null&lt;/b&gt; values. (Note: Methods returning a primitive data type will always throw
+     * an exception if the property is not defined.)
+     *
+     * @param b the value of the property
+     * @return a reference to this object for method chaining
+     */
+    @Override
+    public BasicBuilderParameters setThrowExceptionOnMissing(final boolean b) {
+<span class="fc" id="L481">        return setProperty(PROP_THROW_EXCEPTION_ON_MISSING, Boolean.valueOf(b));</span>
+    }
+
+    /**
+     * Sets a property for this parameters object. Properties are stored in an internal map. With this method a new entry
+     * can be added to this map. If the value is &lt;b&gt;null&lt;/b&gt;, the key is removed from the internal map. This method can be
+     * used by sub classes which also store properties in a map.
+     *
+     * @param key the key of the property
+     * @param value the value of the property
+     */
+    protected void storeProperty(final String key, final Object value) {
+<span class="fc bfc" id="L493" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L494">            properties.remove(key);</span>
+        } else {
+<span class="fc" id="L496">            properties.put(key, value);</span>
+        }
+<span class="fc" id="L498">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

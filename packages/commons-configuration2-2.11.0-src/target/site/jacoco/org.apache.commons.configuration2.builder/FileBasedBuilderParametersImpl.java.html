@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="iso-8859-1"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileBasedBuilderParametersImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Configuration</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.configuration2.builder</a> &gt; <span class="el_source">FileBasedBuilderParametersImpl.java</span></div><h1>FileBasedBuilderParametersImpl.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.configuration2.builder;
+
+import java.io.File;
+import java.net.URL;
+import java.util.Map;
+
+import org.apache.commons.configuration2.io.FileHandler;
+import org.apache.commons.configuration2.io.FileLocationStrategy;
+import org.apache.commons.configuration2.io.FileSystem;
+import org.apache.commons.configuration2.io.URLConnectionOptions;
+
+/**
+ * &lt;p&gt;
+ * An implementation of {@code BuilderParameters} which contains parameters related to {@code Configuration}
+ * implementations that are loaded from files.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The parameters defined here are interpreted by builder implementations that can deal with file-based configurations.
+ * Note that these parameters are typically no initialization properties of configuration objects (i.e. they are not
+ * passed to set methods after the creation of the result configuration). Rather, the parameters object is stored as a
+ * whole in the builder's map with initialization parameters and can be accessed from there.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is not thread-safe. It is intended that an instance is constructed and initialized by a single thread
+ * during configuration of a {@code ConfigurationBuilder}.
+ * &lt;/p&gt;
+ *
+ * @since 2.0
+ */
+public class FileBasedBuilderParametersImpl extends BasicBuilderParameters implements FileBasedBuilderProperties&lt;FileBasedBuilderParametersImpl&gt; {
+    /** Constant for the key in the parameters map used by this class. */
+    private static final String PARAM_KEY = RESERVED_PARAMETER_PREFIX + &quot;fileBased&quot;;
+
+    /** Property name for the reloading refresh delay. */
+    private static final String PROP_REFRESH_DELAY = &quot;reloadingRefreshDelay&quot;;
+
+    /** Property name of the reloading detector factory. */
+    private static final String PROP_DETECTOR_FACTORY = &quot;reloadingDetectorFactory&quot;;
+
+    /**
+     * Creates a new {@code FileBasedBuilderParametersImpl} object from the content of the given map. While
+     * {@code fromParameters()} expects that an object already exists and is stored in the given map, this method creates a
+     * new instance based on the content of the map. The map can contain properties of a {@code FileHandler} and some
+     * additional settings which are stored directly in the newly created object. If the map is &lt;b&gt;null&lt;/b&gt;, an
+     * uninitialized instance is returned.
+     *
+     * @param map the map with properties (must not be &lt;b&gt;null&lt;/b&gt;)
+     * @return the newly created instance
+     * @throws ClassCastException if the map contains invalid data
+     */
+    public static FileBasedBuilderParametersImpl fromMap(final Map&lt;String, ?&gt; map) {
+<span class="fc" id="L68">        final FileBasedBuilderParametersImpl params = new FileBasedBuilderParametersImpl(FileHandler.fromMap(map));</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (map != null) {</span>
+<span class="fc" id="L70">            params.setReloadingRefreshDelay((Long) map.get(PROP_REFRESH_DELAY));</span>
+<span class="fc" id="L71">            params.setReloadingDetectorFactory((ReloadingDetectorFactory) map.get(PROP_DETECTOR_FACTORY));</span>
+        }
+<span class="fc" id="L73">        return params;</span>
+    }
+
+    /**
+     * Looks up an instance of this class in the specified parameters map. This is equivalent to
+     * {@code fromParameters(params, false};}
+     *
+     * @param params the map with parameters (must not be &lt;b&gt;null&lt;/b&gt;
+     * @return the instance obtained from the map or &lt;b&gt;null&lt;/b&gt;
+     * @throws IllegalArgumentException if the map is &lt;b&gt;null&lt;/b&gt;
+     */
+    public static FileBasedBuilderParametersImpl fromParameters(final Map&lt;String, ?&gt; params) {
+<span class="fc" id="L85">        return fromParameters(params, false);</span>
+    }
+
+    /**
+     * Looks up an instance of this class in the specified parameters map and optionally creates a new one if none is found.
+     * This method can be used to obtain an instance of this class which has been stored in a parameters map. It is
+     * compatible with the {@code getParameters()} method.
+     *
+     * @param params the map with parameters (must not be &lt;b&gt;null&lt;/b&gt;
+     * @param createIfMissing determines the behavior if no instance is found in the map; if &lt;b&gt;true&lt;/b&gt;, a new instance
+     *        with default settings is created; if &lt;b&gt;false&lt;/b&gt;, &lt;b&gt;null&lt;/b&gt; is returned
+     * @return the instance obtained from the map or &lt;b&gt;null&lt;/b&gt;
+     * @throws IllegalArgumentException if the map is &lt;b&gt;null&lt;/b&gt;
+     */
+    public static FileBasedBuilderParametersImpl fromParameters(final Map&lt;String, ?&gt; params, final boolean createIfMissing) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (params == null) {</span>
+<span class="fc" id="L101">            throw new IllegalArgumentException(&quot;Parameters map must not be null!&quot;);</span>
+        }
+
+<span class="fc" id="L104">        FileBasedBuilderParametersImpl instance = (FileBasedBuilderParametersImpl) params.get(PARAM_KEY);</span>
+<span class="fc bfc" id="L105" title="All 4 branches covered.">        if (instance == null &amp;&amp; createIfMissing) {</span>
+<span class="fc" id="L106">            instance = new FileBasedBuilderParametersImpl();</span>
+        }
+<span class="fc" id="L108">        return instance;</span>
+    }
+
+    /**
+     * Stores the associated file handler for the location of the configuration.
+     */
+    private FileHandler fileHandler;
+
+    /** The factory for reloading detectors. */
+    private ReloadingDetectorFactory reloadingDetectorFactory;
+
+    /** The refresh delay for reloading support. */
+    private Long reloadingRefreshDelay;
+
+    /**
+     * Creates a new instance of {@code FileBasedBuilderParametersImpl} with an uninitialized {@code FileHandler} object.
+     */
+    public FileBasedBuilderParametersImpl() {
+<span class="fc" id="L126">        this(null);</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Creates a new instance of {@code FileBasedBuilderParametersImpl} and associates it with the given {@code FileHandler}
+     * object. If the handler is &lt;b&gt;null&lt;/b&gt;, a new handler instance is created.
+     *
+     * @param handler the associated {@code FileHandler} (can be &lt;b&gt;null&lt;/b&gt;)
+     */
+<span class="fc" id="L135">    public FileBasedBuilderParametersImpl(final FileHandler handler) {</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        fileHandler = handler != null ? handler : new FileHandler();</span>
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * {@inheritDoc} This implementation also creates a copy of the {@code FileHandler}.
+     */
+    @Override
+    public FileBasedBuilderParametersImpl clone() {
+<span class="fc" id="L144">        final FileBasedBuilderParametersImpl copy = (FileBasedBuilderParametersImpl) super.clone();</span>
+<span class="fc" id="L145">        copy.fileHandler = new FileHandler(fileHandler.getContent(), fileHandler);</span>
+<span class="fc" id="L146">        return copy;</span>
+    }
+
+    /**
+     * Gets the {@code FileHandler} managed by this object. This object is updated every time the file location is
+     * changed.
+     *
+     * @return the managed {@code FileHandler}
+     */
+    public FileHandler getFileHandler() {
+<span class="fc" id="L156">        return fileHandler;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation returns a map which contains this object itself under a specific key. The static
+     * {@code fromParameters()} method can be used to extract an instance from a parameters map. Of course, the properties
+     * inherited from the base class are also added to the result map.
+     */
+    @Override
+    public Map&lt;String, Object&gt; getParameters() {
+<span class="fc" id="L166">        final Map&lt;String, Object&gt; params = super.getParameters();</span>
+<span class="fc" id="L167">        params.put(PARAM_KEY, this);</span>
+<span class="fc" id="L168">        return params;</span>
+    }
+
+    /**
+     * Gets the {@code ReloadingDetectorFactory}. Result may be &lt;b&gt;null&lt;/b&gt; which means that the default factory is to be
+     * used.
+     *
+     * @return the {@code ReloadingDetectorFactory}
+     */
+    public ReloadingDetectorFactory getReloadingDetectorFactory() {
+<span class="fc" id="L178">        return reloadingDetectorFactory;</span>
+    }
+
+    /**
+     * Gets the refresh delay for reload operations. Result may be &lt;b&gt;null&lt;/b&gt; if this value has not been set.
+     *
+     * @return the reloading refresh delay
+     */
+    public Long getReloadingRefreshDelay() {
+<span class="fc" id="L187">        return reloadingRefreshDelay;</span>
+    }
+
+    /**
+     * {@inheritDoc} This implementation takes some properties defined in this class into account.
+     */
+    @Override
+    public void inheritFrom(final Map&lt;String, ?&gt; source) {
+<span class="fc" id="L195">        super.inheritFrom(source);</span>
+
+<span class="fc" id="L197">        final FileBasedBuilderParametersImpl srcParams = fromParameters(source);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (srcParams != null) {</span>
+<span class="fc" id="L199">            setFileSystem(srcParams.getFileHandler().getFileSystem());</span>
+<span class="fc" id="L200">            setLocationStrategy(srcParams.getFileHandler().getLocationStrategy());</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">            if (srcParams.getFileHandler().getEncoding() != null) {</span>
+<span class="fc" id="L202">                setEncoding(srcParams.getFileHandler().getEncoding());</span>
+            }
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            if (srcParams.getReloadingDetectorFactory() != null) {</span>
+<span class="fc" id="L205">                setReloadingDetectorFactory(srcParams.getReloadingDetectorFactory());</span>
+            }
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            if (srcParams.getReloadingRefreshDelay() != null) {</span>
+<span class="fc" id="L208">                setReloadingRefreshDelay(srcParams.getReloadingRefreshDelay());</span>
+            }
+        }
+<span class="fc" id="L211">    }</span>
+
+    @Override
+    public FileBasedBuilderParametersImpl setBasePath(final String path) {
+<span class="fc" id="L215">        getFileHandler().setBasePath(path);</span>
+<span class="fc" id="L216">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setEncoding(final String enc) {
+<span class="fc" id="L221">        getFileHandler().setEncoding(enc);</span>
+<span class="fc" id="L222">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setFile(final File file) {
+<span class="fc" id="L227">        getFileHandler().setFile(file);</span>
+<span class="fc" id="L228">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setFileName(final String name) {
+<span class="fc" id="L233">        getFileHandler().setFileName(name);</span>
+<span class="fc" id="L234">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setFileSystem(final FileSystem fs) {
+<span class="fc" id="L239">        getFileHandler().setFileSystem(fs);</span>
+<span class="fc" id="L240">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setLocationStrategy(final FileLocationStrategy strategy) {
+<span class="fc" id="L245">        getFileHandler().setLocationStrategy(strategy);</span>
+<span class="fc" id="L246">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setPath(final String path) {
+<span class="fc" id="L251">        getFileHandler().setPath(path);</span>
+<span class="fc" id="L252">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setReloadingDetectorFactory(final ReloadingDetectorFactory reloadingDetectorFactory) {
+<span class="fc" id="L257">        this.reloadingDetectorFactory = reloadingDetectorFactory;</span>
+<span class="fc" id="L258">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setReloadingRefreshDelay(final Long reloadingRefreshDelay) {
+<span class="fc" id="L263">        this.reloadingRefreshDelay = reloadingRefreshDelay;</span>
+<span class="fc" id="L264">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setURL(final URL url) {
+<span class="fc" id="L269">        getFileHandler().setURL(url);</span>
+<span class="fc" id="L270">        return this;</span>
+    }
+
+    @Override
+    public FileBasedBuilderParametersImpl setURL(final URL url, final URLConnectionOptions urlConnectionOptions) {
+<span class="fc" id="L275">        getFileHandler().setURL(url, urlConnectionOptions);</span>
+<span class="fc" id="L276">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

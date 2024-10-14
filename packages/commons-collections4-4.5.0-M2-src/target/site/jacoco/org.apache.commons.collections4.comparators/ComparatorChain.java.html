@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="el"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComparatorChain.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Apache Commons Collections</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.collections4.comparators</a> &gt; <span class="el_source">ComparatorChain.java</span></div><h1>ComparatorChain.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.collections4.comparators;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * A ComparatorChain is a Comparator that wraps one or more Comparators in
+ * sequence. The ComparatorChain calls each Comparator in sequence until either
+ * 1) any single Comparator returns a non-zero result (and that result is then
+ * returned), or 2) the ComparatorChain is exhausted (and zero is returned).
+ * This type of sorting is very similar to multi-column sorting in SQL, and this
+ * class allows Java classes to emulate that kind of behavior when sorting a
+ * List.
+ * &lt;p&gt;
+ * To further facilitate SQL-like sorting, the order of any single Comparator in
+ * the list can be reversed.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Calling a method that adds new Comparators or changes the ascend/descend sort
+ * &lt;i&gt;after compare(Object, Object) has been called&lt;/i&gt; will result in an
+ * UnsupportedOperationException. However, &lt;i&gt;take care&lt;/i&gt; to not alter the
+ * underlying List of Comparators or the BitSet that defines the sort order.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Instances of ComparatorChain are not synchronized. The class is not
+ * thread-safe at construction time, but it &lt;i&gt;is&lt;/i&gt; thread-safe to perform
+ * multiple comparisons after all the setup operations are complete.
+ * &lt;/p&gt;
+ *
+ * @param &lt;E&gt; the type of objects compared by this comparator
+ * @since 2.0
+ */
+public class ComparatorChain&lt;E&gt; implements Comparator&lt;E&gt;, Serializable {
+
+    /** Serialization version from Collections 2.0. */
+    private static final long serialVersionUID = -721644942746081630L;
+
+    /** The list of comparators in the chain. */
+    private final List&lt;Comparator&lt;E&gt;&gt; comparatorChain;
+    /** Order - false (clear) = ascend; true (set) = descend. */
+    private final BitSet orderingBits;
+   /** Whether the chain has been &quot;locked&quot;. */
+    private boolean isLocked;
+
+    /**
+     * Constructs a ComparatorChain with no Comparators.
+     * You must add at least one Comparator before calling
+     * the compare(Object,Object) method, or an
+     * UnsupportedOperationException is thrown
+     */
+    public ComparatorChain() {
+<span class="fc" id="L73">        this(new ArrayList&lt;&gt;(), new BitSet());</span>
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * Constructs a ComparatorChain with a single Comparator,
+     * sorting in the forward order
+     *
+     * @param comparator First comparator in the Comparator chain
+     */
+    public ComparatorChain(final Comparator&lt;E&gt; comparator) {
+<span class="fc" id="L83">        this(comparator, false);</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Constructs a Comparator chain with a single Comparator,
+     * sorting in the given order
+     *
+     * @param comparator First Comparator in the ComparatorChain
+     * @param reverse    false = forward sort; true = reverse sort
+     */
+<span class="fc" id="L93">    public ComparatorChain(final Comparator&lt;E&gt; comparator, final boolean reverse) {</span>
+<span class="fc" id="L94">        comparatorChain = new ArrayList&lt;&gt;(1);</span>
+<span class="fc" id="L95">        comparatorChain.add(comparator);</span>
+<span class="fc" id="L96">        orderingBits = new BitSet(1);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (reverse) {</span>
+<span class="nc" id="L98">            orderingBits.set(0);</span>
+        }
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Constructs a ComparatorChain from the Comparators in the
+     * List.  All Comparators will default to the forward
+     * sort order.
+     *
+     * @param list   List of Comparators
+     * @see #ComparatorChain(List,BitSet)
+     */
+    public ComparatorChain(final List&lt;Comparator&lt;E&gt;&gt; list) {
+<span class="fc" id="L111">        this(list, new BitSet(list.size()));</span>
+<span class="fc" id="L112">    }</span>
+
+    /**
+     * Constructs a ComparatorChain from the Comparators in the
+     * given List.  The sort order of each column will be
+     * drawn from the given BitSet.  When determining the sort
+     * order for Comparator at index &lt;i&gt;i&lt;/i&gt; in the List,
+     * the ComparatorChain will call BitSet.get(&lt;i&gt;i&lt;/i&gt;).
+     * If that method returns &lt;i&gt;false&lt;/i&gt;, the forward
+     * sort order is used; a return value of &lt;i&gt;true&lt;/i&gt;
+     * indicates reverse sort order.
+     *
+     * @param list   List of Comparators.  NOTE: This constructor does not perform a
+     *               defensive copy of the list
+     * @param bits   Sort order for each Comparator.  Extra bits are ignored,
+     *               unless extra Comparators are added by another method.
+     */
+<span class="fc" id="L129">    public ComparatorChain(final List&lt;Comparator&lt;E&gt;&gt; list, final BitSet bits) {</span>
+<span class="fc" id="L130">        comparatorChain = list;</span>
+<span class="fc" id="L131">        orderingBits = bits;</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Add a Comparator to the end of the chain using the
+     * forward sort order
+     *
+     * @param comparator Comparator with the forward sort order
+     */
+    public void addComparator(final Comparator&lt;E&gt; comparator) {
+<span class="fc" id="L141">        addComparator(comparator, false);</span>
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * Add a Comparator to the end of the chain using the
+     * given sort order
+     *
+     * @param comparator Comparator to add to the end of the chain
+     * @param reverse    false = forward sort order; true = reverse sort order
+     */
+    public void addComparator(final Comparator&lt;E&gt; comparator, final boolean reverse) {
+<span class="fc" id="L152">        checkLocked();</span>
+
+<span class="fc" id="L154">        comparatorChain.add(comparator);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (reverse) {</span>
+<span class="fc" id="L156">            orderingBits.set(comparatorChain.size() - 1);</span>
+        }
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Throws an exception if the {@link ComparatorChain} is empty.
+     *
+     * @throws UnsupportedOperationException if the {@link ComparatorChain} is empty
+     */
+    private void checkChainIntegrity() {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (comparatorChain.isEmpty()) {</span>
+<span class="fc" id="L167">            throw new UnsupportedOperationException(&quot;ComparatorChains must contain at least one Comparator&quot;);</span>
+        }
+<span class="fc" id="L169">    }</span>
+
+    /**
+     * Throws an exception if the {@link ComparatorChain} is locked.
+     *
+     * @throws UnsupportedOperationException if the {@link ComparatorChain} is locked
+     */
+    private void checkLocked() {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (isLocked) {</span>
+<span class="nc" id="L178">            throw new UnsupportedOperationException(</span>
+                    &quot;Comparator ordering cannot be changed after the first comparison is performed&quot;);
+        }
+<span class="fc" id="L181">    }</span>
+
+    /**
+     * Perform comparisons on the Objects as per
+     * Comparator.compare(o1,o2).
+     *
+     * @param o1  the first object to compare
+     * @param o2  the second object to compare
+     * @return -1, 0, or 1
+     * @throws UnsupportedOperationException if the ComparatorChain does not contain at least one Comparator
+     */
+    @Override
+    public int compare(final E o1, final E o2) throws UnsupportedOperationException {
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (!isLocked) {</span>
+<span class="fc" id="L195">            checkChainIntegrity();</span>
+<span class="fc" id="L196">            isLocked = true;</span>
+        }
+
+        // iterate over all comparators in the chain
+<span class="fc" id="L200">        final Iterator&lt;Comparator&lt;E&gt;&gt; comparators = comparatorChain.iterator();</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        for (int comparatorIndex = 0; comparators.hasNext(); ++comparatorIndex) {</span>
+
+<span class="fc" id="L203">            final Comparator&lt;? super E&gt; comparator = comparators.next();</span>
+<span class="fc" id="L204">            int retval = comparator.compare(o1, o2);</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            if (retval != 0) {</span>
+                // invert the order if it is a reverse sort
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                if (orderingBits.get(comparatorIndex)) {</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                    if (retval &gt; 0) {</span>
+<span class="fc" id="L209">                        retval = -1;</span>
+                    } else {
+<span class="fc" id="L211">                        retval = 1;</span>
+                    }
+                }
+<span class="fc" id="L214">                return retval;</span>
+            }
+        }
+
+        // if comparators are exhausted, return 0
+<span class="fc" id="L219">        return 0;</span>
+    }
+
+    /**
+     * Returns {@code true} iff &lt;i&gt;that&lt;/i&gt; Object is
+     * a {@link Comparator} whose ordering is known to be
+     * equivalent to mine.
+     * &lt;p&gt;
+     * This implementation returns {@code true}
+     * iff {@code &lt;i&gt;object&lt;/i&gt;.{@link Object#getClass() getClass()}}
+     * equals {@code this.getClass()}, and the underlying
+     * comparators and order bits are equal.
+     * Subclasses may want to override this behavior to remain consistent
+     * with the {@link Comparator#equals(Object)} contract.
+     *
+     * @param object  the object to compare with
+     * @return true if equal
+     * @since 3.0
+     */
+    @Override
+    public boolean equals(final Object object) {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (this == object) {</span>
+<span class="fc" id="L241">            return true;</span>
+        }
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (null == object) {</span>
+<span class="fc" id="L244">            return false;</span>
+        }
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (object.getClass().equals(this.getClass())) {</span>
+<span class="fc" id="L247">            final ComparatorChain&lt;?&gt; chain = (ComparatorChain&lt;?&gt;) object;</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">            return Objects.equals(orderingBits, chain.orderingBits) &amp;&amp;</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">                   Objects.equals(comparatorChain, chain.comparatorChain);</span>
+        }
+<span class="nc" id="L251">        return false;</span>
+    }
+
+    /**
+     * Implement a hash code for this comparator that is consistent with
+     * {@link #equals(Object) equals}.
+     *
+     * @return a suitable hash code
+     * @since 3.0
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L263">        int hash = 0;</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        if (null != comparatorChain) {</span>
+<span class="fc" id="L265">            hash ^= comparatorChain.hashCode();</span>
+        }
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (null != orderingBits) {</span>
+<span class="fc" id="L268">            hash ^= orderingBits.hashCode();</span>
+        }
+<span class="fc" id="L270">        return hash;</span>
+    }
+
+    /**
+     * Determine if modifications can still be made to the
+     * ComparatorChain.  ComparatorChains cannot be modified
+     * once they have performed a comparison.
+     *
+     * @return true = ComparatorChain cannot be modified; false =
+     *         ComparatorChain can still be modified.
+     */
+    public boolean isLocked() {
+<span class="nc" id="L282">        return isLocked;</span>
+    }
+
+    /**
+     * Replace the Comparator at the given index, maintaining
+     * the existing sort order.
+     *
+     * @param index      index of the Comparator to replace
+     * @param comparator Comparator to place at the given index
+     * @throws IndexOutOfBoundsException
+     *                   if index &amp;lt; 0 or index &amp;gt;= size()
+     */
+    public void setComparator(final int index, final Comparator&lt;E&gt; comparator) throws IndexOutOfBoundsException {
+<span class="nc" id="L295">        setComparator(index, comparator, false);</span>
+<span class="nc" id="L296">    }</span>
+
+    /**
+     * Replace the Comparator at the given index in the
+     * ComparatorChain, using the given sort order
+     *
+     * @param index      index of the Comparator to replace
+     * @param comparator Comparator to set
+     * @param reverse    false = forward sort order; true = reverse sort order
+     */
+    public void setComparator(final int index, final Comparator&lt;E&gt; comparator, final boolean reverse) {
+<span class="nc" id="L307">        checkLocked();</span>
+
+<span class="nc" id="L309">        comparatorChain.set(index, comparator);</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">        if (reverse) {</span>
+<span class="nc" id="L311">            orderingBits.set(index);</span>
+        } else {
+<span class="nc" id="L313">            orderingBits.clear(index);</span>
+        }
+<span class="nc" id="L315">    }</span>
+
+    /**
+     * Change the sort order at the given index in the
+     * ComparatorChain to a forward sort.
+     *
+     * @param index  Index of the ComparatorChain
+     */
+    public void setForwardSort(final int index) {
+<span class="nc" id="L324">        checkLocked();</span>
+<span class="nc" id="L325">        orderingBits.clear(index);</span>
+<span class="nc" id="L326">    }</span>
+
+    /**
+     * Change the sort order at the given index in the
+     * ComparatorChain to a reverse sort.
+     *
+     * @param index  Index of the ComparatorChain
+     */
+    public void setReverseSort(final int index) {
+<span class="nc" id="L335">        checkLocked();</span>
+<span class="nc" id="L336">        orderingBits.set(index);</span>
+<span class="nc" id="L337">    }</span>
+
+    /**
+     * Number of Comparators in the current ComparatorChain.
+     *
+     * @return Comparator count
+     */
+    public int size() {
+<span class="nc" id="L345">        return comparatorChain.size();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
