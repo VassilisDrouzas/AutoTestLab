@@ -143,7 +143,7 @@ pip install -r requirements.txt
 
 #### Command Example:
 ```bash
-python main2.py --package_dir <path_to_package> --selected_model <gemini|llama> --few_shot --few_shot_count <number_of_examples> --dev_method_count <number_of_methods_for_dev_set> --num_runs <number_of_runs>
+python main2.py --package_dir <path_to_package> --selected_model <gemini|llama> --few_shot --few_shot_count <number_of_examples> --dev_method_count <number_of_methods_for_dev_set> --num_runs <number_of_runs> --fixed_methods_file <fixed_methods_pkl_file>
 ```
 
 #### Arguments:
