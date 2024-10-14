@@ -16,7 +16,7 @@ import chardet
 
 
 class ExperimentRunner:
-    def __init__(self, llm_model: GeminiLLM, api_info=None, max_refinements: int = 3, k: int = 5, csv_file: str = 'prompts_responses.csv', package_dir: str = ''):
+    def __init__(self, llm_model: GeminiLLM, api_info=None, max_refinements: int = 3, k: int = 5, csv_file: str = 'statistics.csv', package_dir: str = ''):
         self.llm_model = llm_model
         self.api_info = api_info
         self.package_dir = package_dir
@@ -30,10 +30,10 @@ class ExperimentRunner:
         if not os.path.exists(self.csv_file):
             with open(self.csv_file, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile, delimiter=';')
-                writer.writerow(['Prompt', 'Response', 'Pass@k'])  
+                writer.writerow(['Set', 'Package name', 'Total methods tested', 'Passing %', 'pass@k', 'count@n','% Instr. Cov >= 70%', '% Branch Cov >= 70%' , 'Instruction Coverage std.', 'Branch coverage std.', 'Type'])  
 
 
-    import re
+    
 
     def load_api_info(self, json_path):
         """
@@ -120,9 +120,6 @@ class ExperimentRunner:
 
 
     
-
-
-    import re
 
     def extract_test_output(self, test_definition: str) -> str:
         """
@@ -344,10 +341,9 @@ class ExperimentRunner:
                 if best_code:
                     self.save_test(output_dir, class_name, method_name, best_code)       #we want to keep in the file the best code
 
-            # Summary of the results
+            
            
             
-            # Step 6: Calculate pass@k using the correct formula
             pass_at_k = self.calculate_pass_at_k(passed_tests, self.k, total_method_tests)
 
             
@@ -382,8 +378,7 @@ class ExperimentRunner:
         if max_branch_coverage >= coverage_threshold:
             methods_above_branch_threshold += 1
 
-            # Step 8: Log the prompt, test code, pass@k, count@n, and coverage in the CSV file
-            #self.save_to_csv(prompt, test_code, pass_at_k, count_at_n, round(max_branch_coverage / 100, 2), round(max_instruction_coverage / 100, 2))
+            
         if total_methods_tested > 0:
             average_pass_at_k = total_pass_at_k / total_methods_tested
             instruction_coverage_above_threshold_percentage = (methods_above_instruction_threshold / total_methods_tested) * 100
@@ -420,7 +415,7 @@ class ExperimentRunner:
         print(f"Branch coverage standard deviation: {round(branch_coverage_std, 3)}")
 
         self.save_to_csv(test, package_name, total_methods_tested, round(passing_test_percentage, 3), average_pass_at_k, total_count_at_n, round(instruction_coverage_above_threshold_percentage, 3), round(branch_coverage_above_threshold_percentage, 3), round(instruction_coverage_std, 3), round(branch_coverage_std, 3))
-        #self.save_to_csv(test, total_methods_tested, average_pass_at_k, total_count_at_n, round(instruction_coverage_std, 3), round(branch_coverage_std, 3), round(passing_test_percentage, 3))
+        
 
 
 
@@ -539,10 +534,6 @@ class ExperimentRunner:
 
     
 
-        
-
-
-     #self.save_to_csv(test, package_name, total_methods_tested, round(passing_test_percentage, 3), average_pass_at_k, total_count_at_n, round(instruction_coverage_above_threshold_percentage, 3), round(branch_coverage_above_threshold_percentage, 3), round(instruction_coverage_std, 3), round(branch_coverage_std, 3))
     def save_to_csv(self, test: str, package_name:str, total_methods_tested: int, passing_test_percentage: float, pass_at_k: float, count_at_n: int, instruction_coverage_above_threshold_percentage: float, branch_coverage_above_threshold_percentage: float,instruction_coverage_std:float, branch_coverage_std: float):
         with open(self.csv_file, 'a', newline='') as csvfile:
             writer = csv.writer(csvfile, delimiter=';')
