@@ -2,9 +2,11 @@
 
 AutoTestLab is a test generation framework designed to automate the process of generating, validating, and running unit tests for Java projects using various language models (e.g., Gemini, Llama). The app extracts documentation from Java source files, generates tests using LLMs, and evaluates those tests based on metrics like coverage, correctness, and pass rate.
 
-#This project has been created for the needs of my MSc in Data Science thesis. Feel free to check the thesis report [here](http://www.pyxida.aueb.gr/index.php?op=view_object&object_id=11735).
 
 ## Project Structure
+
+### Overview
+This project has been created for the needs of my thesis (MSc in Data Science). Feel free to check the thesis report [here](http://www.pyxida.aueb.gr/index.php?op=view_object&object_id=11735).
 
 ### 1. **main2.py**
 This script performs benchmarking tests on randomly selected **whole** packages. It orchestrates the entire process, from the selection of a package to the generation, validation, and evaluation of the unit tests.
